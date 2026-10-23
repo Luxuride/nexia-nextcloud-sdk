@@ -1,0 +1,11 @@
+{
+  "name": "nextcloud-rust-sdk",
+  "image": "mcr.microsoft.com/devcontainers/rust:1",
+  "mounts": [
+    {
+      "source": "/var/run/docker.sock",
+      "target": "/var/run/docker.sock",
+      "type": "bind"
+    }
+  ]
+}
