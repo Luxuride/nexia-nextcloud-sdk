@@ -1,0 +1,13 @@
+[package]
+name = "nextcloud-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Core primitives shared by the Nextcloud Rust SDK crates"
+
+[features]
+test-support = []
+
+[dependencies]
