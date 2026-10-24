@@ -1,4 +1,4 @@
-# sdk-core
+# nextcloud-sdk-core
 
 > Core primitives, type-safe path abstractions, and seam traits for the Nextcloud Rust SDK.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-core = "0.1.0"
+nextcloud-sdk-core = "0.1.1"
 ```
 
 ## Features

@@ -69,7 +69,7 @@ Autonomous AI agents and contributors using LLMs (Claude, Gemini, GPT, etc.) are
 1. **Create an Issue**: Check existing issues or open a new one with the label `feature`, `bug`, or `chore`. Do not prefix issue titles with `feat:`.
 2. **Branch naming**: Use `feature/<name>`, `fix/<name>`, or `chore/<name>`.
 3. **Commit convention**: Follow Conventional Commits:
-   - `feat(sdk-keyring): add multiplatform keyring`
+   - `feat(nextcloud-sdk-keyring): add multiplatform keyring`
    - `fix(nextcloud-dav): handle multistatus 404 cleanly`
    - `chore: update dependencies`
 4. **Submit PR**: Fill out the Pull Request template completely. Ensure CI checks pass across Linux, macOS, and Windows.

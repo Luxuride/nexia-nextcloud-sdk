@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-nextcloud-trashbin = "0.1.0"
+nextcloud-trashbin = "0.1.1"
 ```
 
 ## Features

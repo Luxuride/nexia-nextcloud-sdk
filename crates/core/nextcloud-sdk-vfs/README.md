@@ -1,4 +1,4 @@
-# sdk-vfs
+# nextcloud-sdk-vfs
 
 > Transient virtual filesystem tree with on-demand hydration and thumbnail caching.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-vfs = "0.1.0"
+nextcloud-sdk-vfs = "0.1.1"
 ```
 
 ## Features

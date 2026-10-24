@@ -1,4 +1,4 @@
-# sdk-session
+# nextcloud-sdk-session
 
 > Pure state machine for Nextcloud session lifecycles and Login Flow v2.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-session = "0.1.0"
+nextcloud-sdk-session = "0.1.1"
 ```
 
 ## Features

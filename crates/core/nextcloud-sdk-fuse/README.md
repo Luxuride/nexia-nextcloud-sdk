@@ -1,4 +1,4 @@
-# sdk-fuse
+# nextcloud-sdk-fuse
 
 > Desktop FUSE filesystem driver for mounting transient Nextcloud virtual trees on Linux and macOS.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-fuse = "0.1.0"
+nextcloud-sdk-fuse = "0.1.1"
 ```
 
 ## Features

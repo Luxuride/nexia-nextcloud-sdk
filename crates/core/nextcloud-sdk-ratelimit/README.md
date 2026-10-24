@@ -1,4 +1,4 @@
-# sdk-ratelimit
+# nextcloud-sdk-ratelimit
 
 > Dynamic bandwidth rate limiting, token-bucket traffic shaping, and transfer progress tracking for the Nextcloud Rust SDK.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-ratelimit = "0.1.0"
+nextcloud-sdk-ratelimit = "0.1.1"
 ```
 
 ## Features

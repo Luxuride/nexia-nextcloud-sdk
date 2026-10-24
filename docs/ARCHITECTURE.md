@@ -8,7 +8,7 @@ The `nextcloud-rust-sdk` project is a high-performance, memory-safe Rust client 
 
 The workspace is organized into two primary layers:
 1. **Stateless Core & Protocol Layer (`crates/core/` and `crates/nextcloud/`)**: Pure domain models, protocol codecs, HTTP transport seams, and pure state machines.
-2. **Stateful SDK Facade & Runtime Layer (`nextcloud-rust-sdk` and `nextcloud-sdk-storage`)**: An actor-based orchestrator coordinating request dispatch, retry semantics, session lifecycles, and dual encrypted SQLCipher storage.
+2. **Stateful SDK Facade & Runtime Layer (`nextcloud-rust-sdk` and `nextcloud-nextcloud-sdk-storage`)**: An actor-based orchestrator coordinating request dispatch, retry semantics, session lifecycles, and dual encrypted SQLCipher storage.
 
 ```
 nextcloud-rust-sdk/
@@ -22,14 +22,14 @@ nextcloud-rust-sdk/
 │   └── API_REFERENCE.md
 ├── crates/
 │   ├── core/
-│   │   ├── sdk-core/                       # HTTP abstractions, ApiPath, Transport & AuthProvider traits
-│   │   ├── sdk-session/                    # Login Flow v2 & session lifecycle state machine
-│   │   ├── sdk-request/                    # Per-call retry, backoff, and failure state machine
-│   │   ├── sdk-storage/                    # Dual SQLCipher encrypted persistence & key store
-│   │   ├── sdk-keyring/                    # Multi-platform keyring (Linux/Flatpak oo7, macOS Keychain, WinCred)
-│   │   ├── sdk-ratelimit/                  # Bandwidth rate limiting, token-bucket traffic shaping & progress
-│   │   ├── sdk-vfs/                        # Transient virtual tree, node metadata, and thumbnail cache
-│   │   └── sdk-fuse/                       # Desktop FUSE filesystem driver for transient mounts
+│   │   ├── nextcloud-sdk-core/                       # HTTP abstractions, ApiPath, Transport & AuthProvider traits
+│   │   ├── nextcloud-sdk-session/                    # Login Flow v2 & session lifecycle state machine
+│   │   ├── nextcloud-sdk-request/                    # Per-call retry, backoff, and failure state machine
+│   │   ├── nextcloud-sdk-storage/                    # Dual SQLCipher encrypted persistence & key store
+│   │   ├── nextcloud-sdk-keyring/                    # Multi-platform keyring (Linux/Flatpak oo7, macOS Keychain, WinCred)
+│   │   ├── nextcloud-sdk-ratelimit/                  # Bandwidth rate limiting, token-bucket traffic shaping & progress
+│   │   ├── nextcloud-sdk-vfs/                        # Transient virtual tree, node metadata, and thumbnail cache
+│   │   └── nextcloud-sdk-fuse/                       # Desktop FUSE filesystem driver for transient mounts
 │   └── nextcloud/
 │       ├── nextcloud-auth/                 # Basic, Bearer, Anonymous credentials & SecretString
 │       ├── nextcloud-transport/            # reqwest implementation of Transport
@@ -69,7 +69,7 @@ The architecture enforces a strict architectural boundary between **stateless pr
 |   | (Notifications v2)    |     | (Activity v2 Feed)     |     | (OCS Envelope)   |   |
 |   +-----------------------+     +------------------------+     +------------------+   |
 |                                                                                       |
-|   [sdk-core] Transport trait  /  AuthProvider trait  /  Request & Response envelopes  |
+|   [nextcloud-sdk-core] Transport trait  /  AuthProvider trait  /  Request & Response envelopes  |
 |   [nextcloud-transport] reqwest engine   |   [nextcloud-auth] SecretString / Basic /  |
 |                                                               Bearer credentials      |
 +---------------------------------------------------------------------------------------+
@@ -83,7 +83,7 @@ The architecture enforces a strict architectural boundary between **stateless pr
 |   | nextcloud-rust-sdk Facade Client & Background Worker                          |   |
 |   |                                                                               |   |
 |   |   +--------------------------+           +--------------------------------+   |   |
-|   |   | sdk-session              |           | sdk-request                    |   |   |
+|   |   | nextcloud-sdk-session              |           | nextcloud-sdk-request                    |   |   |
 |   |   | SessionMachine           |           | RequestMachine                 |   |   |
 |   |   | - Login Flow v2          |           | - Retry budgets                |   |   |
 |   |   | - Token polling          |           | - Exponential backoff          |   |   |
@@ -91,7 +91,7 @@ The architecture enforces a strict architectural boundary between **stateless pr
 |   |   +--------------------------+           +--------------------------------+   |   |
 |   |                                                                               |   |
 |   |   +-----------------------------------------------------------------------+   |   |
-|   |   | sdk-storage                                                           |   |   |
+|   |   | nextcloud-sdk-storage                                                           |   |   |
 |   |   | - KeyStore / KeychainKeyStore (oo7 Linux Keyring / Secret Service)    |   |   |
 |   |   | - EncryptedDatabase (SQLCipher 256-bit AES-GCM)                       |   |   |
 |   |   |   ├── auth.db  (Account tokens, login flow state)                     |   |   |
@@ -103,19 +103,19 @@ The architecture enforces a strict architectural boundary between **stateless pr
 
 ### The Stateless Layers
 
-Every crate in `crates/nextcloud/` as well as `nextcloud-sdk-core` is purely stateless:
+Every crate in `crates/nextcloud/` as well as `nextcloud-nextcloud-sdk-core` is purely stateless:
 - **No internal mutable runtime state**: Clients such as `DavClient`, `OcsClient`, `UserClient`, `ShareClient`, `NotificationClient`, and `ActivityClient` borrow the `Transport` and `AuthProvider` by reference or value without maintaining connection states, token refreshes, or locks.
-- **Seam abstractions (`nextcloud-sdk-core`)**:
+- **Seam abstractions (`nextcloud-nextcloud-sdk-core`)**:
   - `Transport`: An asynchronous trait abstracting HTTP execution (`execute(&self, req: Request) -> Future<Output = Result<Response, Error>>`).
   - `AuthProvider`: Modifies outbound request `Headers` (e.g. injecting `Authorization: Basic ...` or `Authorization: Bearer ...`).
 - **Deterministic and isolated**: Can be instantiated on ephemeral threads, embedded in test mocks, or executed concurrently across multi-threaded Tokio runtimes with zero shared lock contention.
-- **Zero I/O State Machines (`nextcloud-sdk-session` & `nextcloud-sdk-request`)**: Even the state machines are pure transition functions (`handle(event) -> Result<Command, SessionError>` and `failed(failure) -> Effect`). They perform zero I/O, sleep zero timers, and log no external telemetry, ensuring 100% testability with unit tests.
+- **Zero I/O State Machines (`nextcloud-nextcloud-sdk-session` & `nextcloud-nextcloud-sdk-request`)**: Even the state machines are pure transition functions (`handle(event) -> Result<Command, SessionError>` and `failed(failure) -> Effect`). They perform zero I/O, sleep zero timers, and log no external telemetry, ensuring 100% testability with unit tests.
 
 ### The Stateful Layer
 
 The top-level client (`nextcloud-rust-sdk`) provides the cohesive developer surface:
 - **Actor-based orchestration**: An asynchronous worker loop runs on a dedicated Tokio task, communicating with client handles over bounded MPSC channels (`tokio::sync::mpsc`).
-- **Encrypted Local Persistence (`nextcloud-sdk-storage`)**: Dual SQLCipher SQLite databases secure local information at rest:
+- **Encrypted Local Persistence (`nextcloud-nextcloud-sdk-storage`)**: Dual SQLCipher SQLite databases secure local information at rest:
   - `auth.db`: Accounts, app passwords, active login flow tokens.
   - `cache.db`: Server capabilities, WebDAV directory hierarchies, user metadata.
 - **Automated Lifecycle Recovery**: When requests fail with `401 Unauthorized`, the session state machine switches to `ReauthRequired`, signaling the application to initiate re-authentication without dropping pending queue requests.
@@ -136,12 +136,12 @@ flowchart TD
 
     subgraph Actor_Worker["Client Runtime Actor (Tokio Task)"]
         CmdRx["Command Channel (mpsc::Receiver)"]
-        SM["sdk-session (SessionMachine)"]
-        RM["sdk-request (RequestMachine)"]
+        SM["nextcloud-sdk-session (SessionMachine)"]
+        RM["nextcloud-sdk-request (RequestMachine)"]
         Dispatcher["Request Dispatcher"]
     end
 
-    subgraph Security_Storage["Encrypted Storage Layer (sdk-storage)"]
+    subgraph Security_Storage["Encrypted Storage Layer (nextcloud-sdk-storage)"]
         KeyStore["KeychainKeyStore (oo7 Linux Secret Service)"]
         StoreKey["StoreKey (256-bit entropy)"]
         AuthDB[("auth.db (SQLCipher)\nAccount & Tokens")]

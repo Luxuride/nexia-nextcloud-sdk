@@ -1,4 +1,4 @@
-# sdk-keyring
+# nextcloud-sdk-keyring
 
 > Multiplatform secure credential storage abstraction with Flatpak portal fallback and native desktop keychain support.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-keyring = "0.1.0"
+nextcloud-sdk-keyring = "0.1.1"
 ```
 
 ## Features

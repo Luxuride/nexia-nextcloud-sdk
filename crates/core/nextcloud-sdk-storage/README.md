@@ -1,4 +1,4 @@
-# sdk-storage
+# nextcloud-sdk-storage
 
 > Encrypted SQLite persistence and keychain-backed key management using SQLCipher for the Nextcloud Rust SDK.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-storage = "0.1.0"
+nextcloud-sdk-storage = "0.1.1"
 ```
 
 ## Features

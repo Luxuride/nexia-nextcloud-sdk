@@ -1,4 +1,4 @@
-# sdk-request
+# nextcloud-sdk-request
 
 > Pure state machine for per-request retry scheduling and exponential backoff.
 
@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-sdk-request = "0.1.0"
+nextcloud-sdk-request = "0.1.1"
 ```
 
 ## Features
