@@ -1,0 +1,14 @@
+[package]
+name = "nextcloud-shares"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Nextcloud Files Sharing API client and domain types"
+
+[dependencies]
+sdk-core.workspace = true
+nextcloud-ocs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
