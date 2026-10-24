@@ -1234,6 +1234,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextcloud-kaccounts"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "sdk-core",
+ "sdk-keyring",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "nextcloud-notifications"
 version = "0.1.0"
 dependencies = [
@@ -1270,6 +1281,7 @@ dependencies = [
  "nextcloud-dav",
  "nextcloud-deck",
  "nextcloud-goa",
+ "nextcloud-kaccounts",
  "nextcloud-notifications",
  "nextcloud-ocs",
  "nextcloud-preview",

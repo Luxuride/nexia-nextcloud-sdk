@@ -17,6 +17,7 @@
 //! - `nextcloud-talk` Nextcloud Talk conversations and chat messaging,
 //! - `nextcloud-preview` Nextcloud thumbnail and preview generation,
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
+//! - `nextcloud-kaccounts` KDE Plasma KAccounts desktop single-sign-on integration,
 //! - `nextcloud-client-config` desktop client configuration parser and account discovery,
 //! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
@@ -63,6 +64,10 @@ pub use nextcloud_dav::{
 };
 pub use nextcloud_deck::{Board, BoardOwner, BoardPermissions, Card, DeckClient, Stack};
 pub use nextcloud_goa::{GnomeOnlineAccounts, GoaAccount, GoaError};
+pub use nextcloud_kaccounts::{
+    KAccount, KAccountsDatabase, KAccountsError, discover_accounts_db_paths,
+    find_active_accounts_db, find_kaccount_credentials,
+};
 pub use nextcloud_notifications::{Notification, NotificationAction, NotificationClient};
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
 pub use nextcloud_preview::{PreviewClient, PreviewMode, PreviewOptions};
