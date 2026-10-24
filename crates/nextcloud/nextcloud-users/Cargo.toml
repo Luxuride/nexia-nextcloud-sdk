@@ -1,0 +1,12 @@
+[package]
+name = "nextcloud-users"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Nextcloud user provisioning and server capabilities client"
+
+[dependencies]
+nextcloud-ocs.workspace = true
+sdk-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
