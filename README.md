@@ -34,6 +34,7 @@ holds everything that knows Nextcloud's wire format.
 | `nextcloud-trashbin` | WebDAV trashbin client: listing, restoring, and permanently deleting items |
 | `nextcloud-versions` | WebDAV file versioning client: revision history listing, downloading, and restoring revisions |
 | `nextcloud-uploads` | WebDAV chunked upload streaming v2 client (`/remote.php/dav/uploads/{user}/...`) |
+| `nextcloud-deck` | Nextcloud Deck Kanban boards, stacks, cards, and labels (`/apps/deck/api/...`) |
 | `nextcloud-talk` | Nextcloud Talk (Spreed) conversations, chat messages, and rooms (`/apps/spreed/api/...`) |
 | `nextcloud-preview` | Nextcloud thumbnail and preview generation client (`/core/preview.png`) |
 | `nextcloud-goa` | Direct GNOME Online Accounts (`org.gnome.OnlineAccounts`) D-Bus client via `zbus` for desktop SSO |

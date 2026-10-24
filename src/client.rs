@@ -5,6 +5,7 @@ use std::fmt;
 use nextcloud_activity::ActivityClient;
 use nextcloud_auth::BasicAuth;
 use nextcloud_dav::DavClient;
+use nextcloud_deck::DeckClient;
 use nextcloud_notifications::NotificationClient;
 use nextcloud_ocs::OcsClient;
 use nextcloud_preview::PreviewClient;
@@ -214,6 +215,11 @@ impl Client {
         UploadClient::new(&self.transport, auth)
     }
 
+    /// Constructs a [`DeckClient`] using current credentials.
+    pub fn deck<'a>(&'a self, auth: &'a BasicAuth) -> DeckClient<'a, ReqwestTransport, BasicAuth> {
+        DeckClient::new(&self.transport, auth)
+    }
+
     /// Constructs a [`TalkClient`] borrowing an [`OcsClient`].
     pub fn talk<'a>(
         &'a self,
@@ -269,6 +275,7 @@ mod tests {
         let _notifications = client.notifications(&auth);
         let _preview = client.preview(&auth);
         let _uploads = client.uploads(&auth);
+        let _deck = client.deck(&auth);
 
         let vfs = Client::new_vfs("root");
         assert_eq!(vfs.len(), 1);
