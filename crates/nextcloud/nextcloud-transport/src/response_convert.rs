@@ -1,6 +1,6 @@
 use futures_util::StreamExt;
-use sdk_core::{Error, Headers, Response, StatusCode};
-use sdk_ratelimit::{BandwidthLimiter, ProgressCallback, TransferProgress};
+use nextcloud_sdk_core::{Error, Headers, Response, StatusCode};
+use nextcloud_sdk_ratelimit::{BandwidthLimiter, ProgressCallback, TransferProgress};
 
 /// Converts a `reqwest` response into the SDK's raw response, applying download rate limiting
 /// and progress reporting if configured.

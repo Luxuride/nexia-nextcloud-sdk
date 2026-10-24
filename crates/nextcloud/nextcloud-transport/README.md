@@ -13,7 +13,7 @@ nextcloud-transport = "0.1.0"
 
 ## Features
 
-- `ReqwestTransport`: Implements `sdk_core::Transport` with connection pooling and TLS.
+- `ReqwestTransport`: Implements `nextcloud_sdk_core::Transport` with connection pooling and TLS.
 - Integrated token-bucket upload and download bandwidth rate limiting.
 - Real-time download and upload progress reporting via incremental callbacks.
 - Configurable request, connect, and overall timeouts.
@@ -22,7 +22,7 @@ nextcloud-transport = "0.1.0"
 
 ```rust,no_run
 use nextcloud_transport::{BandwidthLimit, TransportBuilder};
-use sdk_core::{ApiPath, HttpMethod, Request, ServerUrl, Transport};
+use nextcloud_sdk_core::{ApiPath, HttpMethod, Request, ServerUrl, Transport};
 
 let server = ServerUrl::parse("https://cloud.example.org")?;
 let transport = TransportBuilder::with_server(server)

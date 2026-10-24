@@ -1,4 +1,4 @@
-use sdk_core::{AuthProvider, Headers};
+use nextcloud_sdk_core::{AuthProvider, Headers};
 
 /// Applies no credentials at all.
 ///
@@ -26,7 +26,7 @@ impl AuthProvider for Anonymous {
 
 #[cfg(test)]
 mod tests {
-    use sdk_core::{AuthProvider, Header, Headers};
+    use nextcloud_sdk_core::{AuthProvider, Header, Headers};
 
     use super::Anonymous;
 

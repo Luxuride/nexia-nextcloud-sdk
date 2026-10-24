@@ -10,6 +10,6 @@ description = "Nextcloud Deck REST API client and domain models"
 
 [dependencies]
 nextcloud-auth.workspace = true
-sdk-core.workspace = true
+nextcloud-sdk-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

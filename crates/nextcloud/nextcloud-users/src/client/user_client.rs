@@ -1,5 +1,5 @@
 use nextcloud_ocs::{OcsClient, OcsFormat, Query};
-use sdk_core::{ApiPath, AuthProvider, Error, Transport};
+use nextcloud_sdk_core::{ApiPath, AuthProvider, Error, Transport};
 
 use crate::capabilities::Capabilities;
 use crate::user::User;

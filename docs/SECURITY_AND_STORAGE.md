@@ -52,9 +52,9 @@ The SDK separates mutable state into two distinct local SQLite databases, each e
 
 ---
 
-## 2. Multi-Platform Keyring Integration (`sdk-keyring`)
+## 2. Multi-Platform Keyring Integration (`nextcloud-sdk-keyring`)
 
-Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`sdk-keyring`** through [`KeychainKeyStore`] and [`PlatformKeyring`]:
+Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`nextcloud-sdk-keyring`** through [`KeychainKeyStore`] and [`PlatformKeyring`]:
 
 ### 2.1 Supported Platform Backends
 1. **Linux & Sandboxed Flatpak**:

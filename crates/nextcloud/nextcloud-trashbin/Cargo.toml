@@ -11,4 +11,4 @@ description = "Nextcloud Trashbin WebDAV API client and domain types"
 [dependencies]
 nextcloud-auth.workspace = true
 nextcloud-dav.workspace = true
-sdk-core.workspace = true
+nextcloud-sdk-core.workspace = true

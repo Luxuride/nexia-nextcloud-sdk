@@ -13,20 +13,20 @@ holds everything that knows Nextcloud's wire format.
 
 | Crate | Responsibility |
 | --- | --- |
-| `sdk-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
-| `sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
-| `sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
-| `sdk-storage` | Encrypted SQLCipher dual SQLite storage (`auth.db` & `cache.db`) and secure key store |
-| `sdk-keyring` | Multi-platform secure keyring abstraction (Linux FreeDesktop + Flatpak portal via `oo7`, macOS Keychain, Windows Credential Manager, Memory store) |
-| `sdk-vfs` | Transient virtual file system tree, node metadata, multi-resolution thumbnails, and hydration lifecycle |
-| `sdk-fuse` | Transient VFS FUSE driver for desktop filesystem mounting, inode allocation, and on-demand hydration |
+| `nextcloud-sdk-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
+| `nextcloud-sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
+| `nextcloud-sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
+| `nextcloud-sdk-storage` | Encrypted SQLCipher dual SQLite storage (`auth.db` & `cache.db`) and secure key store |
+| `nextcloud-sdk-keyring` | Multi-platform secure keyring abstraction (Linux FreeDesktop + Flatpak portal via `oo7`, macOS Keychain, Windows Credential Manager, Memory store) |
+| `nextcloud-sdk-vfs` | Transient virtual file system tree, node metadata, multi-resolution thumbnails, and hydration lifecycle |
+| `nextcloud-sdk-fuse` | Transient VFS FUSE driver for desktop filesystem mounting, inode allocation, and on-demand hydration |
 
 ### Nextcloud layer (`crates/nextcloud/`)
 
 | Crate | Responsibility |
 | --- | --- |
 | `nextcloud-auth` | App password, bearer token and anonymous credentials |
-| `nextcloud-transport` | `reqwest`-backed implementation of `sdk_core::Transport` |
+| `nextcloud-transport` | `reqwest`-backed implementation of `nextcloud_sdk_core::Transport` |
 | `nextcloud-ocs` | OCS envelope (`meta`/`data`), mutations (POST, PUT, DELETE), and generic client |
 | `nextcloud-dav` | WebDAV paths, file & collection CRUD operations (`get`, `put`, `mkcol`, `delete`, `move_`, `copy`), PROPFIND bodies and multistatus decoding |
 | `nextcloud-users` | Server capabilities and user profile data |

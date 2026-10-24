@@ -2,13 +2,13 @@ use std::fmt;
 
 use nextcloud_auth::{BasicAuth, SecretString};
 use nextcloud_ocs::OcsClient;
-use nextcloud_transport::ReqwestTransport;
-use nextcloud_users::UserClient;
-use sdk_core::{ApiPath, Error, HttpMethod, Request, ServerUrl, Transport};
-use sdk_session::{
+use nextcloud_sdk_core::{ApiPath, Error, HttpMethod, Request, ServerUrl, Transport};
+use nextcloud_sdk_session::{
     Account, LoginFlow, LoginStart, LoginSuccess, PollToken, SessionError, SessionEvent,
     SessionMachine, SessionState,
 };
+use nextcloud_transport::ReqwestTransport;
+use nextcloud_users::UserClient;
 use tokio::sync::{mpsc, watch};
 
 use crate::error::ClientError;
@@ -141,7 +141,12 @@ impl WorkerActor {
             self.state_tx
                 .send_replace(self.session_machine.state().clone());
             return Err(ClientError::Core(Error::Status(
-                sdk_core::StatusError::new("POST", path, response.status(), response.body()),
+                nextcloud_sdk_core::StatusError::new(
+                    "POST",
+                    path,
+                    response.status(),
+                    response.body(),
+                ),
             )));
         }
 
@@ -278,8 +283,8 @@ impl fmt::Debug for WorkerActor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nextcloud_sdk_storage::StoreKey;
     use nextcloud_transport::TransportBuilder;
-    use sdk_storage::StoreKey;
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(

@@ -1,7 +1,7 @@
 //! Asynchronous client for Nextcloud WebDAV file versions.
 
 use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, DavProperty, Depth, PropfindBody};
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, StatusCode,
     StatusError, Transport,
 };

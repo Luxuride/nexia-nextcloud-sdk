@@ -1,7 +1,7 @@
 //! Asynchronous client for Nextcloud's Notifications API v2.
 
 use nextcloud_ocs::{OcsEnvelope, OcsStatus};
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusCode,
     StatusError, Transport,
 };

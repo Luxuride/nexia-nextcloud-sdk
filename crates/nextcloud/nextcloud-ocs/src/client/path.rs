@@ -1,10 +1,10 @@
-use sdk_core::{ApiPath, Error, UrlError};
+use nextcloud_sdk_core::{ApiPath, Error, UrlError};
 
 use crate::query::Query;
 
 /// Appends `query` to `path`, preserving the [`ApiPath`] variant.
 ///
-/// `sdk_core::Request` carries a path but no separate query slot, and an
+/// `nextcloud_sdk_core::Request` carries a path but no separate query slot, and an
 /// OCS endpoint such as `/ocs/v2.php/cloud/capabilities` only accepts its
 /// parameters as a query string. The assembled path therefore carries the
 /// query verbatim and reaches the transport as one unit, which is what the
@@ -34,7 +34,7 @@ pub(crate) fn require_ocs(path: ApiPath) -> Result<ApiPath, Error> {
 
 #[cfg(test)]
 mod tests {
-    use sdk_core::ApiPath;
+    use nextcloud_sdk_core::ApiPath;
 
     use super::{require_ocs, with_query};
     use crate::query::{OcsFormat, Query};

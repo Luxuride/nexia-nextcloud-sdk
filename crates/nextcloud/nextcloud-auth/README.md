@@ -22,10 +22,10 @@ nextcloud-auth = "0.1.0"
 
 ```rust,no_run
 use nextcloud_auth::{BasicAuth, SecretString};
-use sdk_core::AuthProvider;
+use nextcloud_sdk_core::AuthProvider;
 
 let auth = BasicAuth::new("alice", SecretString::new("app-password"));
-let mut headers = sdk_core::Headers::new();
+let mut headers = nextcloud_sdk_core::Headers::new();
 auth.authenticate(&mut headers);
 assert!(headers.get("Authorization").is_some());
 ```

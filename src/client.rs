@@ -9,6 +9,9 @@ use nextcloud_deck::DeckClient;
 use nextcloud_notifications::NotificationClient;
 use nextcloud_ocs::OcsClient;
 use nextcloud_preview::PreviewClient;
+use nextcloud_sdk_core::ServerUrl;
+use nextcloud_sdk_session::{LoginStart, SessionState};
+use nextcloud_sdk_vfs::VirtualTree;
 use nextcloud_shares::ShareClient;
 use nextcloud_talk::TalkClient;
 use nextcloud_transport::{BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport};
@@ -16,9 +19,6 @@ use nextcloud_trashbin::TrashClient;
 use nextcloud_uploads::UploadClient;
 use nextcloud_users::UserClient;
 use nextcloud_versions::VersionsClient;
-use sdk_core::ServerUrl;
-use sdk_session::{LoginStart, SessionState};
-use sdk_vfs::VirtualTree;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::builder::ClientBuilder;
@@ -28,7 +28,7 @@ use crate::worker::WorkerTask;
 /// A stateful, cloneable handle to the Nextcloud client.
 ///
 /// Communicates with an internal background actor driving the session lifecycle
-/// state machine ([`sdk_session::SessionMachine`]), persistent credential storage,
+/// state machine ([`nextcloud_sdk_session::SessionMachine`]), persistent credential storage,
 /// and local encrypted cache.
 #[derive(Clone)]
 pub struct Client {
@@ -291,8 +291,8 @@ impl fmt::Debug for Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nextcloud_sdk_core::ServerUrl;
     use nextcloud_transport::TransportBuilder;
-    use sdk_core::ServerUrl;
 
     #[tokio::test]
     async fn client_accessors_and_debug_format() {

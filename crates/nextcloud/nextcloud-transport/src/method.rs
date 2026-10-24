@@ -1,4 +1,4 @@
-use sdk_core::{Error, HttpMethod};
+use nextcloud_sdk_core::{Error, HttpMethod};
 
 /// Type `reqwest` reports when a method name is not a valid HTTP token.
 type InvalidMethod = <reqwest::Method as std::str::FromStr>::Err;
@@ -55,7 +55,7 @@ impl std::error::Error for MethodRejected {
 
 #[cfg(test)]
 mod tests {
-    use sdk_core::HttpMethod;
+    use nextcloud_sdk_core::HttpMethod;
 
     use super::to_reqwest;
 

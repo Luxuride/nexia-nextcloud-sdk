@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nextcloud_auth::BasicAuth;
-use sdk_core::ServerUrl;
+use nextcloud_sdk_core::ServerUrl;
 
 /// A Nextcloud or ownCloud account discovered via GNOME Online Accounts.
 ///
@@ -77,7 +77,7 @@ impl fmt::Debug for GoaAccount {
 #[cfg(test)]
 mod tests {
     use nextcloud_auth::{AppPassword, BasicAuth, SecretString};
-    use sdk_core::ServerUrl;
+    use nextcloud_sdk_core::ServerUrl;
 
     use super::GoaAccount;
 

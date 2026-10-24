@@ -1,5 +1,5 @@
 use nextcloud_ocs::{OcsEnvelope, OcsFormat, OcsStatus, Query};
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusError,
     Transport,
 };
@@ -203,7 +203,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll, Waker};
 
-    use sdk_core::{
+    use nextcloud_sdk_core::{
         AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
     };
 

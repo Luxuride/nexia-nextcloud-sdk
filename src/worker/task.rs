@@ -1,6 +1,6 @@
 use std::fmt;
 
-use sdk_session::{LoginStart, SessionState};
+use nextcloud_sdk_session::{LoginStart, SessionState};
 use tokio::sync::oneshot;
 
 use crate::error::ClientError;

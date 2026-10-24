@@ -1,6 +1,6 @@
 use std::any::type_name;
 
-use sdk_core::{ApiPath, DecodeError, Error, HttpMethod, Response, StatusError};
+use nextcloud_sdk_core::{ApiPath, DecodeError, Error, HttpMethod, Response, StatusError};
 use serde::de::DeserializeOwned;
 
 use crate::envelope::{OcsEnvelope, OcsStatus, VerdictEnvelope};

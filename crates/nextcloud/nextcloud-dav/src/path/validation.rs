@@ -1,6 +1,6 @@
 //! Rules for the parts of a [`DavPath`](super::DavPath).
 
-use sdk_core::UrlError;
+use nextcloud_sdk_core::UrlError;
 
 /// Rejects user names that would change the shape of the request path.
 ///

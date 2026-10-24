@@ -1,6 +1,6 @@
 //! Asynchronous client for Nextcloud's Preview API.
 
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusError, Transport,
 };
 

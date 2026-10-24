@@ -2,10 +2,10 @@
 
 use std::fmt;
 
+use nextcloud_sdk_core::Error;
+use nextcloud_sdk_session::SessionError;
+use nextcloud_sdk_storage::StorageError;
 use nextcloud_transport::TransportBuildError;
-use sdk_core::Error;
-use sdk_session::SessionError;
-use sdk_storage::StorageError;
 
 /// Errors that can occur when configuring or operating the client.
 #[derive(Debug)]

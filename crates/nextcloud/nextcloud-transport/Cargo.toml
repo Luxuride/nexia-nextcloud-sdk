@@ -9,8 +9,8 @@ readme = "README.md"
 description = "HTTP transport for the Nextcloud Rust SDK"
 
 [dependencies]
-sdk-core.workspace = true
-sdk-ratelimit.workspace = true
+nextcloud-sdk-core.workspace = true
+nextcloud-sdk-ratelimit.workspace = true
 futures-util = "0.3"
 reqwest.workspace = true
 

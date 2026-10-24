@@ -6,7 +6,7 @@
 //! - [Activity endpoint specification](https://github.com/nextcloud/activity/blob/master/docs/endpoint-v2.md)
 
 use nextcloud_ocs::OcsClient;
-use sdk_core::{ApiPath, AuthProvider, Error, Transport};
+use nextcloud_sdk_core::{ApiPath, AuthProvider, Error, Transport};
 
 use crate::activity::Activity;
 use crate::query::ActivityFilter;
@@ -74,7 +74,9 @@ mod tests {
     use std::task::{Context, Poll, Waker};
 
     use nextcloud_ocs::OcsClient;
-    use sdk_core::{AuthProvider, Error, Headers, Request, Response, StatusCode, Transport};
+    use nextcloud_sdk_core::{
+        AuthProvider, Error, Headers, Request, Response, StatusCode, Transport,
+    };
 
     use super::ActivityClient;
     use crate::query::ActivityFilter;

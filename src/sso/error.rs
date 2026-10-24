@@ -12,7 +12,7 @@ pub enum SsoError {
     /// Nextcloud desktop client config error.
     ClientConfig(nextcloud_client_config::ClientConfigError),
     /// Keyring error.
-    Keyring(sdk_keyring::KeyringError),
+    Keyring(nextcloud_sdk_keyring::KeyringError),
 }
 
 impl fmt::Display for SsoError {
@@ -55,8 +55,8 @@ impl From<nextcloud_client_config::ClientConfigError> for SsoError {
     }
 }
 
-impl From<sdk_keyring::KeyringError> for SsoError {
-    fn from(err: sdk_keyring::KeyringError) -> Self {
+impl From<nextcloud_sdk_keyring::KeyringError> for SsoError {
+    fn from(err: nextcloud_sdk_keyring::KeyringError) -> Self {
         Self::Keyring(err)
     }
 }

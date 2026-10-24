@@ -1,8 +1,10 @@
 use std::fmt;
 use std::sync::Arc;
 
-use sdk_core::ServerUrl;
-use sdk_ratelimit::{BandwidthLimit, BandwidthLimiter, ProgressCallback, TransferProgress};
+use nextcloud_sdk_core::ServerUrl;
+use nextcloud_sdk_ratelimit::{
+    BandwidthLimit, BandwidthLimiter, ProgressCallback, TransferProgress,
+};
 
 use crate::error::TransportBuildError;
 use crate::reqwest_transport::ReqwestTransport;

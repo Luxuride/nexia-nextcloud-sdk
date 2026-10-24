@@ -10,7 +10,7 @@ repository = "https://github.com/Luxuride/nextcloud-rust-sdk"
 authors = ["Luxuride"]
 
 [workspace.dependencies]
-sdk-core = { path = "crates/core/sdk-core", version = "0.1.0" }
+nextcloud-sdk-core = { path = "crates/core/nextcloud-sdk-core", version = "0.1.0" }
 nextcloud-auth = { path = "crates/nextcloud/nextcloud-auth", version = "0.1.0" }
 nextcloud-transport = { path = "crates/nextcloud/nextcloud-transport", version = "0.1.0" }
 nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.1.0" }
@@ -28,13 +28,13 @@ nextcloud-deck = { path = "crates/nextcloud/nextcloud-deck", version = "0.1.0" }
 nextcloud-talk = { path = "crates/nextcloud/nextcloud-talk", version = "0.1.0" }
 nextcloud-client-config = { path = "crates/nextcloud/nextcloud-client-config", version = "0.1.0" }
 nextcloud-kaccounts = { path = "crates/nextcloud/nextcloud-kaccounts", version = "0.1.0" }
-sdk-session = { path = "crates/core/sdk-session", version = "0.1.0" }
-sdk-request = { path = "crates/core/sdk-request", version = "0.1.0" }
-sdk-storage = { path = "crates/core/sdk-storage", version = "0.1.0" }
-sdk-keyring = { path = "crates/core/sdk-keyring", version = "0.1.0" }
-sdk-ratelimit = { path = "crates/core/sdk-ratelimit", version = "0.1.0" }
-sdk-vfs = { path = "crates/core/sdk-vfs", version = "0.1.0" }
-sdk-fuse = { path = "crates/core/sdk-fuse", version = "0.1.0" }
+nextcloud-sdk-session = { path = "crates/core/nextcloud-sdk-session", version = "0.1.0" }
+nextcloud-sdk-request = { path = "crates/core/nextcloud-sdk-request", version = "0.1.0" }
+nextcloud-sdk-storage = { path = "crates/core/nextcloud-sdk-storage", version = "0.1.0" }
+nextcloud-sdk-keyring = { path = "crates/core/nextcloud-sdk-keyring", version = "0.1.0" }
+nextcloud-sdk-ratelimit = { path = "crates/core/nextcloud-sdk-ratelimit", version = "0.1.0" }
+nextcloud-sdk-vfs = { path = "crates/core/nextcloud-sdk-vfs", version = "0.1.0" }
+nextcloud-sdk-fuse = { path = "crates/core/nextcloud-sdk-fuse", version = "0.1.0" }
 
 base64 = "0.23"
 getrandom = { version = "0.3", features = ["std"] }
@@ -56,7 +56,7 @@ description = "Rust client for the Nextcloud APIs, with app-facing session and r
 readme = "README.md"
 
 [dependencies]
-sdk-core.workspace = true
+nextcloud-sdk-core.workspace = true
 nextcloud-auth.workspace = true
 nextcloud-transport.workspace = true
 nextcloud-ocs.workspace = true
@@ -73,14 +73,14 @@ nextcloud-deck.workspace = true
 nextcloud-talk.workspace = true
 nextcloud-client-config.workspace = true
 nextcloud-kaccounts.workspace = true
-sdk-vfs.workspace = true
-sdk-fuse.workspace = true
+nextcloud-sdk-vfs.workspace = true
+nextcloud-sdk-fuse.workspace = true
 nextcloud-goa.workspace = true
-sdk-session.workspace = true
-sdk-request.workspace = true
-sdk-storage.workspace = true
-sdk-keyring.workspace = true
-sdk-ratelimit.workspace = true
+nextcloud-sdk-session.workspace = true
+nextcloud-sdk-request.workspace = true
+nextcloud-sdk-storage.workspace = true
+nextcloud-sdk-keyring.workspace = true
+nextcloud-sdk-ratelimit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

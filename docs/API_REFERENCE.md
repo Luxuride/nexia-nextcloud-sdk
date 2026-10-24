@@ -23,8 +23,8 @@ All client modules in this SDK are built against the official Nextcloud develope
 | Endpoint Path | HTTP Method | SDK Crate | Rust Client / Method | Parameters | Return Type | Official Documentation |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Authentication & Login** | | | | | | |
-| `/index.php/login/v2` | `POST` | `sdk-session` / `sdk-core` | `SessionMachine::handle` | `SessionEvent::StartRequested` | `Command::StartLogin` | [Login Flow v2](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst) |
-| `/login/v2/poll` | `POST` | `sdk-session` / `sdk-core` | `SessionMachine::handle` | `SessionEvent::PollPending` | `Command::Poll(PollTarget)` | [Poll Endpoint](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst#polling) |
+| `/index.php/login/v2` | `POST` | `nextcloud-sdk-session` / `nextcloud-sdk-core` | `SessionMachine::handle` | `SessionEvent::StartRequested` | `Command::StartLogin` | [Login Flow v2](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst) |
+| `/login/v2/poll` | `POST` | `nextcloud-sdk-session` / `nextcloud-sdk-core` | `SessionMachine::handle` | `SessionEvent::PollPending` | `Command::Poll(PollTarget)` | [Poll Endpoint](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst#polling) |
 | **Server Capabilities & Users** | | | | | | |
 | `/ocs/v2.php/cloud/capabilities` | `GET` | `nextcloud-users` | `UserClient::capabilities()` | None (`format=json`) | `Capabilities` | [Capabilities API](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst#capabilities-api) |
 | `/ocs/v2.php/cloud/user` | `GET` | `nextcloud-users` | `UserClient::current_user()` | None (`format=json`) | `User` | [User Metadata](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst#user-metadata) |
@@ -78,7 +78,7 @@ All client modules in this SDK are built against the official Nextcloud develope
 
 ## 3. Crate Architecture Reference
 
-### 3.1 `sdk-core`
+### 3.1 `nextcloud-sdk-core`
 - **Purpose**: Foundational HTTP semantics, type-safe path abstractions, and seam traits.
 - **Key Types**:
   - `ServerUrl`: Validated base URL (`https://...`).
@@ -88,7 +88,7 @@ All client modules in this SDK are built against the official Nextcloud develope
   - `Header` / `Headers`: Case-insensitive HTTP header map with automatic credential redaction.
   - `Error`: Unified error enum classifying URL parsing, network transport failures, non-2xx status codes, and JSON/XML decode errors.
 
-### 3.2 `sdk-session`
+### 3.2 `nextcloud-sdk-session`
 - **Purpose**: Pure transition state machine governing account lifecycles and Login Flow v2.
 - **States**:
   - `SessionState::Idle`: No account or active flow.
@@ -97,14 +97,14 @@ All client modules in this SDK are built against the official Nextcloud develope
   - `SessionState::Authenticated(Account)`: Active authenticated session with server URL and app password.
   - `SessionState::ReauthRequired(Account)`: Credentials were rejected (401); re-authentication necessary.
 
-### 3.3 `sdk-request`
+### 3.3 `nextcloud-sdk-request`
 - **Purpose**: Pure transition state machine for per-request retry scheduling and exponential backoff.
 - **Key Types**:
   - `RequestMachine`: Tracks attempt count and current state (`Idle`, `InFlight`, `RetryScheduled`, `Succeeded`, `Failed`, `Cancelled`).
   - `RetryPolicy`: Configurable maximum attempt counts, base delays, and retryable HTTP status codes.
   - `Effect`: Instruction to the caller (`Send`, `Wait`, `Finish`, `GiveUp`).
 
-### 3.4 `sdk-storage`
+### 3.4 `nextcloud-sdk-storage`
 - **Purpose**: Persistent encrypted storage using SQLCipher.
 - **Key Types**:
   - `StoragePaths`: Configures disk locations for `auth.db` and `cache.db` (defaults to `$XDG_DATA_HOME/nextcloud-rust-sdk/`).
@@ -113,7 +113,7 @@ All client modules in this SDK are built against the official Nextcloud develope
   - `EncryptedDatabase`: SQLCipher database wrapper with automatic migration and schema verification.
   - `CredentialSchema` / `CacheSchema`: Schema DDL definitions and versioning.
 
-### 3.5 `sdk-ratelimit`
+### 3.5 `nextcloud-sdk-ratelimit`
 - **Purpose**: Dynamic bandwidth rate limiting, token-bucket traffic shaping, and transfer progress tracking.
 - **Key Types**:
   - `BandwidthLimit`: Rate constraint (`Unlimited`, `BytesPerSecond`, `from_kib`, `from_mib`).
@@ -133,7 +133,7 @@ All client modules in this SDK are built against the official Nextcloud develope
 ### 3.7 `nextcloud-transport`
 - **Purpose**: Production HTTP transport implementation backed by `reqwest` with dynamic rate limiting and progress reporting.
 - **Key Types**:
-  - `ReqwestTransport`: Implements `sdk_core::Transport`, supports dynamic upload/download rate limits (`set_upload_limit`, `set_download_limit`) and progress reporting (`set_download_progress`, `execute_with_progress`).
+  - `ReqwestTransport`: Implements `nextcloud_sdk_core::Transport`, supports dynamic upload/download rate limits (`set_upload_limit`, `set_download_limit`) and progress reporting (`set_download_progress`, `execute_with_progress`).
   - `TransportBuilder`: Fluent builder for configuring server URL, timeouts, rate limits, and progress callbacks.
   - `TimeoutConfig`: Connect, read, and global timeout settings.
 

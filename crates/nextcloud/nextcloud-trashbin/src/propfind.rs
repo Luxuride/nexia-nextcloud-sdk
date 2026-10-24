@@ -2,7 +2,7 @@
 
 use nextcloud_dav::xml::response::{first_element, has_element, text_of};
 use nextcloud_dav::xml::{Element, MissingElement, XmlWriter};
-use sdk_core::DecodeError;
+use nextcloud_sdk_core::DecodeError;
 
 use crate::item::TrashItem;
 

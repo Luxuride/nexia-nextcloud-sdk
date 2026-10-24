@@ -8,7 +8,7 @@
 
 /// Discovered account representation and authentication types.
 pub mod account;
-/// Credentials lookup helpers via `sdk-keyring`.
+/// Credentials lookup helpers via `nextcloud-sdk-keyring`.
 #[cfg(feature = "keyring")]
 pub mod credentials;
 /// Error definitions for configuration parsing and discovery.
