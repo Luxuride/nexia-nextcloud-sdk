@@ -16,7 +16,8 @@ holds everything that knows Nextcloud's wire format.
 | `sdk-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
 | `sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
 | `sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
-| `sdk-storage` | Encrypted SQLCipher dual SQLite storage (`auth.db` & `cache.db`) and FreeDesktop Secret Service (`oo7`) key store |
+| `sdk-storage` | Encrypted SQLCipher dual SQLite storage (`auth.db` & `cache.db`) and secure key store |
+| `sdk-keyring` | Multi-platform secure keyring abstraction (Linux FreeDesktop + Flatpak portal via `oo7`, macOS Keychain, Windows Credential Manager, Memory store) |
 | `sdk-vfs` | Transient virtual file system tree, node metadata, multi-resolution thumbnails, and hydration lifecycle |
 | `sdk-fuse` | Transient VFS FUSE driver for desktop filesystem mounting, inode allocation, and on-demand hydration |
 
@@ -39,11 +40,18 @@ holds everything that knows Nextcloud's wire format.
 | `nextcloud-talk` | Nextcloud Talk (Spreed) conversations, chat messages, and rooms (`/apps/spreed/api/...`) |
 | `nextcloud-preview` | Nextcloud thumbnail and preview generation client (`/core/preview.png`) |
 | `nextcloud-goa` | Direct GNOME Online Accounts (`org.gnome.OnlineAccounts`) D-Bus client via `zbus` for desktop SSO |
+| `nextcloud-kaccounts` | KDE Plasma Online Accounts (KAccounts / Accounts-SSO) reader for Nextcloud system accounts |
+| `nextcloud-client-config` | Official Nextcloud desktop client profile discovery and config parser (`nextcloud.cfg`) across Linux, macOS, and Windows |
 
 The root `nextcloud-rust-sdk` package is the facade: one `Client` wiring the
-layers together. Every API area lives there, one module tree per Nextcloud
+layers together, including a unified `DesktopSso` discovery coordinator that
+aggregates accounts across GNOME, KDE, and desktop client profiles. Every API area lives there, one module tree per Nextcloud
 endpoint family, and builds on the crates above rather than re-implementing
 transport, credentials or envelope handling.
+
+## Contributing
+
+We welcome both human and LLM / AI-assisted contributions! Please review [`CONTRIBUTING.md`](CONTRIBUTING.md) for quality gates, code rules, and the required LLM PR submission template.
 
 ## Development
 

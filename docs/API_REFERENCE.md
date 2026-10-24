@@ -50,6 +50,29 @@ All client modules in this SDK are built against the official Nextcloud develope
 | **Activity Feed API v2** | | | | | | |
 | `/ocs/v2.php/apps/activity/api/v2/activity` | `GET` | `nextcloud-activity` | `ActivityClient::list()` | `filter: &ActivityFilter` | `Vec<Activity>` | [List Activities](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/activity-api.rst#endpoints) |
 | `/ocs/v2.php/apps/activity/api/v2/activity` | `GET` | `nextcloud-activity` | `ActivityClient::list_for_object()` | `object_type: &str`, `object_id: u64` | `Vec<Activity>` | [Object Activities](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/activity-api.rst#parameters) |
+| **Chunked Uploads v2** | | | | | | |
+| `/remote.php/dav/uploads/{user}/{session_id}` | `MKCOL` | `nextcloud-uploads` | `UploadClient::start()` | `session_id: &str` | `UploadSession` | [Chunked Uploads v2](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
+| `/remote.php/dav/uploads/{user}/{session_id}/{offset}` | `PUT` | `nextcloud-uploads` | `UploadClient::put_chunk()` | `chunk: &[u8]`, `offset: u64` | `()` | [Chunk Transfer](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
+| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nextcloud-uploads` | `UploadClient::finish()` | `destination: &DavPath` | `()` | [Assemble Chunks](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
+| `/remote.php/dav/uploads/{user}/{session_id}` | `DELETE` | `nextcloud-uploads` | `UploadClient::abort()` | None | `()` | [Abort Session](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
+| **Nextcloud Deck (Kanban)** | | | | | | |
+| `/index.php/apps/deck/api/v1.0/boards` | `GET` | `nextcloud-deck` | `DeckClient::list_boards()` | None | `Vec<Board>` | [Deck API](https://deck.readthedocs.io/en/latest/API/) |
+| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks` | `GET` | `nextcloud-deck` | `DeckClient::list_stacks()` | `board_id: u64` | `Vec<Stack>` | [Deck Stacks](https://deck.readthedocs.io/en/latest/API/) |
+| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks/{sid}/cards` | `POST` | `nextcloud-deck` | `DeckClient::create_card()` | `title: &str`, `type_: &str` | `Card` | [Deck Cards](https://deck.readthedocs.io/en/latest/API/) |
+| **Nextcloud Talk (Spreed)** | | | | | | |
+| `/ocs/v2.php/apps/spreed/api/v4/room` | `GET` | `nextcloud-talk` | `TalkClient::list_rooms()` | None | `Vec<Room>` | [Talk API](https://nextcloud-talk.readthedocs.io/en/latest/chat/) |
+| `/ocs/v2.php/apps/spreed/api/v1/chat/{token}` | `GET` | `nextcloud-talk` | `TalkClient::list_messages()` | `token: &str` | `Vec<ChatMessage>` | [Talk Chat](https://nextcloud-talk.readthedocs.io/en/latest/chat/) |
+| `/ocs/v2.php/apps/spreed/api/v1/chat/{token}` | `POST` | `nextcloud-talk` | `TalkClient::send_message()` | `token: &str`, `message: &str` | `ChatMessage` | [Send Message](https://nextcloud-talk.readthedocs.io/en/latest/chat/) |
+| **Previews & Thumbnails** | | | | | | |
+| `/core/preview.png` | `GET` | `nextcloud-preview` | `PreviewClient::get()` | `file_id: u64`, `options: &PreviewOptions` | `Vec<u8>` | [Previews](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst) |
+| **Trashbin & Versions** | | | | | | |
+| `/remote.php/dav/trashbin/{user}/trash` | `PROPFIND` | `nextcloud-trashbin` | `TrashClient::list()` | None | `Vec<TrashItem>` | [Trashbin](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/trashbin.rst) |
+| `/remote.php/dav/versions/{user}/versions/{id}` | `PROPFIND` | `nextcloud-versions` | `VersionsClient::list()` | `file_id: u64` | `Vec<FileVersion>` | [Versions](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/versions.rst) |
+| **Desktop SSO Integration** | | | | | | |
+| `org.gnome.OnlineAccounts` (D-Bus) | `GetManagedObjects` | `nextcloud-goa` | `GnomeOnlineAccounts::list_accounts()` | None | `Vec<GoaAccount>` | [GOA](https://developer.gnome.org/goa/) |
+| `~/.local/share/accounts/accounts.db` | `SELECT` | `nextcloud-kaccounts` | `KAccountsDatabase::list_accounts()` | None | `Vec<KAccount>` | [KAccounts](https://invent.kde.org/frameworks/kaccounts-integration) |
+| `nextcloud.cfg` (Linux/macOS/Windows) | INI parser | `nextcloud-client-config` | `ClientConfigParser::parse_file()` | None | `Vec<DesktopClientAccount>` | [Client Config](https://docs.nextcloud.com/desktop/latest/configuration.html) |
+| Aggregated Desktop SSO | Discovery | `nextcloud-rust-sdk` | `DesktopSso::discover_accounts()` | None | `Vec<DiscoveredAccount>` | Nextcloud Rust SDK |
 
 ---
 
