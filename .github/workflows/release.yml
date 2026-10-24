@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      crates: ${{ steps.version.outputs.crates }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,7 +26,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Derive version from tag
+      - name: Derive version and publish order from the tag
         id: version
         run: |
           tag=${GITHUB_REF_NAME#v}
@@ -35,70 +36,76 @@ jobs:
             echo "tag $GITHUB_REF_NAME != workspace version $manifest" >&2
             exit 1
           fi
+          crates=$(python3 scripts/crate-publish-order.py \
+            | jq -R . | jq -cs .)
           echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
   publish:
-    name: publish
+    name: publish ${{ matrix.crate }}
     needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
+    timeout-minutes: 360
+    strategy:
+      # crates.io rate limits new crate names and every crate here depends on
+      # the ones before it, so the matrix runs one entry at a time in order.
+      # Each entry gets its own short-lived trusted-publishing token, which
+      # would expire long before a single job finished this list.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJSON(needs.verify.outputs.crates) }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Check registry credentials
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
-            echo "::error::CARGO_REGISTRY_TOKEN missing; add a crates.io" \
-              "API token as a repository secret" >&2
-            exit 1
-          fi
-      - name: Publish crates in dependency order
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CRATE: ${{ matrix.crate }}
         run: |
           set -uo pipefail
-          publish_one() {
-            local crate=$1 attempt output retry_at wait_seconds
-            for attempt in $(seq 1 20); do
-              if output=$(cargo publish -p "$crate" 2>&1); then
-                echo "published $crate"
-                return 0
-              fi
-              if grep -q "already exists on crates.io" <<<"$output"; then
-                echo "$crate already published, skipping"
-                return 0
-              fi
-              retry_at=$(sed -n \
-                's/.*Please try again after \(.*\) GMT.*/\1/p' <<<"$output" \
-                | head -1)
-              if [ -z "$retry_at" ]; then
-                echo "publishing $crate failed:" >&2
-                echo "$output" >&2
-                return 1
-              fi
-              wait_seconds=$(( $(date -u -d "$retry_at GMT" +%s) \
-                - $(date -u +%s) + 15 ))
-              echo "rate limited, retrying $crate in ${wait_seconds}s"
-              sleep "$wait_seconds"
-            done
-            echo "$crate still rate limited after 20 attempts" >&2
-            return 1
-          }
-          while read -r crate; do
-            echo "::group::$crate"
-            publish_one "$crate" || exit 1
-            echo "::endgroup::"
-          done < <(python3 scripts/crate-publish-order.py)
+          for attempt in $(seq 1 5); do
+            if output=$(cargo publish -p "$CRATE" 2>&1); then
+              echo "published $CRATE"
+              exit 0
+            fi
+            if grep -q "already exists on crates.io" <<<"$output"; then
+              echo "$CRATE is already published"
+              exit 0
+            fi
+            if grep -qE "no matching package named" <<<"$output"; then
+              echo "a dependency of $CRATE is not on crates.io yet, waiting"
+              sleep 60
+              continue
+            fi
+            retry_at=$(sed -n \
+              's/.*Please try again after \(.*\) GMT.*/\1/p' <<<"$output" \
+              | head -1)
+            if [ -z "$retry_at" ]; then
+              echo "publishing $CRATE failed:" >&2
+              echo "$output" >&2
+              exit 1
+            fi
+            wait_seconds=$(( $(date -u -d "$retry_at GMT" +%s) \
+              - $(date -u +%s) + 15 ))
+            echo "rate limited, retrying $CRATE in ${wait_seconds}s"
+            sleep "$wait_seconds"
+          done
+          echo "$CRATE still rate limited after 5 attempts" >&2
+          exit 1
 
   github-release:
     name: github release
