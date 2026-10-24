@@ -73,3 +73,30 @@ Autonomous AI agents and contributors using LLMs (Claude, Gemini, GPT, etc.) are
    - `fix(nextcloud-dav): handle multistatus 404 cleanly`
    - `chore: update dependencies`
 4. **Submit PR**: Fill out the Pull Request template completely. Ensure CI checks pass across Linux, macOS, and Windows.
+
+---
+
+## 5. Releasing
+
+Releases are cut from a tag on `main`; the `Release` workflow does the rest.
+
+1. Bump `version` under `[workspace.package]` in `Cargo.toml` and the matching
+   `version = "…"` entries under `[workspace.dependencies]`.
+2. Update the crate READMEs and `docs/GETTING_STARTED.md` install snippets to
+   the new version, and add a `CHANGELOG.md` section for it.
+3. Commit, push, and wait for `CI` to pass on `main`.
+4. Tag and push:
+   ```sh
+   git tag v0.1.1
+   git push origin v0.1.1
+   ```
+
+The workflow refuses a tag that disagrees with the workspace version, re-runs
+the four gates, publishes every crate in dependency order (riding out the
+crates.io new-crate rate limit), and creates the GitHub release from the
+matching `CHANGELOG.md` section. It needs a `CARGO_REGISTRY_TOKEN` repository
+secret holding a crates.io API token.
+
+Publishing is only safe from a clean tree, so never run `cargo publish` by hand
+while the workflow is in flight: crates.io refuses a version that already
+exists, and the workflow skips crates it finds already published.
