@@ -3,7 +3,7 @@
 //! Two databases are kept side by side — one for credentials, one for cached
 //! server data — at paths the application chooses ([`StoragePaths`]). Both are
 //! SQLCipher databases opened with a 256-bit [`StoreKey`]; the key itself is
-//! never written to disk, it lives in the platform keychain via `oo7`
+//! never written to disk, it lives in the platform keychain via `sdk-keyring`
 //! ([`KeychainKeyStore`]) or in whatever store the embedding application
 //! supplies through [`KeyStore`].
 //!

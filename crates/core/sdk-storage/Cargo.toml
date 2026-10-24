@@ -9,14 +9,17 @@ description = "Encrypted SQLite storage and keychain-held keys for the Nextcloud
 
 [features]
 default = ["keychain"]
-keychain = ["dep:oo7"]
+keychain = ["dep:sdk-keyring"]
 
 [dependencies]
 getrandom.workspace = true
-oo7 = { workspace = true, optional = true }
+sdk-keyring = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }
 
 [target.'cfg(not(windows))'.dependencies]
 rusqlite = { workspace = true, features = ["bundled-sqlcipher"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

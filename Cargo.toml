@@ -29,6 +29,7 @@ nextcloud-talk = { path = "crates/nextcloud/nextcloud-talk", version = "0.1.0" }
 sdk-session = { path = "crates/core/sdk-session", version = "0.1.0" }
 sdk-request = { path = "crates/core/sdk-request", version = "0.1.0" }
 sdk-storage = { path = "crates/core/sdk-storage", version = "0.1.0" }
+sdk-keyring = { path = "crates/core/sdk-keyring", version = "0.1.0" }
 sdk-vfs = { path = "crates/core/sdk-vfs", version = "0.1.0" }
 sdk-fuse = { path = "crates/core/sdk-fuse", version = "0.1.0" }
 
@@ -73,6 +74,7 @@ nextcloud-goa.workspace = true
 sdk-session.workspace = true
 sdk-request.workspace = true
 sdk-storage.workspace = true
+sdk-keyring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

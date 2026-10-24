@@ -19,6 +19,7 @@
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
 //! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
+//! - `sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
 //! - `sdk-storage` encrypted credential and cache database stores.
 //!
 //! This crate is the app-facing surface: it re-exports that vocabulary so one
@@ -77,6 +78,7 @@ pub use sdk_core::{
     ServerUrl, StatusCode, StatusError, Transport, UrlError,
 };
 pub use sdk_fuse::{AsyncHydrator, DirEntry, FileAttr, FileType, FuseDriver, InodeTable};
+pub use sdk_keyring::{KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring};
 pub use sdk_request::{Effect, Failure, RequestMachine, RequestState, RetryPolicy};
 pub use sdk_session::{
     Account, Command, LoginFlow, LoginStart, LoginSuccess, PollTarget, PollToken, SessionError,
