@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Per-call lifecycle and retry policy for the Nextcloud Rust SDK"
 
 [dependencies]

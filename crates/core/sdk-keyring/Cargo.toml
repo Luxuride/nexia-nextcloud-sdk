@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Multi-platform secure keyring abstraction for Nextcloud Rust SDK with Flatpak and native OS support"
 
 [dependencies]

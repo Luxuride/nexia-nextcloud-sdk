@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Desktop configuration and account discovery for the official Nextcloud desktop client across Linux, macOS, and Windows"
 
 [features]

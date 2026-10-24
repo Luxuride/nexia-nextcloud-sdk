@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Bandwidth rate limiting and token-bucket traffic shaping for the Nextcloud Rust SDK"
 
 [dependencies]

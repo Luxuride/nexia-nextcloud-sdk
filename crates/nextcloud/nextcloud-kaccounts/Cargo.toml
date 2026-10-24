@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "KDE Plasma Online Accounts (KAccounts / Accounts-SSO) integration for Nextcloud system accounts"
 
 [features]
