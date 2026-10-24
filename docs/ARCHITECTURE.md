@@ -25,16 +25,28 @@ nextcloud-rust-sdk/
 │   │   ├── sdk-core/                       # HTTP abstractions, ApiPath, Transport & AuthProvider traits
 │   │   ├── sdk-session/                    # Login Flow v2 & session lifecycle state machine
 │   │   ├── sdk-request/                    # Per-call retry, backoff, and failure state machine
-│   │   └── sdk-storage/                    # Dual SQLCipher encrypted persistence & key store
+│   │   ├── sdk-storage/                    # Dual SQLCipher encrypted persistence & key store
+│   │   ├── sdk-keyring/                    # Multi-platform keyring (Linux/Flatpak oo7, macOS Keychain, WinCred)
+│   │   ├── sdk-vfs/                        # Transient virtual tree, node metadata, and thumbnail cache
+│   │   └── sdk-fuse/                       # Desktop FUSE filesystem driver for transient mounts
 │   └── nextcloud/
 │       ├── nextcloud-auth/                 # Basic, Bearer, Anonymous credentials & SecretString
 │       ├── nextcloud-transport/            # reqwest implementation of Transport
 │       ├── nextcloud-ocs/                  # OCS v1/v2 envelope parser and mutation engine
 │       ├── nextcloud-dav/                  # WebDAV file & directory operations, PROPFIND XML engine
+│       ├── nextcloud-uploads/              # WebDAV Chunked Uploads v2 streaming client
 │       ├── nextcloud-users/                # Server capabilities & user provisioning API
 │       ├── nextcloud-shares/               # OCS file sharing & public links API
 │       ├── nextcloud-notifications/        # Notifications v2 API & actions
-│       └── nextcloud-activity/             # Activity v2 streams & filter queries
+│       ├── nextcloud-activity/             # Activity v2 streams & filter queries
+│       ├── nextcloud-deck/                 # Nextcloud Deck Kanban boards, stacks, and cards
+│       ├── nextcloud-talk/                 # Nextcloud Talk (Spreed) chat conversations and rooms
+│       ├── nextcloud-preview/              # Nextcloud thumbnail and preview generation
+│       ├── nextcloud-trashbin/             # WebDAV trashbin management and restoration
+│       ├── nextcloud-versions/             # WebDAV file version history and restoration
+│       ├── nextcloud-goa/                  # GNOME Online Accounts desktop D-Bus integration
+│       ├── nextcloud-kaccounts/            # KDE Plasma Online Accounts (Accounts-SSO) integration
+│       └── nextcloud-client-config/        # Official desktop client profile parser across OSes
 ```
 
 ---

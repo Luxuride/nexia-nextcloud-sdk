@@ -52,11 +52,23 @@ The SDK separates mutable state into two distinct local SQLite databases, each e
 
 ---
 
-## 2. Linux Secret Service Integration via `oo7`
+## 2. Multi-Platform Keyring Integration (`sdk-keyring`)
 
-On Linux systems, encryption keys are never stored as plain files on disk. The SDK integrates with the FreeDesktop Secret Service specification (used by GNOME Keyring, KDE KWallet, and KeePassXC) via the **`oo7`** library through [`KeychainKeyStore`].
+Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`sdk-keyring`** through [`KeychainKeyStore`] and [`PlatformKeyring`]:
 
-### 2.1 Schema Attributes and Isolation
+### 2.1 Supported Platform Backends
+1. **Linux & Sandboxed Flatpak**:
+   - Powered by **`oo7`** (`linux-credentials`).
+   - On the host desktop: integrates seamlessly with D-Bus FreeDesktop Secret Service (`org.freedesktop.secrets`), including GNOME Keyring, KWallet, and KeePassXC.
+   - Inside Flatpak containers: automatically uses the **XDG Desktop Secret Portal** (`org.freedesktop.portal.Secret`), allowing secure credential storage without punching holes in sandbox permissions.
+2. **macOS**:
+   - Integrates natively with **Apple Keychain Services** via `Security.framework`.
+3. **Windows**:
+   - Integrates natively with **Windows Credential Manager** (`wincred`).
+4. **Headless / Testing**:
+   - Dedicated [`MemoryKeyring`] for automated testing and CI runners without hardware keyrings.
+
+### 2.2 Schema Attributes and Isolation
 Keys are cataloged under the application's unique reverse-DNS identifier and account label:
 
 | Attribute | Value / Example | Description |
