@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Encrypted SQLite storage and keychain-held keys for the Nextcloud Rust SDK"
 
 [features]

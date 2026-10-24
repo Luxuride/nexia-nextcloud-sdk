@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Nextcloud Notifications API (v2) client and domain models"
 
 [dependencies]

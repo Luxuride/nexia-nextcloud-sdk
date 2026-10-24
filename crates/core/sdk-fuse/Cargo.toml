@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Transient VFS FUSE driver for desktop filesystem mounting"
 
 [dependencies]

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Transient virtual file system mounting layer for Nextcloud file hierarchies and metadata"
 
 [dependencies]

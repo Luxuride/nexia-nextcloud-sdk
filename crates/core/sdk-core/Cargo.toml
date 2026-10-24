@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Core primitives shared by the Nextcloud Rust SDK crates"
 
 [features]

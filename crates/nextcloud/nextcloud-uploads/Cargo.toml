@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "WebDAV Chunked Upload v2 client for the Nextcloud Rust SDK"
 
 [dependencies]

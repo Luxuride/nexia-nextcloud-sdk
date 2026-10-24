@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme = "README.md"
 description = "Nextcloud Talk (Spreed) API client and domain types"
 
 [dependencies]
