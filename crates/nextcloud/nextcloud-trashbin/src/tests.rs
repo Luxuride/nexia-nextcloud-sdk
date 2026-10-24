@@ -6,7 +6,7 @@ use std::task::Poll;
 
 use nextcloud_auth::Anonymous;
 use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, OVERWRITE_HEADER};
-use sdk_core::{
+use nextcloud_sdk_core::{
     AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
 };
 

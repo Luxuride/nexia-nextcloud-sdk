@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use sdk_keyring::{KeyringBackend, SecretString};
+use nextcloud_sdk_keyring::{KeyringBackend, SecretString};
 
 use crate::sso::account::{AccountSource, DiscoveredAccount};
 use crate::sso::error::SsoError;
@@ -112,8 +112,8 @@ impl DesktopSso {
 
 #[cfg(test)]
 mod tests {
-    use sdk_core::ServerUrl;
-    use sdk_keyring::MemoryKeyring;
+    use nextcloud_sdk_core::ServerUrl;
+    use nextcloud_sdk_keyring::MemoryKeyring;
 
     use super::*;
 

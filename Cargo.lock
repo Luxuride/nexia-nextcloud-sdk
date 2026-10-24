@@ -1186,7 +1186,7 @@ name = "nextcloud-activity"
 version = "0.1.0"
 dependencies = [
  "nextcloud-ocs",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1196,15 +1196,15 @@ name = "nextcloud-auth"
 version = "0.1.0"
 dependencies = [
  "base64",
- "sdk-core",
+ "nextcloud-sdk-core",
 ]
 
 [[package]]
 name = "nextcloud-client-config"
 version = "0.1.0"
 dependencies = [
- "sdk-core",
- "sdk-keyring",
+ "nextcloud-sdk-core",
+ "nextcloud-sdk-keyring",
  "serde",
  "tokio",
 ]
@@ -1213,7 +1213,7 @@ dependencies = [
 name = "nextcloud-dav"
 version = "0.1.0"
 dependencies = [
- "sdk-core",
+ "nextcloud-sdk-core",
 ]
 
 [[package]]
@@ -1221,7 +1221,7 @@ name = "nextcloud-deck"
 version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1231,7 +1231,7 @@ name = "nextcloud-goa"
 version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "zbus",
 ]
@@ -1240,9 +1240,9 @@ dependencies = [
 name = "nextcloud-kaccounts"
 version = "0.1.0"
 dependencies = [
+ "nextcloud-sdk-core",
+ "nextcloud-sdk-keyring",
  "rusqlite",
- "sdk-core",
- "sdk-keyring",
  "serde",
  "tokio",
 ]
@@ -1252,7 +1252,7 @@ name = "nextcloud-notifications"
 version = "0.1.0"
 dependencies = [
  "nextcloud-ocs",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1261,7 +1261,7 @@ dependencies = [
 name = "nextcloud-ocs"
 version = "0.1.0"
 dependencies = [
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1271,7 +1271,7 @@ name = "nextcloud-preview"
 version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
- "sdk-core",
+ "nextcloud-sdk-core",
 ]
 
 [[package]]
@@ -1288,6 +1288,14 @@ dependencies = [
  "nextcloud-notifications",
  "nextcloud-ocs",
  "nextcloud-preview",
+ "nextcloud-sdk-core",
+ "nextcloud-sdk-fuse",
+ "nextcloud-sdk-keyring",
+ "nextcloud-sdk-ratelimit",
+ "nextcloud-sdk-request",
+ "nextcloud-sdk-session",
+ "nextcloud-sdk-storage",
+ "nextcloud-sdk-vfs",
  "nextcloud-shares",
  "nextcloud-talk",
  "nextcloud-transport",
@@ -1296,17 +1304,72 @@ dependencies = [
  "nextcloud-users",
  "nextcloud-versions",
  "rusqlite",
- "sdk-core",
- "sdk-fuse",
- "sdk-keyring",
- "sdk-ratelimit",
- "sdk-request",
- "sdk-session",
- "sdk-storage",
- "sdk-vfs",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "nextcloud-sdk-core"
+version = "0.1.0"
+
+[[package]]
+name = "nextcloud-sdk-fuse"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-sdk-core",
+ "nextcloud-sdk-vfs",
+ "tokio",
+]
+
+[[package]]
+name = "nextcloud-sdk-keyring"
+version = "0.1.0"
+dependencies = [
+ "keyring",
+ "oo7",
+ "tokio",
+]
+
+[[package]]
+name = "nextcloud-sdk-ratelimit"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "nextcloud-sdk-request"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-sdk-core",
+]
+
+[[package]]
+name = "nextcloud-sdk-session"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-auth",
+ "nextcloud-sdk-core",
+]
+
+[[package]]
+name = "nextcloud-sdk-storage"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "nextcloud-sdk-keyring",
+ "rusqlite",
+ "tokio",
+]
+
+[[package]]
+name = "nextcloud-sdk-vfs"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-sdk-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1314,7 +1377,7 @@ name = "nextcloud-shares"
 version = "0.1.0"
 dependencies = [
  "nextcloud-ocs",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1324,7 +1387,7 @@ name = "nextcloud-talk"
 version = "0.1.0"
 dependencies = [
  "nextcloud-ocs",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1334,9 +1397,9 @@ name = "nextcloud-transport"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "nextcloud-sdk-core",
+ "nextcloud-sdk-ratelimit",
  "reqwest",
- "sdk-core",
- "sdk-ratelimit",
  "tokio",
 ]
 
@@ -1346,7 +1409,7 @@ version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
  "nextcloud-dav",
- "sdk-core",
+ "nextcloud-sdk-core",
 ]
 
 [[package]]
@@ -1355,7 +1418,7 @@ version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
  "nextcloud-dav",
- "sdk-core",
+ "nextcloud-sdk-core",
 ]
 
 [[package]]
@@ -1363,7 +1426,7 @@ name = "nextcloud-users"
 version = "0.1.0"
 dependencies = [
  "nextcloud-ocs",
- "sdk-core",
+ "nextcloud-sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1374,7 +1437,7 @@ version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
  "nextcloud-dav",
- "sdk-core",
+ "nextcloud-sdk-core",
 ]
 
 [[package]]
@@ -2002,69 +2065,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "sdk-core"
-version = "0.1.0"
-
-[[package]]
-name = "sdk-fuse"
-version = "0.1.0"
-dependencies = [
- "sdk-core",
- "sdk-vfs",
- "tokio",
-]
-
-[[package]]
-name = "sdk-keyring"
-version = "0.1.0"
-dependencies = [
- "keyring",
- "oo7",
- "tokio",
-]
-
-[[package]]
-name = "sdk-ratelimit"
-version = "0.1.0"
-dependencies = [
- "tokio",
-]
-
-[[package]]
-name = "sdk-request"
-version = "0.1.0"
-dependencies = [
- "sdk-core",
-]
-
-[[package]]
-name = "sdk-session"
-version = "0.1.0"
-dependencies = [
- "nextcloud-auth",
- "sdk-core",
-]
-
-[[package]]
-name = "sdk-storage"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.3.4",
- "rusqlite",
- "sdk-keyring",
- "tokio",
-]
-
-[[package]]
-name = "sdk-vfs"
-version = "0.1.0"
-dependencies = [
- "sdk-core",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "security-framework"

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use sdk_core::{AuthProvider, Headers};
+use nextcloud_sdk_core::{AuthProvider, Headers};
 
 use super::BearerToken;
 
@@ -50,7 +50,7 @@ impl fmt::Debug for BearerAuth {
 
 #[cfg(test)]
 mod tests {
-    use sdk_core::{AuthProvider, Header, Headers};
+    use nextcloud_sdk_core::{AuthProvider, Header, Headers};
 
     use super::BearerAuth;
 

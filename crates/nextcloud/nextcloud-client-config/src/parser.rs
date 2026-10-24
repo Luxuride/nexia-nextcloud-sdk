@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use sdk_core::ServerUrl;
+use nextcloud_sdk_core::ServerUrl;
 
 use crate::account::{AuthType, DesktopClientAccount};
 use crate::error::ClientConfigError;

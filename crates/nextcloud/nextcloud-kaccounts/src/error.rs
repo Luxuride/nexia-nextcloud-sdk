@@ -23,13 +23,13 @@ pub enum KAccountsError {
         /// Raw URL.
         raw: String,
         /// Parse error.
-        source: sdk_core::UrlError,
+        source: nextcloud_sdk_core::UrlError,
     },
     /// Keyring secret lookup failed.
     #[cfg(feature = "keyring")]
     Keyring {
         /// The keyring cause.
-        source: sdk_keyring::KeyringError,
+        source: nextcloud_sdk_keyring::KeyringError,
     },
 }
 
@@ -43,7 +43,7 @@ impl KAccountsError {
     }
 
     /// Builds an invalid URL error.
-    pub fn invalid_url(raw: impl Into<String>, source: sdk_core::UrlError) -> Self {
+    pub fn invalid_url(raw: impl Into<String>, source: nextcloud_sdk_core::UrlError) -> Self {
         Self::InvalidUrl {
             raw: raw.into(),
             source,

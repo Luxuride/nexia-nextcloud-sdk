@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub use nextcloud_dav::DESTINATION_HEADER;
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusError, Transport,
 };
 

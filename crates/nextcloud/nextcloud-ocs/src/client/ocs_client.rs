@@ -1,4 +1,4 @@
-use sdk_core::{ApiPath, AuthProvider, Error, HttpMethod, Transport};
+use nextcloud_sdk_core::{ApiPath, AuthProvider, Error, HttpMethod, Transport};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 

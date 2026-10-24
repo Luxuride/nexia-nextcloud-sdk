@@ -3,7 +3,7 @@
 use std::fmt;
 
 use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, OVERWRITE_HEADER, Overwrite};
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusCode,
     StatusError, Transport,
 };

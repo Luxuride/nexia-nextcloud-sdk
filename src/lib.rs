@@ -1,7 +1,7 @@
 //! Rust client for the Nextcloud APIs — the crate an application depends on.
 //!
 //! The workspace underneath this one owns the layers:
-//! - `sdk-core` the HTTP vocabulary and the [`Transport`]/[`AuthProvider`] seams,
+//! - `nextcloud-sdk-core` the HTTP vocabulary and the [`Transport`]/[`AuthProvider`] seams,
 //! - `nextcloud-auth` the credential types,
 //! - `nextcloud-transport` the `reqwest` implementation,
 //! - `nextcloud-ocs` the OCS envelope and mutation engine,
@@ -19,18 +19,18 @@
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
 //! - `nextcloud-kaccounts` KDE Plasma KAccounts desktop single-sign-on integration,
 //! - `nextcloud-client-config` desktop client configuration parser and account discovery,
-//! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
-//! - `sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
-//! - `sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
-//! - `sdk-ratelimit` dynamic bandwidth rate limiting and transfer progress reporting,
-//! - `sdk-storage` encrypted credential and cache database stores.
+//! - `nextcloud-sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
+//! - `nextcloud-sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
+//! - `nextcloud-sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
+//! - `nextcloud-sdk-ratelimit` dynamic bandwidth rate limiting and transfer progress reporting,
+//! - `nextcloud-sdk-storage` encrypted credential and cache database stores.
 //!
 //! This crate is the app-facing surface: it re-exports that vocabulary so one
 //! dependency is enough, and adds the two state machines a client UI needs:
 //!
-//! - [`sdk_session`] — the account lifecycle, from "no server" to a
+//! - [`nextcloud_sdk_session`] — the account lifecycle, from "no server" to a
 //!   usable session, following Nextcloud's documented Login Flow v2.
-//! - [`sdk_request`] — the lifecycle of a single API call, including
+//! - [`nextcloud_sdk_request`] — the lifecycle of a single API call, including
 //!   whether to retry and what to show as progress.
 //!
 //! Both machines are pure transition tables: they perform no I/O, and return
@@ -73,6 +73,26 @@ pub use nextcloud_kaccounts::{
 pub use nextcloud_notifications::{Notification, NotificationAction, NotificationClient};
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
 pub use nextcloud_preview::{PreviewClient, PreviewMode, PreviewOptions};
+pub use nextcloud_sdk_core::{
+    ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
+    ServerUrl, StatusCode, StatusError, Transport, UrlError,
+};
+pub use nextcloud_sdk_fuse::{AsyncHydrator, DirEntry, FileAttr, FileType, FuseDriver, InodeTable};
+pub use nextcloud_sdk_keyring::{
+    KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring,
+};
+pub use nextcloud_sdk_request::{Effect, Failure, RequestMachine, RequestState, RetryPolicy};
+pub use nextcloud_sdk_session::{
+    Account, Command, LoginFlow, LoginStart, LoginSuccess, PollTarget, PollToken, SessionError,
+    SessionEvent, SessionMachine, SessionState,
+};
+pub use nextcloud_sdk_storage::{
+    EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
+};
+pub use nextcloud_sdk_vfs::{
+    HydratedContent, HydrationState, NodeMetadata, ThumbnailCache, VfsError, VirtualNode,
+    VirtualTree,
+};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
 pub use nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient, UnknownRoomTypeError};
 pub use nextcloud_transport::{
@@ -86,24 +106,6 @@ pub use nextcloud_users::{
     ServerVersion, ThemingCapabilities, User, UserClient,
 };
 pub use nextcloud_versions::{FileVersion, VersionsClient};
-pub use sdk_core::{
-    ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
-    ServerUrl, StatusCode, StatusError, Transport, UrlError,
-};
-pub use sdk_fuse::{AsyncHydrator, DirEntry, FileAttr, FileType, FuseDriver, InodeTable};
-pub use sdk_keyring::{KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring};
-pub use sdk_request::{Effect, Failure, RequestMachine, RequestState, RetryPolicy};
-pub use sdk_session::{
-    Account, Command, LoginFlow, LoginStart, LoginSuccess, PollTarget, PollToken, SessionError,
-    SessionEvent, SessionMachine, SessionState,
-};
-pub use sdk_storage::{
-    EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
-};
-pub use sdk_vfs::{
-    HydratedContent, HydrationState, NodeMetadata, ThumbnailCache, VfsError, VirtualNode,
-    VirtualTree,
-};
 pub use sso::{AccountSource, DesktopSso, DiscoveredAccount, SsoError};
 pub use storage::{CacheStore, CachedDavEntry, SessionStore};
 pub use worker::{WorkerActor, WorkerTask};

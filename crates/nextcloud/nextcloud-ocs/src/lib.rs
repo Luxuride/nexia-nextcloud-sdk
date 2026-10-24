@@ -10,7 +10,7 @@
 //! - [`Query`] / [`OcsFormat`] — the query string appended to an OCS path,
 //!   including the `format=json` selector.
 //! - [`OcsClient`] — executes an OCS call through any
-//!   [`Transport`](sdk_core::Transport) and returns the decoded payload.
+//!   [`Transport`](nextcloud_sdk_core::Transport) and returns the decoded payload.
 //!
 //! OCS requires two request headers that are easy to forget: every call must
 //! send `OCS-APIRequest: true`, and JSON answers require

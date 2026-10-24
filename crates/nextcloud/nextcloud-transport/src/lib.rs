@@ -1,8 +1,8 @@
 //! HTTP transport for the Nextcloud SDK.
 //!
-//! The crate fills the [`sdk_core::Transport`] seam with a `reqwest`
+//! The crate fills the [`nextcloud_sdk_core::Transport`] seam with a `reqwest`
 //! backed implementation: a [`TransportBuilder`] turns a
-//! [`ServerUrl`](sdk_core::ServerUrl) plus timeout and user-agent
+//! [`ServerUrl`](nextcloud_sdk_core::ServerUrl) plus timeout and user-agent
 //! settings into a [`ReqwestTransport`], which resolves API paths to absolute
 //! URLs and hands raw responses back to the API crates unchanged.
 #![deny(missing_docs)]
@@ -21,5 +21,7 @@ pub use builder::{
     TransportBuilder,
 };
 pub use error::TransportBuildError;
+pub use nextcloud_sdk_ratelimit::{
+    BandwidthLimit, BandwidthLimiter, ProgressCallback, TransferProgress,
+};
 pub use reqwest_transport::ReqwestTransport;
-pub use sdk_ratelimit::{BandwidthLimit, BandwidthLimiter, ProgressCallback, TransferProgress};

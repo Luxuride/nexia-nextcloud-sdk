@@ -8,7 +8,7 @@
 
 /// Discovered KDE Plasma online account representation.
 pub mod account;
-/// Credentials lookup helpers via `sdk-keyring`.
+/// Credentials lookup helpers via `nextcloud-sdk-keyring`.
 #[cfg(feature = "keyring")]
 pub mod credentials;
 /// Read-only SQLite database reader for `accounts.db`.

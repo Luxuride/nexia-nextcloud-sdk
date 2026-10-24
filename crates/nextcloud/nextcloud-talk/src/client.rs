@@ -4,7 +4,7 @@
 //! - [Nextcloud Talk API documentation](https://nextcloud-talk.readthedocs.io/en/latest/)
 
 use nextcloud_ocs::{OcsClient, OcsFormat, Query};
-use sdk_core::{ApiPath, AuthProvider, Error, Transport};
+use nextcloud_sdk_core::{ApiPath, AuthProvider, Error, Transport};
 use serde::Serialize;
 
 use crate::message::ChatMessage;
@@ -145,7 +145,7 @@ mod tests {
     use std::task::{Context, Poll, Waker};
 
     use nextcloud_ocs::OcsClient;
-    use sdk_core::{
+    use nextcloud_sdk_core::{
         AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
     };
 

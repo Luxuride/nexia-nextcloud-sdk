@@ -2,7 +2,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-use sdk_core::{
+use nextcloud_sdk_core::{
     AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
 };
 

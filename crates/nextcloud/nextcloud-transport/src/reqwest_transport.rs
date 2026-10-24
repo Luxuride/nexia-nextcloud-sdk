@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::sync::{Arc, RwLock};
 
-use sdk_core::{Error, Request, Response, ServerUrl, Transport};
-use sdk_ratelimit::{BandwidthLimit, BandwidthLimiter, ProgressCallback};
+use nextcloud_sdk_core::{Error, Request, Response, ServerUrl, Transport};
+use nextcloud_sdk_ratelimit::{BandwidthLimit, BandwidthLimiter, ProgressCallback};
 
 use crate::header_copy::to_header_map;
 use crate::method::to_reqwest;

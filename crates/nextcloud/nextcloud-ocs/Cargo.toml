@@ -9,6 +9,6 @@ readme = "README.md"
 description = "OCS API envelope and client for the Nextcloud Rust SDK"
 
 [dependencies]
-sdk-core.workspace = true
+nextcloud-sdk-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

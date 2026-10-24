@@ -1,6 +1,6 @@
 //! Request plumbing for WebDAV calls.
 
-use sdk_core::{
+use nextcloud_sdk_core::{
     AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusCode,
     StatusError, Transport,
 };
@@ -222,7 +222,7 @@ mod tests {
     use std::sync::Mutex;
     use std::task::Poll;
 
-    use sdk_core::{
+    use nextcloud_sdk_core::{
         AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
     };
 

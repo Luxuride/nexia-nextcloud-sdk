@@ -9,4 +9,4 @@ readme = "README.md"
 description = "WebDAV client foundation for the Nextcloud Rust SDK"
 
 [dependencies]
-sdk-core.workspace = true
+nextcloud-sdk-core.workspace = true

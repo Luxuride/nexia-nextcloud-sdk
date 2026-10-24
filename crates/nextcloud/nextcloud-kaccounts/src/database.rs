@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use nextcloud_sdk_core::ServerUrl;
 use rusqlite::{Connection, OpenFlags};
-use sdk_core::ServerUrl;
 
 use crate::account::KAccount;
 use crate::error::KAccountsError;

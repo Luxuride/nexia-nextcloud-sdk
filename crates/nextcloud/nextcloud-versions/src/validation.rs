@@ -1,6 +1,6 @@
 //! Path and identifier validation for WebDAV versions endpoints.
 
-use sdk_core::UrlError;
+use nextcloud_sdk_core::UrlError;
 
 /// Validates a user identifier for use in WebDAV URL paths.
 ///

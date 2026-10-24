@@ -1,4 +1,4 @@
-use sdk_core::ServerUrl;
+use nextcloud_sdk_core::ServerUrl;
 
 /// The origin or desktop subsystem where a Nextcloud account was discovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

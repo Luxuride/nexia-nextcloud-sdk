@@ -8,7 +8,7 @@ The `nextcloud-rust-sdk` project is a high-performance, memory-safe Rust client 
 
 The workspace is organized into two primary layers:
 1. **Stateless Core & Protocol Layer (`crates/core/` and `crates/nextcloud/`)**: Pure domain models, protocol codecs, HTTP transport seams, and pure state machines.
-2. **Stateful SDK Facade & Runtime Layer (`nextcloud-rust-sdk` and `sdk-storage`)**: An actor-based orchestrator coordinating request dispatch, retry semantics, session lifecycles, and dual encrypted SQLCipher storage.
+2. **Stateful SDK Facade & Runtime Layer (`nextcloud-rust-sdk` and `nextcloud-sdk-storage`)**: An actor-based orchestrator coordinating request dispatch, retry semantics, session lifecycles, and dual encrypted SQLCipher storage.
 
 ```
 nextcloud-rust-sdk/
@@ -103,19 +103,19 @@ The architecture enforces a strict architectural boundary between **stateless pr
 
 ### The Stateless Layers
 
-Every crate in `crates/nextcloud/` as well as `sdk-core` is purely stateless:
+Every crate in `crates/nextcloud/` as well as `nextcloud-sdk-core` is purely stateless:
 - **No internal mutable runtime state**: Clients such as `DavClient`, `OcsClient`, `UserClient`, `ShareClient`, `NotificationClient`, and `ActivityClient` borrow the `Transport` and `AuthProvider` by reference or value without maintaining connection states, token refreshes, or locks.
-- **Seam abstractions (`sdk-core`)**:
+- **Seam abstractions (`nextcloud-sdk-core`)**:
   - `Transport`: An asynchronous trait abstracting HTTP execution (`execute(&self, req: Request) -> Future<Output = Result<Response, Error>>`).
   - `AuthProvider`: Modifies outbound request `Headers` (e.g. injecting `Authorization: Basic ...` or `Authorization: Bearer ...`).
 - **Deterministic and isolated**: Can be instantiated on ephemeral threads, embedded in test mocks, or executed concurrently across multi-threaded Tokio runtimes with zero shared lock contention.
-- **Zero I/O State Machines (`sdk-session` & `sdk-request`)**: Even the state machines are pure transition functions (`handle(event) -> Result<Command, SessionError>` and `failed(failure) -> Effect`). They perform zero I/O, sleep zero timers, and log no external telemetry, ensuring 100% testability with unit tests.
+- **Zero I/O State Machines (`nextcloud-sdk-session` & `nextcloud-sdk-request`)**: Even the state machines are pure transition functions (`handle(event) -> Result<Command, SessionError>` and `failed(failure) -> Effect`). They perform zero I/O, sleep zero timers, and log no external telemetry, ensuring 100% testability with unit tests.
 
 ### The Stateful Layer
 
 The top-level client (`nextcloud-rust-sdk`) provides the cohesive developer surface:
 - **Actor-based orchestration**: An asynchronous worker loop runs on a dedicated Tokio task, communicating with client handles over bounded MPSC channels (`tokio::sync::mpsc`).
-- **Encrypted Local Persistence (`sdk-storage`)**: Dual SQLCipher SQLite databases secure local information at rest:
+- **Encrypted Local Persistence (`nextcloud-sdk-storage`)**: Dual SQLCipher SQLite databases secure local information at rest:
   - `auth.db`: Accounts, app passwords, active login flow tokens.
   - `cache.db`: Server capabilities, WebDAV directory hierarchies, user metadata.
 - **Automated Lifecycle Recovery**: When requests fail with `401 Unauthorized`, the session state machine switches to `ReauthRequired`, signaling the application to initiate re-authentication without dropping pending queue requests.

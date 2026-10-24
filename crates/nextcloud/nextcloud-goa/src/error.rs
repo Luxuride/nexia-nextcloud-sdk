@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt;
 
-use sdk_core::UrlError;
+use nextcloud_sdk_core::UrlError;
 
 /// Errors that can occur when discovering GNOME Online Accounts.
 #[derive(Debug)]
@@ -59,7 +59,7 @@ impl From<UrlError> for GoaError {
 mod tests {
     use std::error::Error;
 
-    use sdk_core::UrlError;
+    use nextcloud_sdk_core::UrlError;
 
     use super::GoaError;
 

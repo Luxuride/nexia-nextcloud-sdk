@@ -10,11 +10,11 @@ description = "Desktop configuration and account discovery for the official Next
 
 [features]
 default = ["keyring"]
-keyring = ["dep:sdk-keyring"]
+keyring = ["dep:nextcloud-sdk-keyring"]
 
 [dependencies]
-sdk-core.workspace = true
-sdk-keyring = { workspace = true, optional = true }
+nextcloud-sdk-core.workspace = true
+nextcloud-sdk-keyring = { workspace = true, optional = true }
 serde.workspace = true
 
 [dev-dependencies]

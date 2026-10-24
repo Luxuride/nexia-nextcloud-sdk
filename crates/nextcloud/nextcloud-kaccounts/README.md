@@ -15,7 +15,7 @@ nextcloud-kaccounts = "0.1.0"
 
 - Reads KDE Accounts-SSO SQLite database (`accounts.db`) in read-only mode.
 - Extracts Nextcloud / ownCloud server URLs, usernames, and enabled services.
-- Resolves stored credentials from the KDE Wallet via `sdk-keyring`.
+- Resolves stored credentials from the KDE Wallet via `nextcloud-sdk-keyring`.
 
 ## Example
 

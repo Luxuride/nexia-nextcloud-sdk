@@ -9,7 +9,7 @@ readme = "README.md"
 description = "Nextcloud Files Sharing API client and domain types"
 
 [dependencies]
-sdk-core.workspace = true
+nextcloud-sdk-core.workspace = true
 nextcloud-ocs.workspace = true
 serde.workspace = true
 serde_json.workspace = true

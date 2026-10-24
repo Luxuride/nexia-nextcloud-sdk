@@ -1,6 +1,6 @@
 //! URL and path helpers for Nextcloud WebDAV trashbin endpoints.
 
-use sdk_core::{ApiPath, UrlError};
+use nextcloud_sdk_core::{ApiPath, UrlError};
 
 /// Validates that a user name is suitable as a single URL path segment.
 pub(crate) fn validate_user_id(user_id: &str) -> Result<&str, UrlError> {

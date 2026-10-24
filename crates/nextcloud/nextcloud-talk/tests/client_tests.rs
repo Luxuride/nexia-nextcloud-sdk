@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 use nextcloud_ocs::OcsClient;
-use nextcloud_talk::{RoomType, TalkClient};
-use sdk_core::{
+use nextcloud_sdk_core::{
     AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
 };
+use nextcloud_talk::{RoomType, TalkClient};
 
 fn block_on<F: Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);

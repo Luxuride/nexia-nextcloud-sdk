@@ -1,8 +1,8 @@
 use std::convert::Infallible;
 
 use futures_util::stream::{self, StreamExt};
+use nextcloud_sdk_ratelimit::{BandwidthLimiter, ProgressCallback, TransferProgress};
 use reqwest::Body;
-use sdk_ratelimit::{BandwidthLimiter, ProgressCallback, TransferProgress};
 
 const DEFAULT_CHUNK_SIZE: usize = 32 * 1024; // 32 KiB
 

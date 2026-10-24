@@ -2,7 +2,7 @@
 
 use std::any::type_name;
 
-use sdk_core::{
+use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusError,
     Transport,
 };

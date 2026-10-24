@@ -1,5 +1,5 @@
 #[cfg(feature = "keyring")]
-use sdk_keyring::{KeyringBackend, SecretString};
+use nextcloud_sdk_keyring::{KeyringBackend, SecretString};
 
 use crate::account::DesktopClientAccount;
 use crate::error::ClientConfigError;
@@ -33,8 +33,8 @@ pub async fn find_account_credentials<K: KeyringBackend>(
 
 #[cfg(all(test, feature = "keyring"))]
 mod tests {
-    use sdk_core::ServerUrl;
-    use sdk_keyring::MemoryKeyring;
+    use nextcloud_sdk_core::ServerUrl;
+    use nextcloud_sdk_keyring::MemoryKeyring;
 
     use super::*;
     use crate::account::AuthType;

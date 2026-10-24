@@ -1,8 +1,8 @@
 //! Contract checks for the public surface: the transport must be shareable
 //! across tasks and must not describe credentials anywhere.
 
+use nextcloud_sdk_core::{ServerUrl, Transport};
 use nextcloud_transport::{ReqwestTransport, TimeoutConfig, TransportBuilder};
-use sdk_core::{ServerUrl, Transport};
 
 fn assert_send_sync<T: Send + Sync>() {}
 

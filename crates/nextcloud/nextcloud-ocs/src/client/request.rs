@@ -1,6 +1,6 @@
 use std::any::type_name;
 
-use sdk_core::{ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request};
+use nextcloud_sdk_core::{ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request};
 use serde::Serialize;
 
 /// Header that marks a request as an OCS call; OCS endpoints reject requests

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use sdk_core::ServerUrl;
+use nextcloud_sdk_core::ServerUrl;
 
 use crate::builder::{DEFAULT_USER_AGENT, TimeoutConfig, TransportBuilder};
 use crate::error::TransportBuildError;

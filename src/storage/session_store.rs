@@ -3,9 +3,9 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nextcloud_auth::SecretString;
-use sdk_core::ServerUrl;
-use sdk_session::{Account, LoginFlow, PollToken};
-use sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
+use nextcloud_sdk_core::ServerUrl;
+use nextcloud_sdk_session::{Account, LoginFlow, PollToken};
+use nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 
 fn query_err(operation: &'static str, source: rusqlite::Error) -> StorageError {
     StorageError::Query {

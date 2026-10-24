@@ -21,7 +21,7 @@ nextcloud-ocs = "0.1.0"
 
 ```rust,no_run
 use nextcloud_ocs::{OcsClient, OcsEnvelope};
-use sdk_core::ApiPath;
+use nextcloud_sdk_core::ApiPath;
 
 // Queries Nextcloud OCS endpoints and decodes standard JSON responses
 ```
