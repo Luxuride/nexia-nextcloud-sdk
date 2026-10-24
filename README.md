@@ -23,8 +23,12 @@ holds everything that knows Nextcloud's wire format.
 | --- | --- |
 | `nextcloud-auth` | App password, bearer token and anonymous credentials |
 | `nextcloud-transport` | `reqwest`-backed implementation of `sdk_core::Transport` |
-| `nextcloud-ocs` | OCS envelope (`meta`/`data`) and a client generic over transport and auth |
-| `nextcloud-dav` | WebDAV paths, PROPFIND bodies and multistatus decoding |
+| `nextcloud-ocs` | OCS envelope (`meta`/`data`), mutations (POST, PUT, DELETE), and generic client |
+| `nextcloud-dav` | WebDAV paths, file & collection CRUD operations (`get`, `put`, `mkcol`, `delete`, `move_`, `copy`), PROPFIND bodies and multistatus decoding |
+| `nextcloud-users` | Server capabilities and user profile data |
+| `nextcloud-shares` | OCS file sharing API, public links, share types, and permissions bitflags |
+| `nextcloud-notifications` | Nextcloud Notifications v2 API and notification actions |
+| `nextcloud-activity` | Nextcloud Activity v2 API streams and filter queries |
 
 The root `nextcloud-rust-sdk` package is the facade: one `Client` wiring the
 layers together. Every API area lives there, one module tree per Nextcloud

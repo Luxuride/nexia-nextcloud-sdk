@@ -15,6 +15,10 @@ nextcloud-auth = { path = "crates/nextcloud/nextcloud-auth", version = "0.1.0" }
 nextcloud-transport = { path = "crates/nextcloud/nextcloud-transport", version = "0.1.0" }
 nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.1.0" }
 nextcloud-dav = { path = "crates/nextcloud/nextcloud-dav", version = "0.1.0" }
+nextcloud-notifications = { path = "crates/nextcloud/nextcloud-notifications", version = "0.1.0" }
+nextcloud-shares = { path = "crates/nextcloud/nextcloud-shares", version = "0.1.0" }
+nextcloud-users = { path = "crates/nextcloud/nextcloud-users", version = "0.1.0" }
+nextcloud-activity = { path = "crates/nextcloud/nextcloud-activity", version = "0.1.0" }
 sdk-session = { path = "crates/core/sdk-session", version = "0.1.0" }
 sdk-request = { path = "crates/core/sdk-request", version = "0.1.0" }
 sdk-storage = { path = "crates/core/sdk-storage", version = "0.1.0" }
@@ -43,6 +47,10 @@ nextcloud-auth.workspace = true
 nextcloud-transport.workspace = true
 nextcloud-ocs.workspace = true
 nextcloud-dav.workspace = true
+nextcloud-users.workspace = true
+nextcloud-shares.workspace = true
+nextcloud-notifications.workspace = true
+nextcloud-activity.workspace = true
 sdk-session.workspace = true
 sdk-request.workspace = true
 serde.workspace = true

@@ -1018,6 +1018,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
+name = "nextcloud-activity"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-ocs",
+ "sdk-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nextcloud-auth"
 version = "0.1.0"
 dependencies = [
@@ -1033,6 +1043,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextcloud-notifications"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-ocs",
+ "sdk-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nextcloud-ocs"
 version = "0.1.0"
 dependencies = [
@@ -1045,13 +1065,27 @@ dependencies = [
 name = "nextcloud-rust-sdk"
 version = "0.1.0"
 dependencies = [
+ "nextcloud-activity",
  "nextcloud-auth",
  "nextcloud-dav",
+ "nextcloud-notifications",
  "nextcloud-ocs",
+ "nextcloud-shares",
  "nextcloud-transport",
+ "nextcloud-users",
  "sdk-core",
  "sdk-request",
  "sdk-session",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nextcloud-shares"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-ocs",
+ "sdk-core",
  "serde",
  "serde_json",
 ]
@@ -1062,6 +1096,16 @@ version = "0.1.0"
 dependencies = [
  "reqwest",
  "sdk-core",
+]
+
+[[package]]
+name = "nextcloud-users"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-ocs",
+ "sdk-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
