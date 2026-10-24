@@ -6,4 +6,4 @@ mod status;
 
 pub use decode::DecodeError;
 pub use sdk::Error;
-pub use status::StatusError;
+pub use status::{MAX_BODY_LEN, StatusError};

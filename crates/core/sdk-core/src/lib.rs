@@ -15,7 +15,7 @@ pub mod transport;
 pub mod url;
 
 pub use auth::AuthProvider;
-pub use error::{DecodeError, Error, StatusError};
+pub use error::{DecodeError, Error, MAX_BODY_LEN, StatusError};
 pub use http::{Header, Headers, HttpMethod, StatusCode};
 pub use transport::{Request, Response, Transport};
 pub use url::{ApiPath, ServerUrl, UrlError};

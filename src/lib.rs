@@ -20,7 +20,7 @@
 //!   whether to retry and what to show as progress.
 //!
 //! Both machines are pure transition tables: they perform no I/O, and return
-//! the work still to be done ([`session::Command`], [`request::Effect`]) so an
+//! the work still to be done ([`Command`], [`Effect`]) so an
 //! application can drive them from any runtime and test them without a
 //! server.
 #![deny(missing_docs)]
