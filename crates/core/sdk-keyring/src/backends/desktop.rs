@@ -49,10 +49,10 @@ impl KeyringBackend for DesktopKeyring {
         let entry = keyring::Entry::new(service, account)
             .map_err(|err| KeyringError::platform("init", err))?;
 
-        match entry.delete_password() {
+        match entry.delete_credential() {
             Ok(()) => Ok(()),
             Err(keyring::Error::NoEntry) => Ok(()),
-            Err(err) => Err(KeyringError::platform("delete_password", err)),
+            Err(err) => Err(KeyringError::platform("delete_credential", err)),
         }
     }
 }
