@@ -7,17 +7,21 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+pub mod category;
 pub mod error;
 pub mod hydration;
 pub mod metadata;
+pub mod navigation;
 pub mod node;
 pub mod path;
 pub mod thumbnail;
 pub mod tree;
 
+pub use category::{ResourceIconCategory, format_bytes};
 pub use error::VfsError;
 pub use hydration::{HydratedContent, HydrationState};
 pub use metadata::NodeMetadata;
+pub use navigation::{BreadcrumbSegment, NavigationHistory, breadcrumb_segments};
 pub use node::VirtualNode;
 pub use path::{file_name, normalize_path, parent_path};
 pub use thumbnail::ThumbnailCache;

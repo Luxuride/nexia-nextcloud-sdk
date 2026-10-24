@@ -90,8 +90,9 @@ pub use nextcloud_sdk_storage::{
     EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
 };
 pub use nextcloud_sdk_vfs::{
-    HydratedContent, HydrationState, NodeMetadata, ThumbnailCache, VfsError, VirtualNode,
-    VirtualTree,
+    BreadcrumbSegment, HydratedContent, HydrationState, NavigationHistory, NodeMetadata,
+    ResourceIconCategory, ThumbnailCache, VfsError, VirtualNode, VirtualTree, breadcrumb_segments,
+    file_name, format_bytes, normalize_path, parent_path,
 };
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
 pub use nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient, UnknownRoomTypeError};
