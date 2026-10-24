@@ -1,6 +1,14 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "crates/core/sdk-core",
+    "crates/core/sdk-request",
+    "crates/core/sdk-session",
+    "crates/nextcloud/nextcloud-auth",
+    "crates/nextcloud/nextcloud-transport",
+    "crates/nextcloud/nextcloud-ocs",
+    "crates/nextcloud/nextcloud-dav",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,11 +18,13 @@ repository = "https://github.com/Luxuride/nextcloud-rust-sdk"
 authors = ["Luxuride"]
 
 [workspace.dependencies]
-nextcloud-core = { path = "crates/nextcloud-core", version = "0.1.0" }
-nextcloud-auth = { path = "crates/nextcloud-auth", version = "0.1.0" }
-nextcloud-transport = { path = "crates/nextcloud-transport", version = "0.1.0" }
-nextcloud-ocs = { path = "crates/nextcloud-ocs", version = "0.1.0" }
-nextcloud-dav = { path = "crates/nextcloud-dav", version = "0.1.0" }
+sdk-core = { path = "crates/core/sdk-core", version = "0.1.0" }
+nextcloud-auth = { path = "crates/nextcloud/nextcloud-auth", version = "0.1.0" }
+nextcloud-transport = { path = "crates/nextcloud/nextcloud-transport", version = "0.1.0" }
+nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.1.0" }
+nextcloud-dav = { path = "crates/nextcloud/nextcloud-dav", version = "0.1.0" }
+sdk-session = { path = "crates/core/sdk-session", version = "0.1.0" }
+sdk-request = { path = "crates/core/sdk-request", version = "0.1.0" }
 
 base64 = "0.23"
 reqwest = "0.13"
