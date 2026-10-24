@@ -52,7 +52,7 @@ async fn download_reports_progress_and_respects_rate_limit() {
     let progress_events = Arc::new(Mutex::new(Vec::new()));
     let events_clone = progress_events.clone();
 
-    let server = ServerUrl::parse(&format!("http://{addr}")).unwrap();
+    let server = ServerUrl::parse(format!("http://{addr}")).unwrap();
     let transport = TransportBuilder::with_server(server)
         .download_progress(move |progress| {
             events_clone.lock().unwrap().push(progress);
@@ -114,7 +114,7 @@ async fn upload_reports_progress_and_paces_body() {
     let progress_events = Arc::new(Mutex::new(Vec::new()));
     let events_clone = progress_events.clone();
 
-    let server = ServerUrl::parse(&format!("http://{addr}")).unwrap();
+    let server = ServerUrl::parse(format!("http://{addr}")).unwrap();
     let transport = TransportBuilder::with_server(server)
         .upload_progress(move |progress| {
             events_clone.lock().unwrap().push(progress);
