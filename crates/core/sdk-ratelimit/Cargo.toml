@@ -1,0 +1,14 @@
+[package]
+name = "sdk-ratelimit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Bandwidth rate limiting and token-bucket traffic shaping for the Nextcloud Rust SDK"
+
+[dependencies]
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
