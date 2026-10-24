@@ -1,22 +1,11 @@
-use std::any::type_name;
-
-use sdk_core::{
-    ApiPath, AuthProvider, DecodeError, Error, Headers, Request, Response, StatusError, Transport,
-};
+use sdk_core::{ApiPath, AuthProvider, Error, HttpMethod, Transport};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use super::path::{require_ocs, with_query};
-use crate::envelope::{OcsEnvelope, OcsStatus, VerdictEnvelope};
-use crate::error::StatusCodeError;
+use super::request::build_request;
+use super::response::decode_response;
 use crate::query::Query;
-
-/// Header that marks a request as an OCS call; OCS endpoints reject requests
-/// without it.
-const OCS_REQUEST_HEADER: &str = "OCS-APIRequest";
-/// Header that selects a JSON answer; OCS defaults to XML.
-const ACCEPT_HEADER: &str = "Accept";
-const ACCEPT_JSON: &str = "application/json";
-const METHOD: &str = "GET";
 
 /// Executes OCS calls and unwraps their envelope.
 ///
@@ -25,6 +14,18 @@ const METHOD: &str = "GET";
 /// implementation without virtual dispatch. The transport already knows the
 /// instance URL and turns an [`ApiPath`] into an absolute URL, so the client
 /// holds no base URL of its own.
+///
+/// All OCS calls follow the Nextcloud Open Collaboration Services (OCS)
+/// specification (<https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>):
+/// - Every request sets `OCS-APIRequest: true` and `Accept: application/json`.
+/// - Mutation requests (`POST`, `PUT`) serialize request bodies as JSON and set
+///   `Content-Type: application/json`.
+/// - Responses are wrapped in an [`OcsEnvelope`](crate::OcsEnvelope) carrying
+///   a `meta.statuscode` verdict (`100` or `200` for success; failure codes such
+///   as `101`, `102`, `997`, `998`, or `999` map to [`Error::Status`]).
+/// - Calling endpoints with unit response `()` succeeds on valid envelopes even
+///   when the response payload is empty (e.g. `[]` or `{}`), or when the caller
+///   only cares about verdict success.
 #[derive(Clone, Debug)]
 pub struct OcsClient<T, A> {
     transport: T,
@@ -55,61 +56,134 @@ impl<T: Transport, A: AuthProvider> OcsClient<T, A> {
     /// that is not an envelope of the requested type. A failure keeps the raw
     /// body, so the OCS code (`997` app not installed, `998` not allowed,
     /// `999` invalid) and its message stay reachable through [`Error::body`].
-    pub async fn get<T2: DeserializeOwned>(
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn get<Res: DeserializeOwned>(
         &self,
         path: ApiPath,
         query: Query,
-    ) -> Result<T2, Error> {
+    ) -> Result<Res, Error> {
         let path = with_query(&require_ocs(path)?, &query);
-
-        let mut headers = Headers::new();
-        headers.set(ACCEPT_HEADER, ACCEPT_JSON);
-        headers.set(OCS_REQUEST_HEADER, "true");
-        self.auth.authenticate(&mut headers);
-
-        let response = self
-            .transport
-            .execute(Request::get(path.clone()).with_headers(headers))
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(status_error(path, &response));
-        }
-
-        // The verdict is read first: a failure body is not the endpoint's
-        // payload shape, so decoding it as `data` would report the OCS
-        // `statuscode` as a malformed body and lose the reason.
-        let verdict: VerdictEnvelope = serde_json::from_slice(response.body())
-            .map_err(|cause| DecodeError::new(type_name::<OcsEnvelope<T2>>(), cause))
-            .map_err(Error::Decode)?;
-
-        match verdict.ocs.meta.verdict() {
-            Some(OcsStatus::Ok) => {}
-            Some(OcsStatus::Failure) => return Err(status_error(path, &response)),
-            // An envelope that carries no readable verdict is malformed, not a
-            // success: guessing here would turn a broken answer into a payload
-            // the caller cannot distinguish from a real one.
-            None => {
-                return Err(Error::Decode(DecodeError::new(
-                    type_name::<OcsEnvelope<T2>>(),
-                    StatusCodeError::new(verdict.ocs.meta.statuscode()),
-                )));
-            }
-        }
-
-        let envelope: OcsEnvelope<T2> = serde_json::from_slice(response.body())
-            .map_err(|cause| DecodeError::new(type_name::<OcsEnvelope<T2>>(), cause))
-            .map_err(Error::Decode)?;
-
-        Ok(envelope.into_data())
+        let request = build_request(HttpMethod::Get, path.clone(), None::<&()>, &self.auth)?;
+        let response = self.transport.execute(request).await?;
+        decode_response(HttpMethod::Get, path, &response)
     }
-}
 
-fn status_error(path: ApiPath, response: &Response) -> Error {
-    Error::Status(StatusError::new(
-        METHOD,
-        path,
-        response.status(),
-        response.body(),
-    ))
+    /// Performs a `POST` against an OCS path with a serialised request body.
+    ///
+    /// The call sets `Accept: application/json`, `Content-Type: application/json`,
+    /// and `OCS-APIRequest: true`, and applies credentials.
+    ///
+    /// When `Res` is `()`, calls succeed if the server returns an OCS envelope
+    /// reporting success (`statuscode` 100 or 200), ignoring empty or present payload data.
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn post<Req: Serialize, Res: DeserializeOwned>(
+        &self,
+        path: ApiPath,
+        body: &Req,
+    ) -> Result<Res, Error> {
+        self.post_with_query(path, Query::new(), body).await
+    }
+
+    /// Performs a `POST` against an OCS path with query parameters and a
+    /// serialised request body.
+    ///
+    /// The call sets `Accept: application/json`, `Content-Type: application/json`,
+    /// and `OCS-APIRequest: true`, and applies credentials.
+    ///
+    /// When `Res` is `()`, calls succeed if the server returns an OCS envelope
+    /// reporting success (`statuscode` 100 or 200), ignoring empty or present payload data.
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn post_with_query<Req: Serialize, Res: DeserializeOwned>(
+        &self,
+        path: ApiPath,
+        query: Query,
+        body: &Req,
+    ) -> Result<Res, Error> {
+        let path = with_query(&require_ocs(path)?, &query);
+        let request = build_request(HttpMethod::Post, path.clone(), Some(body), &self.auth)?;
+        let response = self.transport.execute(request).await?;
+        decode_response(HttpMethod::Post, path, &response)
+    }
+
+    /// Performs a `PUT` against an OCS path with a serialised request body.
+    ///
+    /// The call sets `Accept: application/json`, `Content-Type: application/json`,
+    /// and `OCS-APIRequest: true`, and applies credentials.
+    ///
+    /// When `Res` is `()`, calls succeed if the server returns an OCS envelope
+    /// reporting success (`statuscode` 100 or 200), ignoring empty or present payload data.
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn put<Req: Serialize, Res: DeserializeOwned>(
+        &self,
+        path: ApiPath,
+        body: &Req,
+    ) -> Result<Res, Error> {
+        self.put_with_query(path, Query::new(), body).await
+    }
+
+    /// Performs a `PUT` against an OCS path with query parameters and a
+    /// serialised request body.
+    ///
+    /// The call sets `Accept: application/json`, `Content-Type: application/json`,
+    /// and `OCS-APIRequest: true`, and applies credentials.
+    ///
+    /// When `Res` is `()`, calls succeed if the server returns an OCS envelope
+    /// reporting success (`statuscode` 100 or 200), ignoring empty or present payload data.
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn put_with_query<Req: Serialize, Res: DeserializeOwned>(
+        &self,
+        path: ApiPath,
+        query: Query,
+        body: &Req,
+    ) -> Result<Res, Error> {
+        let path = with_query(&require_ocs(path)?, &query);
+        let request = build_request(HttpMethod::Put, path.clone(), Some(body), &self.auth)?;
+        let response = self.transport.execute(request).await?;
+        decode_response(HttpMethod::Put, path, &response)
+    }
+
+    /// Performs a `DELETE` against an OCS path.
+    ///
+    /// The call sets `Accept: application/json` and `OCS-APIRequest: true`
+    /// and applies credentials.
+    ///
+    /// When `Res` is `()`, calls succeed if the server returns an OCS envelope
+    /// reporting success (`statuscode` 100 or 200), ignoring empty or present payload data.
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn delete<Res: DeserializeOwned>(&self, path: ApiPath) -> Result<Res, Error> {
+        self.delete_with_query(path, Query::new()).await
+    }
+
+    /// Performs a `DELETE` against an OCS path with query parameters.
+    ///
+    /// The call sets `Accept: application/json` and `OCS-APIRequest: true`
+    /// and applies credentials.
+    ///
+    /// When `Res` is `()`, calls succeed if the server returns an OCS envelope
+    /// reporting success (`statuscode` 100 or 200), ignoring empty or present payload data.
+    ///
+    /// See Nextcloud OCS API documentation:
+    /// <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/>
+    pub async fn delete_with_query<Res: DeserializeOwned>(
+        &self,
+        path: ApiPath,
+        query: Query,
+    ) -> Result<Res, Error> {
+        let path = with_query(&require_ocs(path)?, &query);
+        let request = build_request(HttpMethod::Delete, path.clone(), None::<&()>, &self.auth)?;
+        let response = self.transport.execute(request).await?;
+        decode_response(HttpMethod::Delete, path, &response)
+    }
 }

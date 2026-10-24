@@ -1,119 +1,18 @@
-use std::future::Future;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+use std::future::IntoFuture;
 
-use sdk_core::{ApiPath, AuthProvider, Error, Headers, Request, Response, StatusCode, Transport};
-use serde::{Deserialize, Serialize};
+use sdk_core::ApiPath;
 
-use super::OcsClient;
+use super::{
+    CAPABILITIES_OK, Capabilities, FakeTransport, OCS_FAILURE, block_on, capabilities_path, client,
+};
 use crate::query::{OcsFormat, Query};
-
-/// Drives a future to completion on the current thread.
-///
-/// The transport below never yields, so a no-op waker and a spin on `Pending`
-/// are enough and the crate needs no async runtime dependency.
-fn block_on<F: Future>(future: F) -> F::Output {
-    let mut future = std::pin::pin!(future);
-    let mut context = Context::from_waker(Waker::noop());
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => std::thread::yield_now(),
-        }
-    }
-}
-
-/// Canned transport: records the request it was handed and answers with a
-/// fixed response, so no test reaches the network.
-#[derive(Clone, Debug)]
-struct FakeTransport {
-    response: Response,
-    seen: Arc<Mutex<Option<Request>>>,
-}
-
-impl FakeTransport {
-    fn new(status: u16, body: &str) -> Self {
-        Self {
-            response: Response::new(StatusCode::new(status), Headers::new(), body.as_bytes()),
-            seen: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    fn request(&self) -> Option<Request> {
-        self.seen.lock().ok().and_then(|seen| seen.clone())
-    }
-}
-
-impl Transport for FakeTransport {
-    async fn execute(&self, request: Request) -> Result<Response, Error> {
-        if let Ok(mut seen) = self.seen.lock() {
-            *seen = Some(request);
-        }
-        Ok(self.response.clone())
-    }
-}
-
-/// Stamps a credential header the way a real provider does.
-#[derive(Clone, Debug)]
-struct FakeAuth;
-
-impl AuthProvider for FakeAuth {
-    fn authenticate(&self, headers: &mut Headers) {
-        headers.set("Authorization", "Bearer test-token");
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-struct Capabilities {
-    version: Version,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-struct Version {
-    major: u8,
-    string: String,
-}
-
-const CAPABILITIES_OK: &str = r#"{
-  "ocs": {
-    "meta": {
-      "status": "ok",
-      "statuscode": 200,
-      "message": "OK",
-      "totalitems": "",
-      "itemsperpage": ""
-    },
-    "data": {
-      "version": { "major": 32, "string": "32.0.0" }
-    }
-  }
-}"#;
-
-const OCS_FAILURE: &str = r#"{
-  "ocs": {
-    "meta": {
-      "status": "failure",
-      "statuscode": 997,
-      "message": "No app exists with the name \"nonexistent\""
-    },
-    "data": []
-  }
-}"#;
-
-fn path() -> ApiPath {
-    ApiPath::ocs("cloud/capabilities").expect("valid OCS path")
-}
-
-fn client(transport: FakeTransport) -> OcsClient<FakeTransport, FakeAuth> {
-    OcsClient::new(transport, FakeAuth)
-}
 
 #[test]
 fn ok_response_yields_the_payload() {
     let transport = FakeTransport::new(200, CAPABILITIES_OK);
     let capabilities: Capabilities = block_on(
         client(transport.clone())
-            .get(path(), Query::new())
+            .get(capabilities_path(), Query::new())
             .into_future(),
     )
     .expect("the envelope carries a payload");
@@ -128,7 +27,7 @@ fn request_carries_ocs_headers_and_credentials() {
     let transport = FakeTransport::new(200, CAPABILITIES_OK);
     let _: Capabilities = block_on(
         client(transport.clone())
-            .get(path(), Query::new())
+            .get(capabilities_path(), Query::new())
             .into_future(),
     )
     .expect("payload decodes");
@@ -152,7 +51,7 @@ fn query_format_reaches_the_request_path() {
     let transport = FakeTransport::new(200, CAPABILITIES_OK);
     let _: Capabilities = block_on(
         client(transport.clone())
-            .get(path(), Query::new().format(OcsFormat::Json))
+            .get(capabilities_path(), Query::new().format(OcsFormat::Json))
             .into_future(),
     )
     .expect("payload decodes");
@@ -170,7 +69,7 @@ fn failing_statuscode_becomes_a_status_error() {
     let transport = FakeTransport::new(200, OCS_FAILURE);
     let error = block_on(
         client(transport)
-            .get::<Capabilities>(path(), Query::new())
+            .get::<Capabilities>(capabilities_path(), Query::new())
             .into_future(),
     )
     .expect_err("meta.statuscode 997 is a failure");
@@ -191,7 +90,7 @@ fn non_2xx_becomes_a_status_error() {
     let transport = FakeTransport::new(503, "");
     let error = block_on(
         client(transport)
-            .get::<Capabilities>(path(), Query::new())
+            .get::<Capabilities>(capabilities_path(), Query::new())
             .into_future(),
     )
     .expect_err("503 is not acceptable");
@@ -206,7 +105,7 @@ fn undecodable_body_names_the_target_type() {
     let transport = FakeTransport::new(200, r#"{"not_ocs": true}"#);
     let error = block_on(
         client(transport)
-            .get::<Capabilities>(path(), Query::new())
+            .get::<Capabilities>(capabilities_path(), Query::new())
             .into_future(),
     )
     .expect_err("a missing `ocs` wrapper cannot decode");
@@ -221,7 +120,7 @@ fn envelope_without_a_verdict_is_a_decode_error() {
     let transport = FakeTransport::new(200, r#"{"ocs":{"meta":{},"data":null}}"#);
     let error = block_on(
         client(transport)
-            .get::<Capabilities>(path(), Query::new())
+            .get::<Capabilities>(capabilities_path(), Query::new())
             .into_future(),
     )
     .expect_err("no verdict is not a success");
