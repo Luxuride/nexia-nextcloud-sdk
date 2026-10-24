@@ -1,0 +1,24 @@
+//! Transient virtual file system mounting layer for the Nextcloud Rust SDK.
+//!
+//! This crate provides an in-memory virtual file system representation that
+//! models the remote Nextcloud hierarchical tree, rich file metadata, hydration
+//! state (tracking unloaded placeholders versus loaded payloads), and
+//! multi-resolution thumbnail caching without eagerly downloading files.
+#![deny(missing_docs)]
+#![forbid(unsafe_code)]
+
+pub mod error;
+pub mod hydration;
+pub mod metadata;
+pub mod node;
+pub mod path;
+pub mod thumbnail;
+pub mod tree;
+
+pub use error::VfsError;
+pub use hydration::{HydratedContent, HydrationState};
+pub use metadata::NodeMetadata;
+pub use node::VirtualNode;
+pub use path::{file_name, normalize_path, parent_path};
+pub use thumbnail::ThumbnailCache;
+pub use tree::VirtualTree;
