@@ -1,0 +1,15 @@
+[package]
+name = "sdk-fuse"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Transient VFS FUSE driver for desktop filesystem mounting"
+
+[dependencies]
+sdk-core.workspace = true
+sdk-vfs.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

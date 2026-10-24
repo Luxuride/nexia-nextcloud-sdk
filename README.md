@@ -18,6 +18,7 @@ holds everything that knows Nextcloud's wire format.
 | `sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
 | `sdk-storage` | Encrypted SQLCipher dual SQLite storage (`auth.db` & `cache.db`) and FreeDesktop Secret Service (`oo7`) key store |
 | `sdk-vfs` | Transient virtual file system tree, node metadata, multi-resolution thumbnails, and hydration lifecycle |
+| `sdk-fuse` | Transient VFS FUSE driver for desktop filesystem mounting, inode allocation, and on-demand hydration |
 
 ### Nextcloud layer (`crates/nextcloud/`)
 
