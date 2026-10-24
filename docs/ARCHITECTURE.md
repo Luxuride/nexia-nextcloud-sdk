@@ -35,8 +35,6 @@ nextcloud-rust-sdk/
 │       ├── nextcloud-shares/               # OCS file sharing & public links API
 │       ├── nextcloud-notifications/        # Notifications v2 API & actions
 │       └── nextcloud-activity/             # Activity v2 streams & filter queries
-└── examples/
-    └── live_smoke.rs                       # Live server integration test
 ```
 
 ---
