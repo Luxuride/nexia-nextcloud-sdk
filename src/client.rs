@@ -9,6 +9,7 @@ use nextcloud_notifications::NotificationClient;
 use nextcloud_ocs::OcsClient;
 use nextcloud_preview::PreviewClient;
 use nextcloud_shares::ShareClient;
+use nextcloud_talk::TalkClient;
 use nextcloud_transport::ReqwestTransport;
 use nextcloud_trashbin::TrashClient;
 use nextcloud_uploads::UploadClient;
@@ -211,6 +212,14 @@ impl Client {
         auth: &'a BasicAuth,
     ) -> UploadClient<'a, ReqwestTransport, BasicAuth> {
         UploadClient::new(&self.transport, auth)
+    }
+
+    /// Constructs a [`TalkClient`] borrowing an [`OcsClient`].
+    pub fn talk<'a>(
+        &'a self,
+        ocs: &'a OcsClient<ReqwestTransport, BasicAuth>,
+    ) -> TalkClient<'a, ReqwestTransport, BasicAuth> {
+        TalkClient::new(ocs)
     }
 
     /// Instantiates an empty, transient [`VirtualTree`].

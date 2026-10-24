@@ -1222,6 +1222,7 @@ dependencies = [
  "nextcloud-ocs",
  "nextcloud-preview",
  "nextcloud-shares",
+ "nextcloud-talk",
  "nextcloud-transport",
  "nextcloud-trashbin",
  "nextcloud-uploads",
@@ -1240,6 +1241,16 @@ dependencies = [
 
 [[package]]
 name = "nextcloud-shares"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-ocs",
+ "sdk-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nextcloud-talk"
 version = "0.1.0"
 dependencies = [
  "nextcloud-ocs",

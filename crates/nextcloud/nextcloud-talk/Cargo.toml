@@ -1,0 +1,14 @@
+[package]
+name = "nextcloud-talk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Nextcloud Talk (Spreed) API client and domain types"
+
+[dependencies]
+nextcloud-ocs.workspace = true
+sdk-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

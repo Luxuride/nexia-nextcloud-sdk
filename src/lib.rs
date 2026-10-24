@@ -13,6 +13,7 @@
 //! - `nextcloud-trashbin` WebDAV trashbin management,
 //! - `nextcloud-versions` WebDAV file versioning history and restoration,
 //! - `nextcloud-uploads` WebDAV chunked upload streaming v2,
+//! - `nextcloud-talk` Nextcloud Talk conversations and chat messaging,
 //! - `nextcloud-preview` Nextcloud thumbnail and preview generation,
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
 //! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
@@ -57,6 +58,7 @@ pub use nextcloud_notifications::{Notification, NotificationAction, Notification
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
 pub use nextcloud_preview::{PreviewClient, PreviewMode, PreviewOptions};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
+pub use nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient, UnknownRoomTypeError};
 pub use nextcloud_transport::{
     ReqwestTransport, TimeoutConfig, TransportBuildError, TransportBuilder,
 };
