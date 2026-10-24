@@ -45,6 +45,7 @@
 pub mod builder;
 pub mod client;
 pub mod error;
+pub mod sso;
 pub mod storage;
 pub mod worker;
 
@@ -101,5 +102,6 @@ pub use sdk_vfs::{
     HydratedContent, HydrationState, NodeMetadata, ThumbnailCache, VfsError, VirtualNode,
     VirtualTree,
 };
+pub use sso::{AccountSource, DesktopSso, DiscoveredAccount, SsoError};
 pub use storage::{CacheStore, CachedDavEntry, SessionStore};
 pub use worker::{WorkerActor, WorkerTask};
