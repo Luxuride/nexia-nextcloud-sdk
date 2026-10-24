@@ -237,6 +237,11 @@ impl VirtualTree {
     pub fn contains(&self, path: &str) -> bool {
         self.get(path).is_some()
     }
+
+    /// Returns an iterator over all canonical paths currently in the tree.
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
+        self.nodes.keys().map(String::as_str)
+    }
 }
 
 #[cfg(test)]

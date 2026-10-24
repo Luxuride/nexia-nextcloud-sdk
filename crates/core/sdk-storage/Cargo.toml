@@ -13,5 +13,10 @@ keychain = ["dep:oo7"]
 
 [dependencies]
 getrandom.workspace = true
-rusqlite.workspace = true
 oo7 = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }
+
+[target.'cfg(not(windows))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled-sqlcipher"] }
