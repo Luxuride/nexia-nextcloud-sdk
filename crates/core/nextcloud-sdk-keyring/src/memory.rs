@@ -44,13 +44,21 @@ impl KeyringBackend for MemoryKeyring {
         service: &str,
         account: &str,
     ) -> Result<Option<SecretString>, KeyringError> {
+        tracing::debug!(service, account, "Looking up secret in memory keyring");
         let lock = self
             .store
             .read()
             .map_err(|e| KeyringError::platform("read", e.to_string()))?;
-        Ok(lock
+        let secret = lock
             .get(&(service.to_string(), account.to_string()))
-            .cloned())
+            .cloned();
+        tracing::trace!(
+            service,
+            account,
+            found = secret.is_some(),
+            "Memory keyring lookup result"
+        );
+        Ok(secret)
     }
 
     async fn set_secret(
@@ -59,6 +67,7 @@ impl KeyringBackend for MemoryKeyring {
         account: &str,
         secret: &str,
     ) -> Result<(), KeyringError> {
+        tracing::info!(service, account, "Storing secret in memory keyring");
         let mut lock = self
             .store
             .write()
@@ -71,6 +80,7 @@ impl KeyringBackend for MemoryKeyring {
     }
 
     async fn delete_secret(&self, service: &str, account: &str) -> Result<(), KeyringError> {
+        tracing::info!(service, account, "Deleting secret from memory keyring");
         let mut lock = self
             .store
             .write()

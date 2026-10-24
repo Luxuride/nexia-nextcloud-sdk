@@ -52,6 +52,7 @@ impl FuseDriver {
 
     /// Looks up a child node by `name` inside the parent directory identified by `parent_ino`.
     pub fn lookup(&self, parent_ino: u64, name: &str) -> Result<FileAttr, i32> {
+        tracing::trace!(parent_ino, name, "FUSE lookup");
         let parent_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(parent_ino).ok_or(ENOENT)?.to_string()
@@ -141,6 +142,7 @@ impl FuseDriver {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(ino).ok_or(ENOENT)?.to_string()
         };
+        tracing::trace!(ino, path = %path, offset, size, "FUSE read request");
 
         // Check if placeholder
         let is_placeholder = {
@@ -150,6 +152,7 @@ impl FuseDriver {
         };
 
         if is_placeholder {
+            tracing::info!(ino, path = %path, "FUSE triggering on-demand file hydration");
             let bytes = self.hydrator.hydrate(&path).await.map_err(|_| ENOENT)?;
             let mut tree = self.tree.write().map_err(|_| EINVAL)?;
             tree.hydrate(&path, bytes).map_err(|_| EINVAL)?;

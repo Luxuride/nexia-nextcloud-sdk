@@ -44,26 +44,40 @@ impl KeyringBackend for LinuxKeyring {
         service: &str,
         account: &str,
     ) -> Result<Option<SecretString>, KeyringError> {
+        tracing::debug!(
+            service,
+            account,
+            "Looking up secret in Linux Secret Service"
+        );
         let keyring = self.keyring().await?;
         let attrs = Self::attributes(service, account);
-        let items = keyring
-            .search_items(&attrs)
-            .await
-            .map_err(|err| KeyringError::platform("search", err))?;
+        let items = keyring.search_items(&attrs).await.map_err(|err| {
+            tracing::error!(service, account, error = %err, "Failed searching Linux keyring");
+            KeyringError::platform("search", err)
+        })?;
 
         let Some(item) = items.into_iter().next() else {
+            tracing::trace!(service, account, "No matching item found in Linux keyring");
             return Ok(None);
         };
 
         let secret = item
             .secret()
             .await
-            .map_err(|err| KeyringError::platform("read", err))?;
+            .map_err(|err| {
+                tracing::error!(service, account, error = %err, "Failed reading secret from Linux keyring item");
+                KeyringError::platform("read", err)
+            })?;
         let text =
             std::str::from_utf8(secret.as_bytes()).map_err(|_| KeyringError::InvalidData {
                 reason: "secret payload is not valid UTF-8",
             })?;
 
+        tracing::trace!(
+            service,
+            account,
+            "Successfully retrieved secret from Linux keyring"
+        );
         Ok(Some(SecretString::new(text)))
     }
 
@@ -73,6 +87,7 @@ impl KeyringBackend for LinuxKeyring {
         account: &str,
         secret: &str,
     ) -> Result<(), KeyringError> {
+        tracing::info!(service, account, "Storing secret in Linux Secret Service");
         let keyring = self.keyring().await?;
         let label = format!("{service}:{account}");
         let attrs = Self::attributes(service, account);
@@ -80,23 +95,37 @@ impl KeyringBackend for LinuxKeyring {
         keyring
             .create_item(&label, &attrs, Secret::text(secret), true)
             .await
-            .map_err(|err| KeyringError::platform("write", err))?;
+            .map_err(|err| {
+                tracing::error!(service, account, error = %err, "Failed writing secret to Linux keyring");
+                KeyringError::platform("write", err)
+            })?;
 
         Ok(())
     }
 
     async fn delete_secret(&self, service: &str, account: &str) -> Result<(), KeyringError> {
+        tracing::info!(
+            service,
+            account,
+            "Deleting secret from Linux Secret Service"
+        );
         let keyring = self.keyring().await?;
         let attrs = Self::attributes(service, account);
         let items = keyring
             .search_items(&attrs)
             .await
-            .map_err(|err| KeyringError::platform("search", err))?;
+            .map_err(|err| {
+                tracing::error!(service, account, error = %err, "Failed searching Linux keyring for deletion");
+                KeyringError::platform("search", err)
+            })?;
 
         for item in items {
             item.delete()
                 .await
-                .map_err(|err| KeyringError::platform("delete", err))?;
+                .map_err(|err| {
+                    tracing::error!(service, account, error = %err, "Failed deleting item from Linux keyring");
+                    KeyringError::platform("delete", err)
+                })?;
         }
 
         Ok(())

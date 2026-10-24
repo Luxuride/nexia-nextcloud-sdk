@@ -19,6 +19,7 @@ impl Anonymous {
 
 impl AuthProvider for Anonymous {
     fn authenticate(&self, headers: &mut Headers) {
+        tracing::trace!("Applying Anonymous authentication marker");
         headers.remove("Authorization");
         headers.set("OCS-APIRequest", "true");
     }

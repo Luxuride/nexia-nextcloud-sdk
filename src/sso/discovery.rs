@@ -24,6 +24,7 @@ impl DesktopSso {
     /// failures (e.g. D-Bus unavailable, no KAccounts database) are ignored so discovery
     /// continues gracefully.
     pub async fn discover_accounts(&self) -> Vec<DiscoveredAccount> {
+        tracing::info!("Starting desktop SSO account discovery across subsystems");
         let mut results = Vec::new();
         let mut seen = HashSet::new();
 
@@ -86,6 +87,10 @@ impl DesktopSso {
             }
         }
 
+        tracing::info!(
+            total = results.len(),
+            "Finished desktop SSO account discovery"
+        );
         results
     }
 
@@ -95,6 +100,11 @@ impl DesktopSso {
         account: &DiscoveredAccount,
         keyring: &K,
     ) -> Result<Option<SecretString>, SsoError> {
+        tracing::debug!(
+            server = %account.server_url,
+            user = %account.username,
+            "Attempting to resolve SSO credentials from platform keyring"
+        );
         const SERVICES: [&str; 4] = ["Nextcloud", "ownCloud", "KAccounts", "signon"];
         let keys = account.candidate_keychain_keys();
 

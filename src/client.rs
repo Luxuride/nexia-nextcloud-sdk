@@ -85,11 +85,15 @@ impl Client {
 
     /// Dynamically updates the upload bandwidth limit without requiring client rebuild.
     pub fn set_upload_limit(&self, limit: impl Into<BandwidthLimit>) {
+        let limit = limit.into();
+        tracing::info!(?limit, "Dynamically updating client upload limit");
         self.transport.set_upload_limit(limit);
     }
 
     /// Dynamically updates the download bandwidth limit without requiring client rebuild.
     pub fn set_download_limit(&self, limit: impl Into<BandwidthLimit>) {
+        let limit = limit.into();
+        tracing::info!(?limit, "Dynamically updating client download limit");
         self.transport.set_download_limit(limit);
     }
 
@@ -136,6 +140,7 @@ impl Client {
     /// Requests a login flow from the server, persists the pending flow to local storage,
     /// and returns the [`LoginStart`] containing the browser URL and poll endpoint.
     pub async fn start_login(&self) -> Result<LoginStart, ClientError> {
+        tracing::debug!("Client dispatching start_login task");
         let (reply, rx) = oneshot::channel();
         self.task_tx
             .send(WorkerTask::StartLogin { reply })
@@ -149,6 +154,7 @@ impl Client {
     /// Returns the updated [`SessionState`]. If the user has granted access in the browser,
     /// the state becomes [`SessionState::Authenticated`] and credentials are saved to encrypted storage.
     pub async fn poll_login(&self) -> Result<SessionState, ClientError> {
+        tracing::debug!("Client dispatching poll_login task");
         let (reply, rx) = oneshot::channel();
         self.task_tx
             .send(WorkerTask::PollLogin { reply })
@@ -159,6 +165,7 @@ impl Client {
 
     /// Logs out of the current session, wiping local encrypted credentials and cached records.
     pub async fn logout(&self) -> Result<(), ClientError> {
+        tracing::info!("Client dispatching logout task");
         let (reply, rx) = oneshot::channel();
         self.task_tx
             .send(WorkerTask::Logout { reply })
@@ -169,6 +176,7 @@ impl Client {
 
     /// Clears cached server capabilities and metadata without logging out.
     pub async fn clear_cache(&self) -> Result<(), ClientError> {
+        tracing::info!("Client dispatching clear_cache task");
         let (reply, rx) = oneshot::channel();
         self.task_tx
             .send(WorkerTask::ClearCache { reply })
@@ -341,5 +349,92 @@ mod tests {
         let rendered = format!("{client:?}");
         assert!(rendered.contains("Client"));
         assert!(rendered.contains("https://cloud.example.org"));
+    }
+
+    #[tokio::test]
+    async fn structured_logging_levels_emitted() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tracing::span::{Attributes, Id, Record};
+        use tracing::{Event, Metadata, Subscriber};
+
+        struct LevelTracker {
+            trace_count: Arc<AtomicUsize>,
+            debug_count: Arc<AtomicUsize>,
+            info_count: Arc<AtomicUsize>,
+            warn_count: Arc<AtomicUsize>,
+            error_count: Arc<AtomicUsize>,
+        }
+
+        impl Subscriber for LevelTracker {
+            fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+                true
+            }
+            fn new_span(&self, _span: &Attributes<'_>) -> Id {
+                Id::from_u64(1)
+            }
+            fn record(&self, _span: &Id, _values: &Record<'_>) {}
+            fn record_follows_from(&self, _span: &Id, _follows: &Id) {}
+            fn event(&self, event: &Event<'_>) {
+                match *event.metadata().level() {
+                    tracing::Level::TRACE => {
+                        self.trace_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                    tracing::Level::DEBUG => {
+                        self.debug_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                    tracing::Level::INFO => {
+                        self.info_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                    tracing::Level::WARN => {
+                        self.warn_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                    tracing::Level::ERROR => {
+                        self.error_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                }
+            }
+            fn enter(&self, _span: &Id) {}
+            fn exit(&self, _span: &Id) {}
+        }
+
+        let trace_count = Arc::new(AtomicUsize::new(0));
+        let debug_count = Arc::new(AtomicUsize::new(0));
+        let info_count = Arc::new(AtomicUsize::new(0));
+        let warn_count = Arc::new(AtomicUsize::new(0));
+        let error_count = Arc::new(AtomicUsize::new(0));
+
+        let tracker = LevelTracker {
+            trace_count: trace_count.clone(),
+            debug_count: debug_count.clone(),
+            info_count: info_count.clone(),
+            warn_count: warn_count.clone(),
+            error_count: error_count.clone(),
+        };
+
+        tracing::subscriber::with_default(tracker, || {
+            tracing::trace!("trace event");
+            tracing::debug!("debug event");
+            tracing::info!("info event");
+            tracing::warn!("warn event");
+            tracing::error!("error event");
+
+            let server_url = ServerUrl::parse("https://cloud.example.org").unwrap();
+            let transport = TransportBuilder::with_server(server_url.clone())
+                .build()
+                .unwrap();
+            let (_state_tx, state_rx) = watch::channel(SessionState::Idle);
+            let (task_tx, _task_rx) = mpsc::channel(1);
+            let client = Client::new(server_url, transport, task_tx, state_rx);
+
+            client.set_upload_limit(BandwidthLimit::from_kib(500));
+            client.set_download_limit(BandwidthLimit::from_mib(5));
+        });
+
+        assert!(trace_count.load(Ordering::SeqCst) >= 1);
+        assert!(debug_count.load(Ordering::SeqCst) >= 3);
+        assert!(info_count.load(Ordering::SeqCst) >= 3);
+        assert!(warn_count.load(Ordering::SeqCst) >= 1);
+        assert!(error_count.load(Ordering::SeqCst) >= 1);
     }
 }

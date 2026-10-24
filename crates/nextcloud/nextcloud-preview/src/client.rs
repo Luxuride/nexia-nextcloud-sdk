@@ -62,6 +62,7 @@ impl<'a, T: Transport, A: AuthProvider> PreviewClient<'a, T, A> {
         file_id: u64,
         options: &PreviewOptions,
     ) -> Result<Vec<u8>, Error> {
+        tracing::debug!(file_id, "Fetching file preview by ID");
         let query = build_file_id_query(file_id, options);
         self.fetch_preview(&query).await
     }
@@ -80,6 +81,7 @@ impl<'a, T: Transport, A: AuthProvider> PreviewClient<'a, T, A> {
         path: &str,
         options: &PreviewOptions,
     ) -> Result<Vec<u8>, Error> {
+        tracing::debug!(path, "Fetching file preview by path");
         let query = build_path_query(path, options);
         self.fetch_preview(&query).await
     }
@@ -104,6 +106,12 @@ fn ensure_success(method: HttpMethod, path: ApiPath, response: Response) -> Resu
     if response.status().is_success() {
         Ok(response.into_body())
     } else {
+        tracing::error!(
+            method = ?method,
+            path = %path.as_str(),
+            status = %response.status(),
+            "Preview request failed"
+        );
         Err(Error::Status(StatusError::new(
             method.as_str(),
             path,

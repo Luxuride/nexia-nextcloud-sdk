@@ -52,6 +52,7 @@ impl BasicAuth {
 
 impl AuthProvider for BasicAuth {
     fn authenticate(&self, headers: &mut Headers) {
+        tracing::trace!(user = %self.credentials.user(), "Applying Basic authentication header");
         headers.set("Authorization", self.header_value());
     }
 }

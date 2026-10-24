@@ -88,6 +88,13 @@ impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
         total_size: u64,
         upload_id: &str,
     ) -> Result<UploadSession, Error> {
+        tracing::info!(
+            user_id,
+            destination_path,
+            total_size,
+            upload_id,
+            "Starting chunked upload session"
+        );
         let destination = destination_header_value(user_id, destination_path)?;
         let path = upload_collection_path(user_id, upload_id)?;
 
@@ -122,6 +129,12 @@ impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
         chunk_data: Vec<u8>,
     ) -> Result<(), Error> {
         let path = chunk_path(session.user_id(), session.upload_id(), chunk_index)?;
+        tracing::debug!(
+            upload_id = session.upload_id(),
+            chunk_index,
+            bytes = chunk_data.len(),
+            "Uploading file chunk"
+        );
 
         let mut headers = self.authenticated_headers();
         headers.set(DESTINATION_HEADER, session.destination_path());
@@ -146,6 +159,11 @@ impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
     /// - optionally `X-OC-Mtime: {mtime}`
     pub async fn finish(&self, session: &UploadSession, mtime: Option<u64>) -> Result<(), Error> {
         let path = assembly_path(session.user_id(), session.upload_id())?;
+        tracing::info!(
+            upload_id = session.upload_id(),
+            destination = session.destination_path(),
+            "Finalizing chunked upload assembly"
+        );
 
         let mut headers = self.authenticated_headers();
         headers.set(DESTINATION_HEADER, session.destination_path());
@@ -165,6 +183,10 @@ impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
     /// Sends `DELETE /remote.php/dav/uploads/{user_id}/{upload_id}/`.
     pub async fn abort(&self, session: &UploadSession) -> Result<(), Error> {
         let path = abort_path(session.user_id(), session.upload_id())?;
+        tracing::warn!(
+            upload_id = session.upload_id(),
+            "Aborting chunked upload session"
+        );
 
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, path.clone()).with_headers(headers);
@@ -182,6 +204,12 @@ impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
 
 fn ensure_success(method: HttpMethod, path: &ApiPath, response: &Response) -> Result<(), Error> {
     if !response.status().is_success() {
+        tracing::error!(
+            method = ?method,
+            path = %path.as_str(),
+            status = %response.status(),
+            "Chunked upload operation failed"
+        );
         return Err(Error::Status(StatusError::new(
             method.as_str(),
             path.clone(),
@@ -189,6 +217,7 @@ fn ensure_success(method: HttpMethod, path: &ApiPath, response: &Response) -> Re
             response.body(),
         )));
     }
+    tracing::trace!(method = ?method, path = %path.as_str(), "Chunked upload request succeeded");
     Ok(())
 }
 

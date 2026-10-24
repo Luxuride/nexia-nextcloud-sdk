@@ -33,6 +33,7 @@ impl SessionStore {
 
     /// Persists an account record, replacing any existing entry for the same server and login name.
     pub fn store_account(&self, account: &Account) -> Result<(), StorageError> {
+        tracing::debug!(server = %account.server(), user_id = %account.user_id(), "Storing account in session store");
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -62,6 +63,7 @@ impl SessionStore {
 
     /// Loads the most recent account record for `server`, if present.
     pub fn load_account(&self, server: &ServerUrl) -> Result<Option<Account>, StorageError> {
+        tracing::trace!(server = %server, "Loading account from session store");
         let conn = self.database.connection();
         let mut stmt = conn
             .prepare(
@@ -116,6 +118,7 @@ impl SessionStore {
 
     /// Deletes all stored accounts for `server`.
     pub fn delete_account(&self, server: &ServerUrl) -> Result<(), StorageError> {
+        tracing::info!(server = %server, "Deleting stored account from session store");
         self.database
             .connection()
             .execute(

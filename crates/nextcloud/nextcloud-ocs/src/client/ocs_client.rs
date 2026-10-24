@@ -65,6 +65,7 @@ impl<T: Transport, A: AuthProvider> OcsClient<T, A> {
         query: Query,
     ) -> Result<Res, Error> {
         let path = with_query(&require_ocs(path)?, &query);
+        tracing::debug!(path = %path.as_str(), "Executing OCS GET request");
         let request = build_request(HttpMethod::Get, path.clone(), None::<&()>, &self.auth)?;
         let response = self.transport.execute(request).await?;
         decode_response(HttpMethod::Get, path, &response)
@@ -106,6 +107,7 @@ impl<T: Transport, A: AuthProvider> OcsClient<T, A> {
         body: &Req,
     ) -> Result<Res, Error> {
         let path = with_query(&require_ocs(path)?, &query);
+        tracing::debug!(path = %path.as_str(), "Executing OCS POST request");
         let request = build_request(HttpMethod::Post, path.clone(), Some(body), &self.auth)?;
         let response = self.transport.execute(request).await?;
         decode_response(HttpMethod::Post, path, &response)
@@ -147,6 +149,7 @@ impl<T: Transport, A: AuthProvider> OcsClient<T, A> {
         body: &Req,
     ) -> Result<Res, Error> {
         let path = with_query(&require_ocs(path)?, &query);
+        tracing::debug!(path = %path.as_str(), "Executing OCS PUT request");
         let request = build_request(HttpMethod::Put, path.clone(), Some(body), &self.auth)?;
         let response = self.transport.execute(request).await?;
         decode_response(HttpMethod::Put, path, &response)
@@ -182,6 +185,7 @@ impl<T: Transport, A: AuthProvider> OcsClient<T, A> {
         query: Query,
     ) -> Result<Res, Error> {
         let path = with_query(&require_ocs(path)?, &query);
+        tracing::debug!(path = %path.as_str(), "Executing OCS DELETE request");
         let request = build_request(HttpMethod::Delete, path.clone(), None::<&()>, &self.auth)?;
         let response = self.transport.execute(request).await?;
         decode_response(HttpMethod::Delete, path, &response)

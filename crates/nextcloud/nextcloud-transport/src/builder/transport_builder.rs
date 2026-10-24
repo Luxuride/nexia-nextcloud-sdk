@@ -140,6 +140,7 @@ impl TransportBuilder {
     /// remaining variants when `reqwest` rejects the configuration.
     pub fn build(self) -> Result<ReqwestTransport, TransportBuildError> {
         let server = self.server.ok_or(TransportBuildError::MissingServerUrl)?;
+        tracing::debug!(server = %server, "Building ReqwestTransport");
         self.timeouts.validate()?;
 
         let builder = self.timeouts.apply(reqwest::Client::builder());

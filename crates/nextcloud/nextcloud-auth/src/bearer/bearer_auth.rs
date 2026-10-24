@@ -36,6 +36,7 @@ impl BearerAuth {
 
 impl AuthProvider for BearerAuth {
     fn authenticate(&self, headers: &mut Headers) {
+        tracing::trace!("Applying Bearer token authentication header");
         headers.set("Authorization", self.header_value());
     }
 }

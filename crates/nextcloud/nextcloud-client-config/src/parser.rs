@@ -19,6 +19,7 @@ impl ClientConfigParser {
 
     /// Reads and parses desktop accounts from a file path.
     pub fn parse_file(path: &Path) -> Result<Vec<DesktopClientAccount>, ClientConfigError> {
+        tracing::debug!(path = %path.display(), "Parsing Nextcloud desktop client config file");
         let content = fs::read_to_string(path)
             .map_err(|err| ClientConfigError::io(path.to_path_buf(), err))?;
         Self::parse_str(&content)
@@ -105,6 +106,7 @@ impl ClientConfigParser {
             });
         }
 
+        tracing::info!(count = accounts.len(), "Parsed desktop client accounts");
         Ok(accounts)
     }
 }

@@ -182,6 +182,8 @@ impl ClientBuilder {
             .server_url
             .ok_or(ClientError::MissingConfiguration("server_url"))?;
 
+        tracing::info!(server_url = %server_url, "Building Nextcloud Client");
+
         let storage_paths = self
             .storage_paths
             .ok_or(ClientError::MissingConfiguration("storage_paths"))?;
@@ -249,6 +251,7 @@ impl ClientBuilder {
             actor.run().await;
         });
 
+        tracing::info!(server_url = %server_url, "Nextcloud Client constructed successfully");
         Ok(Client::new(server_url, transport, task_tx, state_rx))
     }
 }

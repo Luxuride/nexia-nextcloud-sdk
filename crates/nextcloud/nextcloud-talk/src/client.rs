@@ -61,6 +61,7 @@ impl<'a, T: Transport, A: AuthProvider> TalkClient<'a, T, A> {
     ///
     /// Sends `GET /ocs/v2.php/apps/spreed/api/v4/room`.
     pub async fn list_rooms(&self) -> Result<Vec<Room>, Error> {
+        tracing::debug!("Listing Talk rooms");
         let path = ApiPath::ocs(ROOM_API_PATH)?;
         self.ocs
             .get(path, Query::new().format(OcsFormat::Json))
@@ -71,6 +72,7 @@ impl<'a, T: Transport, A: AuthProvider> TalkClient<'a, T, A> {
     ///
     /// Sends `GET /ocs/v2.php/apps/spreed/api/v4/room/{token}`.
     pub async fn get_room(&self, token: &str) -> Result<Room, Error> {
+        tracing::debug!(token, "Fetching Talk room details");
         let path = ApiPath::ocs(format!("{ROOM_API_PATH}/{token}"))?;
         self.ocs
             .get(path, Query::new().format(OcsFormat::Json))
@@ -86,6 +88,7 @@ impl<'a, T: Transport, A: AuthProvider> TalkClient<'a, T, A> {
         invite: Option<&str>,
         name: Option<&str>,
     ) -> Result<Room, Error> {
+        tracing::info!(?room_type, ?name, "Creating Talk room");
         let path = ApiPath::ocs(ROOM_API_PATH)?;
         let request = CreateRoomRequest {
             room_type,
@@ -101,6 +104,7 @@ impl<'a, T: Transport, A: AuthProvider> TalkClient<'a, T, A> {
     ///
     /// Sends `DELETE /ocs/v2.php/apps/spreed/api/v4/room/{token}`.
     pub async fn delete_room(&self, token: &str) -> Result<(), Error> {
+        tracing::info!(token, "Deleting Talk room");
         let path = ApiPath::ocs(format!("{ROOM_API_PATH}/{token}"))?;
         self.ocs
             .delete_with_query::<()>(path, Query::new().format(OcsFormat::Json))

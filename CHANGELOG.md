@@ -2,6 +2,12 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
+## Unreleased
+
+### Added
+
+- Zero-cost structured logging with `tracing` across all workspace crates and the facade client (`trace!`, `debug!`, `info!`, `warn!`, `error!`), with zero credential leakage.
+
 ## 0.1.1
 
 First release covering the whole workspace.

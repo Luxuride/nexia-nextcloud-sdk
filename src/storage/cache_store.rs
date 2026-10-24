@@ -38,6 +38,7 @@ impl CacheStore {
         user_id: &str,
         body: &[u8],
     ) -> Result<(), StorageError> {
+        tracing::trace!(server = %server, user_id, "Storing capabilities in cache store");
         let fetched_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -243,6 +244,7 @@ impl CacheStore {
 
     /// Wipes all cached data across all tables.
     pub fn clear(&self) -> Result<(), StorageError> {
+        tracing::info!("Clearing all cached data in cache store");
         let conn = self.database.connection();
         conn.execute("DELETE FROM capabilities", [])
             .map_err(|e| query_err("clearing capabilities cache", e))?;

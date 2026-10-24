@@ -18,6 +18,12 @@ pub(crate) fn decode_response<Res: DeserializeOwned>(
     response: &Response,
 ) -> Result<Res, Error> {
     if !response.status().is_success() {
+        tracing::warn!(
+            method = ?method,
+            path = %path.as_str(),
+            status = %response.status(),
+            "OCS response received non-success HTTP status"
+        );
         return Err(status_error(method, path, response));
     }
 
@@ -35,12 +41,34 @@ pub(crate) fn decode_response<Res: DeserializeOwned>(
         .map_err(Error::Decode)?;
 
     match verdict.ocs.meta.verdict() {
-        Some(OcsStatus::Ok) => {}
-        Some(OcsStatus::Failure) => return Err(status_error(method, path, response)),
+        Some(OcsStatus::Ok) => {
+            tracing::trace!(
+                method = ?method,
+                path = %path.as_str(),
+                statuscode = verdict.ocs.meta.statuscode(),
+                "OCS response statuscode verified successfully"
+            );
+        }
+        Some(OcsStatus::Failure) => {
+            tracing::error!(
+                method = ?method,
+                path = %path.as_str(),
+                statuscode = verdict.ocs.meta.statuscode(),
+                message = %verdict.ocs.meta.message(),
+                "OCS response envelope reported failure verdict"
+            );
+            return Err(status_error(method, path, response));
+        }
         // An envelope that carries no readable verdict is malformed, not a
         // success: guessing here would turn a broken answer into a payload
         // the caller cannot distinguish from a real one.
         None => {
+            tracing::error!(
+                method = ?method,
+                path = %path.as_str(),
+                statuscode = verdict.ocs.meta.statuscode(),
+                "OCS response envelope missing valid verdict"
+            );
             return Err(Error::Decode(DecodeError::new(
                 type_name::<OcsEnvelope<Res>>(),
                 StatusCodeError::new(verdict.ocs.meta.statuscode()),

@@ -10,3 +10,4 @@ description = "Per-call lifecycle and retry policy for the Nextcloud Rust SDK"
 
 [dependencies]
 nextcloud-sdk-core.workspace = true
+tracing.workspace = true

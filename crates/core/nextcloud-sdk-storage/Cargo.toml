@@ -15,6 +15,7 @@ keychain = ["dep:nextcloud-sdk-keyring"]
 [dependencies]
 getrandom.workspace = true
 nextcloud-sdk-keyring = { workspace = true, optional = true }
+tracing.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }

@@ -13,6 +13,7 @@ nextcloud-sdk-core.workspace = true
 nextcloud-sdk-ratelimit.workspace = true
 futures-util = "0.3"
 reqwest.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }

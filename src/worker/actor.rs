@@ -70,7 +70,9 @@ impl WorkerActor {
 
     /// Event loop processing worker tasks until all client handles are dropped.
     pub async fn run(mut self) {
+        tracing::debug!("Worker actor started event loop");
         while let Some(task) = self.task_rx.recv().await {
+            tracing::trace!(task = ?task, "Worker actor received task");
             self.handle_task(task).await;
         }
     }
@@ -118,6 +120,7 @@ impl WorkerActor {
     }
 
     async fn start_login(&mut self) -> Result<LoginStart, ClientError> {
+        tracing::info!(server_url = %self.server_url, "Starting Login Flow v2");
         let _ = self
             .session_machine
             .handle(SessionEvent::StartRequested)
@@ -170,10 +173,12 @@ impl WorkerActor {
 
         self.state_tx
             .send_replace(self.session_machine.state().clone());
+        tracing::info!(login_url = %start.login_url(), "Login Flow v2 initiated successfully");
         Ok(start)
     }
 
     async fn poll_login(&mut self) -> Result<SessionState, ClientError> {
+        tracing::debug!("Polling Login Flow v2 endpoint");
         if self.session_machine.is_authenticated() {
             return Ok(self.session_machine.state().clone());
         }
@@ -239,12 +244,14 @@ impl WorkerActor {
                             .store_account(&account)
                             .map_err(ClientError::Storage)?;
                         let _ = self.session_store.delete_login_flow(&self.server_url);
+                        tracing::info!(user_id = %account.user_id(), "Login Flow v2 succeeded and authenticated");
                     }
 
                     self.state_tx
                         .send_replace(self.session_machine.state().clone());
                     Ok(self.session_machine.state().clone())
                 } else {
+                    tracing::debug!("Login Flow v2 authorization still pending");
                     self.session_machine
                         .handle(SessionEvent::PollPending)
                         .map_err(ClientError::Session)?;
@@ -253,11 +260,15 @@ impl WorkerActor {
                     Ok(self.session_machine.state().clone())
                 }
             }
-            Err(err) => Err(ClientError::Core(Error::transport(err))),
+            Err(err) => {
+                tracing::error!(error = %err, "Error polling Login Flow v2");
+                Err(ClientError::Core(Error::transport(err)))
+            }
         }
     }
 
     fn logout(&mut self) -> Result<(), ClientError> {
+        tracing::info!(server_url = %self.server_url, "Logging out user and wiping session credentials");
         self.session_machine
             .handle(SessionEvent::LogoutRequested)
             .map_err(ClientError::Session)?;

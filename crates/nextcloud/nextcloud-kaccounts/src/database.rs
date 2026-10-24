@@ -27,6 +27,7 @@ impl KAccountsDatabase {
 
     /// Opens the KAccounts database from a specific file path in read-only mode.
     pub fn open(path: &Path) -> Result<Self, KAccountsError> {
+        tracing::debug!(path = %path.display(), "Opening KAccounts SQLite database");
         let conn = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
@@ -101,6 +102,7 @@ impl KAccountsDatabase {
             });
         }
 
+        tracing::info!(count = accounts.len(), "Queried KAccounts accounts");
         Ok(accounts)
     }
 

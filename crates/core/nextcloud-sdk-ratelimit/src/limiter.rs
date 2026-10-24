@@ -46,21 +46,25 @@ impl BandwidthLimiter {
 
     /// Dynamically updates the upload bandwidth limit.
     pub fn set_upload_limit(&self, limit: BandwidthLimit) {
+        tracing::info!(?limit, "Setting upload bandwidth limit");
         self.upload.set_limit(limit);
     }
 
     /// Dynamically updates the download bandwidth limit.
     pub fn set_download_limit(&self, limit: BandwidthLimit) {
+        tracing::info!(?limit, "Setting download bandwidth limit");
         self.download.set_limit(limit);
     }
 
     /// Throttles an outbound upload transfer of `bytes` according to the upload limit.
     pub async fn throttle_upload(&self, bytes: usize) {
+        tracing::trace!(bytes, "Throttling upload chunk");
         self.upload.acquire(bytes).await;
     }
 
     /// Throttles an inbound download transfer of `bytes` according to the download limit.
     pub async fn throttle_download(&self, bytes: usize) {
+        tracing::trace!(bytes, "Throttling download chunk");
         self.download.acquire(bytes).await;
     }
 

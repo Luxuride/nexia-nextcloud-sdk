@@ -89,12 +89,16 @@ impl ReqwestTransport {
 
     /// Dynamically updates the upload bandwidth limit.
     pub fn set_upload_limit(&self, limit: impl Into<BandwidthLimit>) {
-        self.limiter.set_upload_limit(limit.into());
+        let limit = limit.into();
+        tracing::debug!(?limit, "Updated upload bandwidth limit on transport");
+        self.limiter.set_upload_limit(limit);
     }
 
     /// Dynamically updates the download bandwidth limit.
     pub fn set_download_limit(&self, limit: impl Into<BandwidthLimit>) {
-        self.limiter.set_download_limit(limit.into());
+        let limit = limit.into();
+        tracing::debug!(?limit, "Updated download bandwidth limit on transport");
+        self.limiter.set_download_limit(limit);
     }
 
     /// The currently active default download progress callback, if any.
@@ -141,6 +145,17 @@ impl ReqwestTransport {
         let method = to_reqwest(request.method())?;
         let url = self.server.join(request.path());
 
+        tracing::debug!(
+            method = ?request.method(),
+            path = %request.path(),
+            "Sending HTTP request"
+        );
+        tracing::trace!(
+            has_body = request.body().is_some(),
+            body_len = request.body().map_or(0, |b| b.len()),
+            "Prepared HTTP request"
+        );
+
         let mut builder = self
             .client
             .request(method, url)
@@ -152,7 +167,26 @@ impl ReqwestTransport {
             builder = builder.body(req_body);
         }
 
-        let response = builder.send().await.map_err(Error::transport)?;
+        let response = match builder.send().await {
+            Ok(resp) => {
+                tracing::debug!(
+                    method = ?request.method(),
+                    path = %request.path(),
+                    status = %resp.status(),
+                    "HTTP response received"
+                );
+                resp
+            }
+            Err(err) => {
+                tracing::error!(
+                    method = ?request.method(),
+                    path = %request.path(),
+                    error = %err,
+                    "HTTP request failed"
+                );
+                return Err(Error::transport(err));
+            }
+        };
         to_response(response, &self.limiter, download_progress.as_ref()).await
     }
 

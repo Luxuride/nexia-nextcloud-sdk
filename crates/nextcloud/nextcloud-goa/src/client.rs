@@ -19,6 +19,7 @@ pub struct GnomeOnlineAccounts {
 impl GnomeOnlineAccounts {
     /// Connects to the user's session D-Bus.
     pub async fn connect() -> Result<Self, GoaError> {
+        tracing::debug!("Connecting to GNOME Online Accounts via session D-Bus");
         let conn = zbus::Connection::session().await?;
         Ok(Self::from_connection(conn))
     }
@@ -100,9 +101,11 @@ impl GnomeOnlineAccounts {
         }
 
         if accounts.is_empty() {
+            tracing::debug!("No Nextcloud accounts found in GNOME Online Accounts");
             return Err(GoaError::NoAccountsFound);
         }
 
+        tracing::info!(count = accounts.len(), "Discovered GNOME Online Accounts");
         Ok(accounts)
     }
 }

@@ -21,6 +21,7 @@ impl EncryptedDatabase {
     /// Opens `path`, creating the file if it does not exist, and applies `key`.
     pub fn open(path: impl AsRef<Path>, key: &StoreKey) -> Result<Self, StorageError> {
         let path = path.as_ref().to_path_buf();
+        tracing::debug!(path = %path.display(), "Opening encrypted database");
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
@@ -28,19 +29,26 @@ impl EncryptedDatabase {
                 .map_err(|source| StorageError::path("creating the database directory", source))?;
         }
 
-        let connection =
-            Connection::open(&path).map_err(|source| StorageError::open(&path, source))?;
-        connection
-            .execute_batch(&key.pragma())
-            .map_err(|source| StorageError::open(&path, source))?;
+        let connection = Connection::open(&path).map_err(|source| {
+            tracing::error!(path = %path.display(), error = %source, "Failed to open sqlite database file");
+            StorageError::open(&path, source)
+        })?;
+        connection.execute_batch(&key.pragma()).map_err(|source| {
+            tracing::error!(path = %path.display(), error = %source, "Failed to apply encryption key pragma");
+            StorageError::open(&path, source)
+        })?;
 
         // The first read after `PRAGMA key` is what actually validates it.
         connection
             .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
                 row.get::<_, i64>(0)
             })
-            .map_err(|source| StorageError::key_rejected(&path, source))?;
+            .map_err(|source| {
+                tracing::error!(path = %path.display(), error = %source, "Encryption key rejected by database");
+                StorageError::key_rejected(&path, source)
+            })?;
 
+        tracing::info!(path = %path.display(), "Encrypted database opened successfully");
         Ok(Self { connection, path })
     }
 
@@ -84,6 +92,7 @@ impl EncryptedDatabase {
     }
 
     fn apply_schema(&self, statements: &[&str], version: i64) -> Result<(), StorageError> {
+        tracing::debug!(version, "Applying database schema");
         for statement in statements {
             self.connection
                 .execute_batch(statement)

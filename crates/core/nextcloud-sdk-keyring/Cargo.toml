@@ -9,6 +9,7 @@ readme = "README.md"
 description = "Multi-platform secure keyring abstraction for Nextcloud Rust SDK with Flatpak and native OS support"
 
 [dependencies]
+tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 oo7 = { workspace = true }

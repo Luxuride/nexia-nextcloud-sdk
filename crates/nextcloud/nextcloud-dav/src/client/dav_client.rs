@@ -51,10 +51,16 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
         depth: Depth,
         body: &PropfindBody,
     ) -> Result<Vec<DavResource>, Error> {
+        tracing::debug!(path = %path.as_str(), ?depth, "Executing WebDAV PROPFIND");
         let request = self.build_propfind(path, depth, body);
         let response = self.transport.execute(request).await?;
 
         if response.status() != StatusCode::new(207) {
+            tracing::warn!(
+                path = %path.as_str(),
+                status = %response.status(),
+                "WebDAV PROPFIND expected 207 Multi-Status"
+            );
             return Err(Error::Status(StatusError::new(
                 HttpMethod::Propfind.as_str(),
                 path.to_api_path(),
@@ -73,6 +79,7 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
     /// Any non-`2xx` status returns [`Error::Status`] with the response body
     /// retained for diagnosis.
     pub async fn get(&self, path: &DavPath) -> Result<Vec<u8>, Error> {
+        tracing::debug!(path = %path.as_str(), "Executing WebDAV GET");
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Get, path.to_api_path()).with_headers(headers);
         let response = self.transport.execute(request).await?;
@@ -91,6 +98,7 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
         body: impl Into<Vec<u8>>,
         content_type: Option<&str>,
     ) -> Result<(), Error> {
+        tracing::debug!(path = %path.as_str(), "Executing WebDAV PUT");
         let mut headers = self.authenticated_headers();
         if let Some(content_type) = content_type {
             headers.set("Content-Type", content_type);
@@ -108,6 +116,7 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
     /// Any non-`2xx` status returns [`Error::Status`] with the response body
     /// retained for diagnosis.
     pub async fn mkcol(&self, path: &DavPath) -> Result<(), Error> {
+        tracing::debug!(path = %path.as_str(), "Executing WebDAV MKCOL");
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Mkcol, path.to_api_path()).with_headers(headers);
         let response = self.transport.execute(request).await?;
@@ -120,6 +129,7 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
     /// Any non-`2xx` status returns [`Error::Status`] with the response body
     /// retained for diagnosis.
     pub async fn delete(&self, path: &DavPath) -> Result<(), Error> {
+        tracing::debug!(path = %path.as_str(), "Executing WebDAV DELETE");
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, path.to_api_path()).with_headers(headers);
         let response = self.transport.execute(request).await?;
@@ -174,6 +184,13 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
         destination: &DavPath,
         overwrite: bool,
     ) -> Result<(), Error> {
+        tracing::debug!(
+            method = ?method,
+            source = %source.as_str(),
+            destination = %destination.as_str(),
+            overwrite,
+            "Executing WebDAV transfer"
+        );
         let mut headers = self.authenticated_headers();
         headers.set(DESTINATION_HEADER, destination.to_api_path().as_str());
         headers.set(
@@ -199,6 +216,12 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
 
 fn ensure_success(method: HttpMethod, path: &DavPath, response: &Response) -> Result<(), Error> {
     if !response.status().is_success() {
+        tracing::warn!(
+            method = ?method,
+            path = %path.as_str(),
+            status = %response.status(),
+            "WebDAV request received non-success status"
+        );
         return Err(Error::Status(StatusError::new(
             method.as_str(),
             path.to_api_path(),
@@ -206,6 +229,7 @@ fn ensure_success(method: HttpMethod, path: &DavPath, response: &Response) -> Re
             response.body(),
         )));
     }
+    tracing::trace!(method = ?method, path = %path.as_str(), "WebDAV request succeeded");
     Ok(())
 }
 
