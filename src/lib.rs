@@ -23,7 +23,9 @@
 pub use nextcloud_auth::{
     Anonymous, AppPassword, BasicAuth, BearerAuth, BearerToken, SecretString,
 };
-pub use nextcloud_dav::{DavClient, DavPath, DavProperty, DavResource, Depth, PropfindBody};
+pub use nextcloud_dav::{
+    DavClient, DavPath, DavProperty, DavResource, Depth, Overwrite, PropfindBody,
+};
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
 pub use nextcloud_transport::{
     ReqwestTransport, TimeoutConfig, TransportBuildError, TransportBuilder,

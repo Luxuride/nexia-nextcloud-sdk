@@ -1,12 +1,12 @@
 //! Request plumbing for WebDAV calls.
 
 use sdk_core::{
-    AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, StatusCode, StatusError,
-    Transport,
+    AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusCode,
+    StatusError, Transport,
 };
 
 use super::multistatus;
-use crate::method::{DEPTH_HEADER, Depth};
+use crate::method::{DEPTH_HEADER, DESTINATION_HEADER, Depth, OVERWRITE_HEADER, Overwrite};
 use crate::path::DavPath;
 use crate::propfind::PropfindBody;
 use crate::resource::DavResource;
@@ -68,11 +68,126 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
         multistatus::decode(text).map_err(Error::Decode)
     }
 
-    fn build_propfind(&self, path: &DavPath, depth: Depth, body: &PropfindBody) -> Request {
+    /// Downloads the content of the resource at `path`.
+    ///
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn get(&self, path: &DavPath) -> Result<Vec<u8>, Error> {
+        let headers = self.authenticated_headers();
+        let request = Request::new(HttpMethod::Get, path.to_api_path()).with_headers(headers);
+        let response = self.transport.execute(request).await?;
+
+        ensure_success(HttpMethod::Get, path, &response)?;
+        Ok(response.into_body())
+    }
+
+    /// Uploads `body` to `path`, optionally specifying the `Content-Type` header.
+    ///
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn put(
+        &self,
+        path: &DavPath,
+        body: impl Into<Vec<u8>>,
+        content_type: Option<&str>,
+    ) -> Result<(), Error> {
+        let mut headers = self.authenticated_headers();
+        if let Some(content_type) = content_type {
+            headers.set("Content-Type", content_type);
+        }
+        let request = Request::new(HttpMethod::Put, path.to_api_path())
+            .with_headers(headers)
+            .body_bytes(body);
+        let response = self.transport.execute(request).await?;
+
+        ensure_success(HttpMethod::Put, path, &response)
+    }
+
+    /// Creates a collection (folder) at `path`.
+    ///
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn mkcol(&self, path: &DavPath) -> Result<(), Error> {
+        let headers = self.authenticated_headers();
+        let request = Request::new(HttpMethod::Mkcol, path.to_api_path()).with_headers(headers);
+        let response = self.transport.execute(request).await?;
+
+        ensure_success(HttpMethod::Mkcol, path, &response)
+    }
+
+    /// Deletes the resource or collection at `path`.
+    ///
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn delete(&self, path: &DavPath) -> Result<(), Error> {
+        let headers = self.authenticated_headers();
+        let request = Request::new(HttpMethod::Delete, path.to_api_path()).with_headers(headers);
+        let response = self.transport.execute(request).await?;
+
+        ensure_success(HttpMethod::Delete, path, &response)
+    }
+
+    /// Copies a resource from `source` to `destination`.
+    ///
+    /// When `overwrite` is `true`, an existing destination is replaced;
+    /// otherwise the call fails with a status error if the destination exists.
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn copy(
+        &self,
+        source: &DavPath,
+        destination: &DavPath,
+        overwrite: bool,
+    ) -> Result<(), Error> {
+        self.transfer(HttpMethod::Copy, source, destination, overwrite)
+            .await
+    }
+
+    /// Moves a resource from `source` to `destination`.
+    ///
+    /// When `overwrite` is `true`, an existing destination is replaced;
+    /// otherwise the call fails with a status error if the destination exists.
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn move_(
+        &self,
+        source: &DavPath,
+        destination: &DavPath,
+        overwrite: bool,
+    ) -> Result<(), Error> {
+        self.transfer(HttpMethod::Move, source, destination, overwrite)
+            .await
+    }
+
+    fn authenticated_headers(&self) -> Headers {
         // Credentials go on first: the headers set afterwards can then never
         // displace an `Authorization` the provider applied.
         let mut headers = Headers::new();
         self.auth.authenticate(&mut headers);
+        headers
+    }
+
+    async fn transfer(
+        &self,
+        method: HttpMethod,
+        source: &DavPath,
+        destination: &DavPath,
+        overwrite: bool,
+    ) -> Result<(), Error> {
+        let mut headers = self.authenticated_headers();
+        headers.set(DESTINATION_HEADER, destination.to_api_path().as_str());
+        headers.set(
+            OVERWRITE_HEADER,
+            Overwrite::from(overwrite).as_header_value(),
+        );
+        let request = Request::new(method, source.to_api_path()).with_headers(headers);
+        let response = self.transport.execute(request).await?;
+
+        ensure_success(method, source, &response)
+    }
+
+    fn build_propfind(&self, path: &DavPath, depth: Depth, body: &PropfindBody) -> Request {
+        let mut headers = self.authenticated_headers();
         headers.set(DEPTH_HEADER, depth.as_header_value());
         headers.set("Content-Type", XML_CONTENT_TYPE);
 
@@ -80,6 +195,18 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
             .with_headers(headers)
             .body_bytes(body.to_xml().into_bytes())
     }
+}
+
+fn ensure_success(method: HttpMethod, path: &DavPath, response: &Response) -> Result<(), Error> {
+    if !response.status().is_success() {
+        return Err(Error::Status(StatusError::new(
+            method.as_str(),
+            path.to_api_path(),
+            response.status(),
+            response.body(),
+        )));
+    }
+    Ok(())
 }
 
 impl<T: Transport, A: AuthProvider> std::fmt::Display for DavClient<'_, T, A> {
@@ -101,7 +228,7 @@ mod tests {
 
     use super::{DavClient, XML_CONTENT_TYPE};
     use crate::fixtures::TWO_ENTRIES;
-    use crate::method::{DEPTH_HEADER, Depth};
+    use crate::method::{DEPTH_HEADER, DESTINATION_HEADER, Depth, OVERWRITE_HEADER};
     use crate::path::DavPath;
     use crate::propfind::PropfindBody;
     use crate::resource::DavResource;
@@ -256,5 +383,263 @@ mod tests {
         let error = run(client.propfind(&path, Depth::Zero, &PropfindBody::all()))
             .expect_err("invalid utf-8");
         assert_eq!(error.stage().as_str(), "decode");
+    }
+
+    #[test]
+    fn get_downloads_content_and_sets_auth() {
+        let transport = FakeTransport::new(200, b"file payload");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "document.txt").expect("path is valid");
+
+        let body = run(client.get(&path)).expect("get succeeds");
+        assert_eq!(body, b"file payload");
+
+        let request = transport.last_request();
+        assert_eq!(request.method(), HttpMethod::Get);
+        assert_eq!(
+            request.path().as_str(),
+            "/remote.php/dav/files/alice/document.txt"
+        );
+        assert_eq!(
+            request.headers().get("Authorization"),
+            Some("Basic dGVzdDp0ZXN0")
+        );
+    }
+
+    #[test]
+    fn get_non_success_becomes_a_status_error() {
+        let transport = FakeTransport::new(404, "not found");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "missing.txt").expect("path is valid");
+
+        let error = run(client.get(&path)).expect_err("404 returns error");
+        assert_eq!(error.status_code(), Some(404));
+        let status = error.as_status().expect("status error");
+        assert_eq!(status.method(), "GET");
+        assert_eq!(
+            status.path().as_str(),
+            "/remote.php/dav/files/alice/missing.txt"
+        );
+    }
+
+    #[test]
+    fn put_uploads_body_and_sets_content_type() {
+        let transport = FakeTransport::new(201, b"");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "notes.md").expect("path is valid");
+
+        run(client.put(&path, b"# Hello".to_vec(), Some("text/markdown"))).expect("put succeeds");
+
+        let request = transport.last_request();
+        assert_eq!(request.method(), HttpMethod::Put);
+        assert_eq!(
+            request.path().as_str(),
+            "/remote.php/dav/files/alice/notes.md"
+        );
+        assert_eq!(request.headers().get("Content-Type"), Some("text/markdown"));
+        assert_eq!(
+            request.headers().get("Authorization"),
+            Some("Basic dGVzdDp0ZXN0")
+        );
+        assert_eq!(request.body(), Some(&b"# Hello"[..]));
+    }
+
+    #[test]
+    fn put_omits_content_type_when_none() {
+        let transport = FakeTransport::new(204, b"");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "raw.bin").expect("path is valid");
+
+        run(client.put(&path, vec![0xde, 0xad, 0xbe, 0xef], None)).expect("put succeeds");
+
+        let request = transport.last_request();
+        assert_eq!(request.headers().get("Content-Type"), None);
+        assert_eq!(request.body(), Some(&[0xde, 0xad, 0xbe, 0xef][..]));
+    }
+
+    #[test]
+    fn put_non_success_becomes_a_status_error() {
+        let transport = FakeTransport::new(409, "conflict");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "notes.md").expect("path is valid");
+
+        let error = run(client.put(&path, b"test".to_vec(), None)).expect_err("409 returns error");
+        assert_eq!(error.status_code(), Some(409));
+        let status = error.as_status().expect("status error");
+        assert_eq!(status.method(), "PUT");
+    }
+
+    #[test]
+    fn mkcol_creates_collection() {
+        let transport = FakeTransport::new(201, b"");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "NewFolder").expect("path is valid");
+
+        run(client.mkcol(&path)).expect("mkcol succeeds");
+
+        let request = transport.last_request();
+        assert_eq!(request.method(), HttpMethod::Mkcol);
+        assert_eq!(
+            request.path().as_str(),
+            "/remote.php/dav/files/alice/NewFolder"
+        );
+        assert_eq!(
+            request.headers().get("Authorization"),
+            Some("Basic dGVzdDp0ZXN0")
+        );
+        assert!(request.body().is_none());
+    }
+
+    #[test]
+    fn mkcol_non_success_becomes_a_status_error() {
+        let transport = FakeTransport::new(405, "not allowed");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "Folder").expect("path is valid");
+
+        let error = run(client.mkcol(&path)).expect_err("405 returns error");
+        assert_eq!(error.status_code(), Some(405));
+        let status = error.as_status().expect("status error");
+        assert_eq!(status.method(), "MKCOL");
+    }
+
+    #[test]
+    fn delete_removes_resource() {
+        let transport = FakeTransport::new(204, b"");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "old.txt").expect("path is valid");
+
+        run(client.delete(&path)).expect("delete succeeds");
+
+        let request = transport.last_request();
+        assert_eq!(request.method(), HttpMethod::Delete);
+        assert_eq!(
+            request.path().as_str(),
+            "/remote.php/dav/files/alice/old.txt"
+        );
+        assert_eq!(
+            request.headers().get("Authorization"),
+            Some("Basic dGVzdDp0ZXN0")
+        );
+    }
+
+    #[test]
+    fn delete_non_success_becomes_a_status_error() {
+        let transport = FakeTransport::new(404, "not found");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "old.txt").expect("path is valid");
+
+        let error = run(client.delete(&path)).expect_err("404 returns error");
+        assert_eq!(error.status_code(), Some(404));
+        let status = error.as_status().expect("status error");
+        assert_eq!(status.method(), "DELETE");
+    }
+
+    #[test]
+    fn copy_sends_destination_and_overwrite_headers() {
+        for (overwrite, expected_header) in [(true, "T"), (false, "F")] {
+            let transport = FakeTransport::new(201, b"");
+            let auth = FakeAuth;
+            let client = DavClient::new(&transport, &auth);
+            let source = DavPath::new("alice", "src.txt").expect("path is valid");
+            let destination = DavPath::new("alice", "dst.txt").expect("path is valid");
+
+            run(client.copy(&source, &destination, overwrite)).expect("copy succeeds");
+
+            let request = transport.last_request();
+            assert_eq!(request.method(), HttpMethod::Copy);
+            assert_eq!(
+                request.path().as_str(),
+                "/remote.php/dav/files/alice/src.txt"
+            );
+            assert_eq!(
+                request.headers().get(DESTINATION_HEADER),
+                Some("/remote.php/dav/files/alice/dst.txt")
+            );
+            assert_eq!(
+                request.headers().get(OVERWRITE_HEADER),
+                Some(expected_header)
+            );
+            assert_eq!(
+                request.headers().get("Authorization"),
+                Some("Basic dGVzdDp0ZXN0")
+            );
+        }
+    }
+
+    #[test]
+    fn copy_non_success_becomes_a_status_error() {
+        let transport = FakeTransport::new(412, "precondition failed");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let source = DavPath::new("alice", "src.txt").expect("path is valid");
+        let destination = DavPath::new("alice", "dst.txt").expect("path is valid");
+
+        let error = run(client.copy(&source, &destination, false)).expect_err("412 returns error");
+        assert_eq!(error.status_code(), Some(412));
+        let status = error.as_status().expect("status error");
+        assert_eq!(status.method(), "COPY");
+        assert_eq!(
+            status.path().as_str(),
+            "/remote.php/dav/files/alice/src.txt"
+        );
+    }
+
+    #[test]
+    fn move_sends_destination_and_overwrite_headers() {
+        for (overwrite, expected_header) in [(true, "T"), (false, "F")] {
+            let transport = FakeTransport::new(201, b"");
+            let auth = FakeAuth;
+            let client = DavClient::new(&transport, &auth);
+            let source = DavPath::new("alice", "src.txt").expect("path is valid");
+            let destination = DavPath::new("alice", "dst.txt").expect("path is valid");
+
+            run(client.move_(&source, &destination, overwrite)).expect("move succeeds");
+
+            let request = transport.last_request();
+            assert_eq!(request.method(), HttpMethod::Move);
+            assert_eq!(
+                request.path().as_str(),
+                "/remote.php/dav/files/alice/src.txt"
+            );
+            assert_eq!(
+                request.headers().get(DESTINATION_HEADER),
+                Some("/remote.php/dav/files/alice/dst.txt")
+            );
+            assert_eq!(
+                request.headers().get(OVERWRITE_HEADER),
+                Some(expected_header)
+            );
+            assert_eq!(
+                request.headers().get("Authorization"),
+                Some("Basic dGVzdDp0ZXN0")
+            );
+        }
+    }
+
+    #[test]
+    fn move_non_success_becomes_a_status_error() {
+        let transport = FakeTransport::new(412, "precondition failed");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let source = DavPath::new("alice", "src.txt").expect("path is valid");
+        let destination = DavPath::new("alice", "dst.txt").expect("path is valid");
+
+        let error = run(client.move_(&source, &destination, false)).expect_err("412 returns error");
+        assert_eq!(error.status_code(), Some(412));
+        let status = error.as_status().expect("status error");
+        assert_eq!(status.method(), "MOVE");
+        assert_eq!(
+            status.path().as_str(),
+            "/remote.php/dav/files/alice/src.txt"
+        );
     }
 }

@@ -27,7 +27,7 @@ mod resource;
 pub mod xml;
 
 pub use client::DavClient;
-pub use method::{DEPTH_HEADER, Depth};
+pub use method::{DEPTH_HEADER, DESTINATION_HEADER, Depth, OVERWRITE_HEADER, Overwrite};
 pub use path::DavPath;
 pub use propfind::{DavNamespace, DavProperty, PropfindBody};
 pub use resource::DavResource;
