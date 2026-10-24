@@ -136,6 +136,32 @@ impl VirtualTree {
         Ok(())
     }
 
+    /// Hydrates a file node with a local filesystem cache path.
+    ///
+    /// # Errors
+    ///
+    /// - [`VfsError::NotFound`] if the path does not exist in the tree.
+    /// - [`VfsError::NotAFile`] if the path refers to a directory.
+    /// - [`VfsError::InvalidPath`] if the path format is malformed.
+    pub fn hydrate_path(
+        &mut self,
+        path: &str,
+        cached_path: std::path::PathBuf,
+    ) -> Result<(), VfsError> {
+        let normalized = normalize_path(path)?;
+        let node = self
+            .nodes
+            .get_mut(&normalized)
+            .ok_or_else(|| VfsError::NotFound(normalized.clone()))?;
+
+        if node.is_directory() {
+            return Err(VfsError::NotAFile(normalized));
+        }
+
+        node.hydration = HydrationState::Hydrated(HydratedContent::Path(cached_path));
+        Ok(())
+    }
+
     /// Dehydrates a file node back to placeholder state to reclaim memory.
     ///
     /// # Errors
