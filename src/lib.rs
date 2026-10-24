@@ -9,7 +9,12 @@
 //! - `nextcloud-users` server capabilities and user profiles,
 //! - `nextcloud-shares` OCS file sharing and public links,
 //! - `nextcloud-notifications` Nextcloud user notifications,
-//! - `nextcloud-activity` activity feed streams.
+//! - `nextcloud-activity` activity feed streams,
+//! - `nextcloud-trashbin` WebDAV trashbin management,
+//! - `nextcloud-versions` WebDAV file versioning history and restoration,
+//! - `nextcloud-preview` Nextcloud thumbnail and preview generation,
+//! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
+//! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `sdk-storage` encrypted credential and cache database stores.
 //!
 //! This crate is the app-facing surface: it re-exports that vocabulary so one
@@ -46,16 +51,20 @@ pub use nextcloud_auth::{
 pub use nextcloud_dav::{
     DavClient, DavPath, DavProperty, DavResource, Depth, Overwrite, PropfindBody,
 };
+pub use nextcloud_goa::{GnomeOnlineAccounts, GoaAccount, GoaError};
 pub use nextcloud_notifications::{Notification, NotificationAction, NotificationClient};
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
+pub use nextcloud_preview::{PreviewClient, PreviewMode, PreviewOptions};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
 pub use nextcloud_transport::{
     ReqwestTransport, TimeoutConfig, TransportBuildError, TransportBuilder,
 };
+pub use nextcloud_trashbin::{TrashClient, TrashItem};
 pub use nextcloud_users::{
     Capabilities, ChunkedUpload, CoreCapabilities, FilesCapabilities, Quota, ServerStatus,
     ServerVersion, ThemingCapabilities, User, UserClient,
 };
+pub use nextcloud_versions::{FileVersion, VersionsClient};
 pub use sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
     ServerUrl, StatusCode, StatusError, Transport, UrlError,
@@ -67,6 +76,10 @@ pub use sdk_session::{
 };
 pub use sdk_storage::{
     EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
+};
+pub use sdk_vfs::{
+    HydratedContent, HydrationState, NodeMetadata, ThumbnailCache, VfsError, VirtualNode,
+    VirtualTree,
 };
 pub use storage::{CacheStore, CachedDavEntry, SessionStore};
 pub use worker::{WorkerActor, WorkerTask};

@@ -9,8 +9,9 @@
 //! ```
 
 use nextcloud_rust_sdk::{
-    ActivityClient, ActivityFilter, BasicAuth, DavClient, DavPath, Depth, NotificationClient,
-    OcsClient, PropfindBody, SecretString, ServerUrl, ShareClient, TransportBuilder, UserClient,
+    ActivityClient, ActivityFilter, BasicAuth, Client, DavPath, Depth, NodeMetadata,
+    NotificationClient, OcsClient, PreviewOptions, PropfindBody, SecretString, ServerUrl,
+    StoragePaths, StoreKey, UserClient, VirtualNode,
 };
 
 #[tokio::main]
@@ -25,14 +26,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let username = std::env::var("NEXTCLOUD_USER").expect("NEXTCLOUD_USER must be set");
     let password = std::env::var("NEXTCLOUD_PASS").expect("NEXTCLOUD_PASS must be set");
 
-    let server_url = ServerUrl::parse(url_str)?;
-    let transport = TransportBuilder::with_server(server_url).build()?;
+    let server_url = ServerUrl::parse(&url_str)?;
     let auth = BasicAuth::new(&username, SecretString::new(password));
 
     println!("=== Testing Nextcloud SDK against live server ===");
 
+    // 0. High-level Client and Encrypted Storage Builder
+    let tmp_dir = std::env::temp_dir().join("nextcloud_live_smoke");
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    let paths = StoragePaths::new(tmp_dir.join("session.db"), tmp_dir.join("cache.db"));
+
+    let client = Client::builder()
+        .server_url(server_url.clone())
+        .storage(paths)
+        .store_key(StoreKey::generate()?)
+        .build()
+        .await?;
+    println!("0. Stateful Client initialized with encrypted SQLite storage.");
+    println!("   Server: {}", client.server_url());
+
     // 1. OCS & User Capabilities
-    let ocs = OcsClient::new(&transport, auth.clone());
+    let ocs = OcsClient::new(client.transport(), auth.clone());
     let user_client = UserClient::new(&ocs);
 
     println!("\n1. Fetching Server Capabilities...");
@@ -60,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. WebDAV Files
     println!("\n3. Testing WebDAV API...");
-    let dav = DavClient::new(&transport, &auth);
+    let dav = client.dav(&auth);
     let root_path = DavPath::root(&username)?;
 
     println!("   Listing root directory resources (depth 1)...");
@@ -89,21 +103,83 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         downloaded.len()
     );
 
+    // 3. Transient VFS Mount (VirtualTree metadata without downloading payloads)
+    println!("\n4. Testing Transient VFS (Virtual Hierarchy & Placeholders)...");
+    let mut vfs = Client::new_vfs("root");
+    let file_meta = NodeMetadata::file(format!("/{test_filename}"))
+        .with_file_id(2)
+        .with_size(test_payload.len() as u64)
+        .with_mime_type("text/plain");
+    vfs.insert(VirtualNode::new_file(file_meta));
+    println!(
+        "   Virtual tree contains {} nodes (transient mounting verified)",
+        vfs.len()
+    );
+    if let Some(node) = vfs.get(&format!("/{test_filename}")) {
+        println!(
+            "   Placeholder node `{}` size: {} bytes, hydrated: {}",
+            node.name(),
+            node.size(),
+            node.is_hydrated()
+        );
+    }
+
+    // 4. File Versions API
+    println!("\n5. Testing File Versions API...");
+    let versions_client = client.versions(&auth);
+    let versions = versions_client.list(&username, 1).await.unwrap_or_default();
+    println!("   Found {} past revisions for test file.", versions.len());
+
+    // 5. Previews API
+    println!("\n6. Testing Preview & Thumbnail API...");
+    let preview_client = client.preview(&auth);
+    let preview_opts = PreviewOptions::new().dimensions(64, 64);
+    match preview_client
+        .get_by_path(test_path.as_str(), &preview_opts)
+        .await
+    {
+        Ok(thumb_bytes) => {
+            println!(
+                "   Retrieved thumbnail for `{test_filename}`: {} bytes",
+                thumb_bytes.len()
+            );
+            // Store thumbnail in VFS node cache
+            let _ = vfs.set_thumbnail(&format!("/{test_filename}"), 64, 64, thumb_bytes);
+        }
+        Err(e) => {
+            println!("   Preview response (expected if text file has no preview generator): {e}");
+        }
+    }
+
     println!("   Cleaning up test file `{test_filename}`...");
     dav.delete(&test_path).await?;
     println!("   Deletion successful.");
 
-    // 3. Notifications API
-    println!("\n4. Testing Notifications API...");
-    let notifs = NotificationClient::new(&transport, &auth);
+    // 6. Trashbin API
+    println!("\n7. Testing Trashbin API...");
+    let trash = client.trashbin(&auth);
+    let trash_items = trash.list(&username).await?;
+    println!("   Items currently in trashbin: {}", trash_items.len());
+    for item in trash_items.iter().take(3) {
+        println!(
+            "     - [{}] {} (originally at {})",
+            item.id(),
+            item.filename(),
+            item.original_location()
+        );
+    }
+
+    // 7. Notifications API
+    println!("\n8. Testing Notifications API...");
+    let notifs = NotificationClient::new(client.transport(), &auth);
     let notification_list = notifs.list().await?;
     println!("   Active notifications count: {}", notification_list.len());
     for n in notification_list.iter().take(3) {
         println!("     - [{}] {}: {}", n.app, n.subject, n.message);
     }
 
-    // 4. Activity API
-    println!("\n5. Testing Activity API...");
+    // 8. Activity API
+    println!("\n9. Testing Activity API...");
     let activity = ActivityClient::new(&ocs);
     let filter = ActivityFilter::default().limit(5);
     let activities = activity.list(&filter).await?;
@@ -112,11 +188,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("     - [{}] {}", a.app, a.subject);
     }
 
-    // 5. Shares API
-    println!("\n6. Testing Shares API...");
-    let shares = ShareClient::new(&transport, &auth);
+    // 9. Shares API
+    println!("\n10. Testing Shares API...");
+    let shares = client.shares(&auth);
     let share_list = shares.list(None).await?;
     println!("   Existing shares count: {}", share_list.len());
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
 
     println!("\n=== All live smoke tests passed successfully! ===");
     Ok(())

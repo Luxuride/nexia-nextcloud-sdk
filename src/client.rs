@@ -2,12 +2,20 @@
 
 use std::fmt;
 
+use nextcloud_activity::ActivityClient;
 use nextcloud_auth::BasicAuth;
 use nextcloud_dav::DavClient;
+use nextcloud_notifications::NotificationClient;
 use nextcloud_ocs::OcsClient;
+use nextcloud_preview::PreviewClient;
+use nextcloud_shares::ShareClient;
 use nextcloud_transport::ReqwestTransport;
+use nextcloud_trashbin::TrashClient;
+use nextcloud_users::UserClient;
+use nextcloud_versions::VersionsClient;
 use sdk_core::ServerUrl;
 use sdk_session::{LoginStart, SessionState};
+use sdk_vfs::VirtualTree;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::builder::ClientBuilder;
@@ -135,9 +143,70 @@ impl Client {
         Ok(OcsClient::new(self.transport.clone(), auth))
     }
 
+    /// Constructs a [`UserClient`] borrowing an [`OcsClient`].
+    pub fn users<'a>(
+        &'a self,
+        ocs: &'a OcsClient<ReqwestTransport, BasicAuth>,
+    ) -> UserClient<'a, ReqwestTransport, BasicAuth> {
+        UserClient::new(ocs)
+    }
+
+    /// Constructs a [`ShareClient`] using current credentials.
+    pub fn shares<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> ShareClient<'a, ReqwestTransport, BasicAuth> {
+        ShareClient::new(&self.transport, auth)
+    }
+
+    /// Constructs a [`NotificationClient`] using current credentials.
+    pub fn notifications<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> NotificationClient<'a, ReqwestTransport, BasicAuth> {
+        NotificationClient::new(&self.transport, auth)
+    }
+
+    /// Constructs an [`ActivityClient`] borrowing an [`OcsClient`].
+    pub fn activity<'a>(
+        &'a self,
+        ocs: &'a OcsClient<ReqwestTransport, BasicAuth>,
+    ) -> ActivityClient<'a, ReqwestTransport, BasicAuth> {
+        ActivityClient::new(ocs)
+    }
+
+    /// Constructs a [`PreviewClient`] using current credentials.
+    pub fn preview<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> PreviewClient<'a, ReqwestTransport, BasicAuth> {
+        PreviewClient::new(&self.transport, auth)
+    }
+
     /// Constructs a [`DavClient`] using current credentials.
     pub fn dav<'a>(&'a self, auth: &'a BasicAuth) -> DavClient<'a, ReqwestTransport, BasicAuth> {
         DavClient::new(&self.transport, auth)
+    }
+
+    /// Constructs a [`TrashClient`] using current credentials.
+    pub fn trashbin<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> TrashClient<'a, ReqwestTransport, BasicAuth> {
+        TrashClient::new(&self.transport, auth)
+    }
+
+    /// Constructs a [`VersionsClient`] using current credentials.
+    pub fn versions<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> VersionsClient<'a, ReqwestTransport, BasicAuth> {
+        VersionsClient::new(&self.transport, auth)
+    }
+
+    /// Instantiates an empty, transient [`VirtualTree`].
+    pub fn new_vfs(root_name: impl Into<String>) -> VirtualTree {
+        VirtualTree::new(root_name)
     }
 }
 
@@ -173,6 +242,17 @@ mod tests {
         assert_eq!(client.current_user_id(), None);
         assert!(client.credentials().is_none());
         assert!(matches!(client.ocs(), Err(ClientError::NotAuthenticated)));
+
+        let auth = BasicAuth::new("alice", nextcloud_auth::SecretString::new("secret"));
+        let _dav = client.dav(&auth);
+        let _trash = client.trashbin(&auth);
+        let _versions = client.versions(&auth);
+        let _shares = client.shares(&auth);
+        let _notifications = client.notifications(&auth);
+        let _preview = client.preview(&auth);
+
+        let vfs = Client::new_vfs("root");
+        assert_eq!(vfs.len(), 1);
 
         let rendered = format!("{client:?}");
         assert!(rendered.contains("Client"));

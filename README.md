@@ -16,6 +16,8 @@ holds everything that knows Nextcloud's wire format.
 | `sdk-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
 | `sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
 | `sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
+| `sdk-storage` | Encrypted SQLCipher dual SQLite storage (`auth.db` & `cache.db`) and FreeDesktop Secret Service (`oo7`) key store |
+| `sdk-vfs` | Transient virtual file system tree, node metadata, multi-resolution thumbnails, and hydration lifecycle |
 
 ### Nextcloud layer (`crates/nextcloud/`)
 
@@ -29,6 +31,10 @@ holds everything that knows Nextcloud's wire format.
 | `nextcloud-shares` | OCS file sharing API, public links, share types, and permissions bitflags |
 | `nextcloud-notifications` | Nextcloud Notifications v2 API and notification actions |
 | `nextcloud-activity` | Nextcloud Activity v2 API streams and filter queries |
+| `nextcloud-trashbin` | WebDAV trashbin client: listing, restoring, and permanently deleting items |
+| `nextcloud-versions` | WebDAV file versioning client: revision history listing, downloading, and restoring revisions |
+| `nextcloud-preview` | Nextcloud thumbnail and preview generation client (`/core/preview.png`) |
+| `nextcloud-goa` | Direct GNOME Online Accounts (`org.gnome.OnlineAccounts`) D-Bus client via `zbus` for desktop SSO |
 
 The root `nextcloud-rust-sdk` package is the facade: one `Client` wiring the
 layers together. Every API area lives there, one module tree per Nextcloud
