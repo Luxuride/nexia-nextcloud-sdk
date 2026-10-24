@@ -12,6 +12,7 @@
 //! - `nextcloud-activity` activity feed streams,
 //! - `nextcloud-trashbin` WebDAV trashbin management,
 //! - `nextcloud-versions` WebDAV file versioning history and restoration,
+//! - `nextcloud-uploads` WebDAV chunked upload streaming v2,
 //! - `nextcloud-preview` Nextcloud thumbnail and preview generation,
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
 //! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
@@ -60,6 +61,7 @@ pub use nextcloud_transport::{
     ReqwestTransport, TimeoutConfig, TransportBuildError, TransportBuilder,
 };
 pub use nextcloud_trashbin::{TrashClient, TrashItem};
+pub use nextcloud_uploads::{ChunkBoundary, UploadClient, UploadSession};
 pub use nextcloud_users::{
     Capabilities, ChunkedUpload, CoreCapabilities, FilesCapabilities, Quota, ServerStatus,
     ServerVersion, ThemingCapabilities, User, UserClient,
