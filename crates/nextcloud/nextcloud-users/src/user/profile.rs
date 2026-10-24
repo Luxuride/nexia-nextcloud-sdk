@@ -1,6 +1,6 @@
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::Quota;
 use crate::wire::lossy_bool;
@@ -17,35 +17,82 @@ const REDACTED: &str = "<redacted>";
 /// Official documentation:
 /// - User Provisioning API: <https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/user_provisioning_api.html>
 /// - OCS API Overview: <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html#user-metadata>
-#[derive(Clone, Default, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Default, PartialEq, Serialize)]
 pub struct User {
     /// Unique username / user identifier.
-    #[serde(default)]
     pub id: String,
     /// User display name formatted for the user interface.
-    #[serde(default, alias = "displayname", alias = "display-name")]
     pub display_name: String,
     /// Primary configured email address.
-    #[serde(default)]
     pub email: Option<String>,
     /// Whether the user account is active and enabled.
-    #[serde(default = "default_enabled", deserialize_with = "lossy_bool")]
     pub enabled: bool,
     /// Storage quota metrics and usage numbers.
-    #[serde(default)]
     pub quota: Quota,
     /// Group memberships assigned to this user.
-    #[serde(default)]
     pub groups: Vec<String>,
     /// Groups for which this user has delegated administrative rights.
-    #[serde(default)]
     pub subadmin: Vec<String>,
     /// Server filesystem storage directory path.
-    #[serde(default, alias = "storageLocation", alias = "home")]
     pub storage_location: Option<String>,
     /// Authentication backend powering this account (e.g. `"Database"` or `"LDAP"`).
-    #[serde(default)]
     pub backend: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UserWire {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    displayname: Option<String>,
+    #[serde(default, rename = "display-name")]
+    display_name_hyphen: Option<String>,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default = "default_enabled", deserialize_with = "lossy_bool")]
+    enabled: bool,
+    #[serde(default)]
+    quota: Quota,
+    #[serde(default)]
+    groups: Vec<String>,
+    #[serde(default)]
+    subadmin: Vec<String>,
+    #[serde(default)]
+    storage_location: Option<String>,
+    #[serde(default, rename = "storageLocation")]
+    storage_location_camel: Option<String>,
+    #[serde(default, rename = "home")]
+    home: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for User {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = UserWire::deserialize(deserializer)?;
+        let display_name = wire
+            .displayname
+            .or(wire.display_name_hyphen)
+            .or(wire.display_name)
+            .unwrap_or_default();
+        let storage_location = wire
+            .storage_location
+            .or(wire.storage_location_camel)
+            .or(wire.home);
+        Ok(Self {
+            id: wire.id,
+            display_name,
+            email: wire.email,
+            enabled: wire.enabled,
+            quota: wire.quota,
+            groups: wire.groups,
+            subadmin: wire.subadmin,
+            storage_location,
+            backend: wire.backend,
+        })
+    }
 }
 
 const fn default_enabled() -> bool {

@@ -12,3 +12,9 @@ pub trait AuthProvider: Send + Sync {
     /// retry with refreshed credentials cannot leave two of them behind.
     fn authenticate(&self, headers: &mut Headers);
 }
+
+impl<T: AuthProvider + ?Sized> AuthProvider for &T {
+    fn authenticate(&self, headers: &mut Headers) {
+        (**self).authenticate(headers);
+    }
+}

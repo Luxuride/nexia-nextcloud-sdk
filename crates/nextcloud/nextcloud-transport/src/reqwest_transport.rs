@@ -11,6 +11,7 @@ use crate::response_convert::to_response;
 /// The client owns the connection pool, so one instance is meant to live for
 /// the lifetime of a client and be shared by `&self`; every call is
 /// independent of the previous one.
+#[derive(Clone)]
 pub struct ReqwestTransport {
     client: reqwest::Client,
     server: ServerUrl,

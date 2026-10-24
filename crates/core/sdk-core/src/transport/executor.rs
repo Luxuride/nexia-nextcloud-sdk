@@ -18,3 +18,9 @@ pub trait Transport: Send + Sync {
     /// carries a meaningful body alongside a failing status.
     fn execute(&self, request: Request) -> impl Future<Output = Result<Response, Error>> + Send;
 }
+
+impl<T: Transport + ?Sized> Transport for &T {
+    fn execute(&self, request: Request) -> impl Future<Output = Result<Response, Error>> + Send {
+        (**self).execute(request)
+    }
+}

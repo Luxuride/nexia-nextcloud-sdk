@@ -55,3 +55,6 @@ sdk-session.workspace = true
 sdk-request.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
