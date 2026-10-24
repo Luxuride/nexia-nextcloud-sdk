@@ -11,6 +11,7 @@ use nextcloud_preview::PreviewClient;
 use nextcloud_shares::ShareClient;
 use nextcloud_transport::ReqwestTransport;
 use nextcloud_trashbin::TrashClient;
+use nextcloud_uploads::UploadClient;
 use nextcloud_users::UserClient;
 use nextcloud_versions::VersionsClient;
 use sdk_core::ServerUrl;
@@ -204,6 +205,14 @@ impl Client {
         VersionsClient::new(&self.transport, auth)
     }
 
+    /// Constructs an [`UploadClient`] using current credentials.
+    pub fn uploads<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> UploadClient<'a, ReqwestTransport, BasicAuth> {
+        UploadClient::new(&self.transport, auth)
+    }
+
     /// Instantiates an empty, transient [`VirtualTree`].
     pub fn new_vfs(root_name: impl Into<String>) -> VirtualTree {
         VirtualTree::new(root_name)
@@ -250,6 +259,7 @@ mod tests {
         let _shares = client.shares(&auth);
         let _notifications = client.notifications(&auth);
         let _preview = client.preview(&auth);
+        let _uploads = client.uploads(&auth);
 
         let vfs = Client::new_vfs("root");
         assert_eq!(vfs.len(), 1);

@@ -1224,6 +1224,7 @@ dependencies = [
  "nextcloud-shares",
  "nextcloud-transport",
  "nextcloud-trashbin",
+ "nextcloud-uploads",
  "nextcloud-users",
  "nextcloud-versions",
  "rusqlite",
@@ -1257,6 +1258,15 @@ dependencies = [
 
 [[package]]
 name = "nextcloud-trashbin"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-auth",
+ "nextcloud-dav",
+ "sdk-core",
+]
+
+[[package]]
+name = "nextcloud-uploads"
 version = "0.1.0"
 dependencies = [
  "nextcloud-auth",
