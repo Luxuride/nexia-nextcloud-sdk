@@ -1,20 +1,50 @@
+use futures_util::StreamExt;
 use sdk_core::{Error, Headers, Response, StatusCode};
+use sdk_ratelimit::{BandwidthLimiter, ProgressCallback, TransferProgress};
 
-/// Converts a `reqwest` response into the SDK's raw response.
-///
-/// The status is carried through as-is: a `404` or `500` is data for the API
-/// layer, not a transport failure. Header names keep the casing the server
-/// used; a value that is not visible ASCII cannot be represented by
-/// `sdk_core::Header` and is dropped, and a name repeated by the server
-/// collapses to its last value because the core model maps a name to one
-/// value.
-pub(crate) async fn to_response(response: reqwest::Response) -> Result<Response, Error> {
+/// Converts a `reqwest` response into the SDK's raw response, applying download rate limiting
+/// and progress reporting if configured.
+pub(crate) async fn to_response(
+    response: reqwest::Response,
+    limiter: &BandwidthLimiter,
+    progress: Option<&ProgressCallback>,
+) -> Result<Response, Error> {
     let status = StatusCode::new(response.status().as_u16());
     let headers = collect_headers(response.headers());
-    // `bytes` is the byte-exact body accessor; `text` would transcode a
-    // charset and XML payloads must reach the decoders untouched.
-    let body = response.bytes().await.map_err(Error::transport)?;
-    Ok(Response::new(status, headers, body.as_ref().to_vec()))
+
+    let total_bytes: Option<u64> = response
+        .headers()
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|val| val.to_str().ok())
+        .and_then(|s| s.parse().ok());
+
+    let body = if limiter.download_limit().is_unlimited() && progress.is_none() {
+        let bytes = response.bytes().await.map_err(Error::transport)?;
+        bytes.as_ref().to_vec()
+    } else {
+        let mut body = Vec::with_capacity(total_bytes.unwrap_or(0) as usize);
+        let mut transferred_bytes: u64 = 0;
+        let mut stream = response.bytes_stream();
+
+        if let Some(cb) = progress {
+            cb(TransferProgress::new(0, total_bytes));
+        }
+
+        while let Some(chunk_res) = stream.next().await {
+            let chunk = chunk_res.map_err(Error::transport)?;
+            let chunk_len = chunk.len();
+            limiter.throttle_download(chunk_len).await;
+            transferred_bytes = transferred_bytes.saturating_add(chunk_len as u64);
+            body.extend_from_slice(&chunk);
+
+            if let Some(cb) = progress {
+                cb(TransferProgress::new(transferred_bytes, total_bytes));
+            }
+        }
+        body
+    };
+
+    Ok(Response::new(status, headers, body))
 }
 
 fn collect_headers(source: &reqwest::header::HeaderMap) -> Headers {

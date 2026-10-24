@@ -22,6 +22,7 @@
 //! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
 //! - `sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
+//! - `sdk-ratelimit` dynamic bandwidth rate limiting and transfer progress reporting,
 //! - `sdk-storage` encrypted credential and cache database stores.
 //!
 //! This crate is the app-facing surface: it re-exports that vocabulary so one
@@ -75,7 +76,8 @@ pub use nextcloud_preview::{PreviewClient, PreviewMode, PreviewOptions};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
 pub use nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient, UnknownRoomTypeError};
 pub use nextcloud_transport::{
-    ReqwestTransport, TimeoutConfig, TransportBuildError, TransportBuilder,
+    BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport, TimeoutConfig,
+    TransferProgress, TransportBuildError, TransportBuilder,
 };
 pub use nextcloud_trashbin::{TrashClient, TrashItem};
 pub use nextcloud_uploads::{ChunkBoundary, UploadClient, UploadSession};

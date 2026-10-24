@@ -14,6 +14,7 @@ mod header_copy;
 mod method;
 mod reqwest_transport;
 mod response_convert;
+mod throttled;
 
 pub use builder::{
     DEFAULT_CONNECT_TIMEOUT, DEFAULT_REQUEST_TIMEOUT, DEFAULT_USER_AGENT, TimeoutConfig,
@@ -21,3 +22,4 @@ pub use builder::{
 };
 pub use error::TransportBuildError;
 pub use reqwest_transport::ReqwestTransport;
+pub use sdk_ratelimit::{BandwidthLimit, BandwidthLimiter, ProgressCallback, TransferProgress};

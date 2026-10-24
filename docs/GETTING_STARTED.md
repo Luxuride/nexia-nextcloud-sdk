@@ -387,3 +387,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+### 5.6 Bandwidth Rate Limiting & Download Progress Reporting
+
+Configure upload and download bandwidth limits via [`ClientBuilder`], listen to real-time transfer progress, and dynamically adjust limits without rebuilding the client:
+
+```rust
+use nextcloud_rust_sdk::{BandwidthLimit, Client, ServerUrl, StoragePaths, StoreKey};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let server_url = ServerUrl::parse("https://cloud.example.org")?;
+    let paths = StoragePaths::default_xdg()?;
+    let key = StoreKey::generate()?;
+
+    // 1. Configure initial rate limits and transfer progress callbacks in the builder
+    let client = Client::builder()
+        .server_url(server_url)
+        .storage(paths)
+        .store_key(key)
+        .upload_limit(BandwidthLimit::from_mib(2))    // Cap uploads at 2 MiB/s
+        .download_limit(BandwidthLimit::from_mib(10)) // Cap downloads at 10 MiB/s
+        .on_download_progress(|progress| {
+            if let Some(pct) = progress.percentage() {
+                println!("Download: {:.1}% ({}/{} bytes)", pct, progress.transferred_bytes(), progress.total_bytes().unwrap_or(0));
+            } else {
+                println!("Downloaded: {} bytes", progress.transferred_bytes());
+            }
+        })
+        .build()
+        .await?;
+
+    // 2. Adjust bandwidth limits dynamically on the running client (e.g. from user GUI settings)
+    client.set_download_limit(BandwidthLimit::from_kib(500)); // Throttle to 500 KiB/s
+    client.set_upload_limit(BandwidthLimit::unlimited());     // Remove upload restriction
+
+    println!("Active download limit: {}", client.download_limit());
+    Ok(())
+}
+```

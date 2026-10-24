@@ -2,9 +2,13 @@ use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use nextcloud_auth::SecretString;
-use nextcloud_transport::{ReqwestTransport, TimeoutConfig, TransportBuilder};
+use nextcloud_transport::{
+    BandwidthLimit, ProgressCallback, ReqwestTransport, TimeoutConfig, TransferProgress,
+    TransportBuilder,
+};
 use sdk_core::ServerUrl;
 use sdk_request::RetryPolicy;
 use sdk_session::{Account, SessionMachine, SessionState};
@@ -34,6 +38,10 @@ pub struct ClientBuilder {
     initial_credentials: Option<(String, String, SecretString)>,
     retry_policy: Option<RetryPolicy>,
     timeout_config: Option<TimeoutConfig>,
+    upload_limit: Option<BandwidthLimit>,
+    download_limit: Option<BandwidthLimit>,
+    download_progress: Option<ProgressCallback>,
+    upload_progress: Option<ProgressCallback>,
 }
 
 impl Default for ClientBuilder {
@@ -53,6 +61,10 @@ impl ClientBuilder {
             initial_credentials: None,
             retry_policy: None,
             timeout_config: None,
+            upload_limit: None,
+            download_limit: None,
+            download_progress: None,
+            upload_progress: None,
         }
     }
 
@@ -134,6 +146,36 @@ impl ClientBuilder {
         self
     }
 
+    /// Sets the initial upload bandwidth limit (e.g. `BandwidthLimit::from_mib(5)`).
+    pub fn upload_limit(mut self, limit: impl Into<BandwidthLimit>) -> Self {
+        self.upload_limit = Some(limit.into());
+        self
+    }
+
+    /// Sets the initial download bandwidth limit (e.g. `BandwidthLimit::from_mib(10)`).
+    pub fn download_limit(mut self, limit: impl Into<BandwidthLimit>) -> Self {
+        self.download_limit = Some(limit.into());
+        self
+    }
+
+    /// Sets the default download progress callback.
+    pub fn on_download_progress(
+        mut self,
+        callback: impl Fn(TransferProgress) + Send + Sync + 'static,
+    ) -> Self {
+        self.download_progress = Some(Arc::new(callback));
+        self
+    }
+
+    /// Sets the default upload progress callback.
+    pub fn on_upload_progress(
+        mut self,
+        callback: impl Fn(TransferProgress) + Send + Sync + 'static,
+    ) -> Self {
+        self.upload_progress = Some(Arc::new(callback));
+        self
+    }
+
     /// Finalizes configuration, opens the encrypted databases, starts the worker actor, and returns a [`Client`].
     pub async fn build(self) -> Result<Client, ClientError> {
         let server_url = self
@@ -174,6 +216,18 @@ impl ClientBuilder {
         let mut transport_builder = TransportBuilder::with_server(server_url.clone());
         if let Some(timeouts) = self.timeout_config {
             transport_builder = transport_builder.timeouts(timeouts);
+        }
+        if let Some(ul) = self.upload_limit {
+            transport_builder = transport_builder.upload_limit(ul);
+        }
+        if let Some(dl) = self.download_limit {
+            transport_builder = transport_builder.download_limit(dl);
+        }
+        if let Some(cb) = self.download_progress {
+            transport_builder = transport_builder.download_progress(move |p| cb(p));
+        }
+        if let Some(cb) = self.upload_progress {
+            transport_builder = transport_builder.upload_progress(move |p| cb(p));
         }
         let transport: ReqwestTransport = transport_builder.build()?;
 
@@ -300,6 +354,40 @@ mod tests {
         assert_eq!(client.server_url(), &server_url);
         assert!(client.is_authenticated());
         assert_eq!(client.current_user_id().as_deref(), Some("alice"));
+
+        std::fs::remove_file(&auth).ok();
+        std::fs::remove_file(&cache).ok();
+    }
+
+    #[tokio::test]
+    async fn builder_configures_bandwidth_limits_and_progress_callbacks() {
+        let server_url = ServerUrl::parse("https://cloud.example.org").unwrap();
+        let auth = temp_path("bw_auth");
+        let cache = temp_path("bw_cache");
+        let key = StoreKey::generate().unwrap();
+
+        let client = ClientBuilder::new()
+            .server_url(server_url)
+            .storage_paths(&auth, &cache)
+            .store_key(key)
+            .upload_limit(BandwidthLimit::from_mib(1))
+            .download_limit(BandwidthLimit::from_mib(5))
+            .on_download_progress(|_p| {})
+            .on_upload_progress(|_p| {})
+            .build()
+            .await
+            .expect("build client");
+
+        assert_eq!(client.upload_limit(), BandwidthLimit::from_mib(1));
+        assert_eq!(client.download_limit(), BandwidthLimit::from_mib(5));
+        assert!(client.download_progress().is_some());
+        assert!(client.upload_progress().is_some());
+
+        // Dynamically change later without rebuild
+        client.set_upload_limit(BandwidthLimit::unlimited());
+        client.set_download_limit(BandwidthLimit::from_kib(250));
+        assert!(client.upload_limit().is_unlimited());
+        assert_eq!(client.download_limit(), BandwidthLimit::from_kib(250));
 
         std::fs::remove_file(&auth).ok();
         std::fs::remove_file(&cache).ok();

@@ -11,7 +11,7 @@ use nextcloud_ocs::OcsClient;
 use nextcloud_preview::PreviewClient;
 use nextcloud_shares::ShareClient;
 use nextcloud_talk::TalkClient;
-use nextcloud_transport::ReqwestTransport;
+use nextcloud_transport::{BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport};
 use nextcloud_trashbin::TrashClient;
 use nextcloud_uploads::UploadClient;
 use nextcloud_users::UserClient;
@@ -66,6 +66,51 @@ impl Client {
     /// The HTTP transport used by this client.
     pub const fn transport(&self) -> &ReqwestTransport {
         &self.transport
+    }
+
+    /// Reference to the active bandwidth limiter.
+    pub const fn limiter(&self) -> &BandwidthLimiter {
+        self.transport.limiter()
+    }
+
+    /// The currently active upload bandwidth limit.
+    pub fn upload_limit(&self) -> BandwidthLimit {
+        self.transport.upload_limit()
+    }
+
+    /// The currently active download bandwidth limit.
+    pub fn download_limit(&self) -> BandwidthLimit {
+        self.transport.download_limit()
+    }
+
+    /// Dynamically updates the upload bandwidth limit without requiring client rebuild.
+    pub fn set_upload_limit(&self, limit: impl Into<BandwidthLimit>) {
+        self.transport.set_upload_limit(limit);
+    }
+
+    /// Dynamically updates the download bandwidth limit without requiring client rebuild.
+    pub fn set_download_limit(&self, limit: impl Into<BandwidthLimit>) {
+        self.transport.set_download_limit(limit);
+    }
+
+    /// The currently active default download progress callback, if any.
+    pub fn download_progress(&self) -> Option<ProgressCallback> {
+        self.transport.download_progress()
+    }
+
+    /// Dynamically sets or clears the default download progress callback without requiring client rebuild.
+    pub fn set_download_progress(&self, callback: Option<ProgressCallback>) {
+        self.transport.set_download_progress(callback);
+    }
+
+    /// The currently active default upload progress callback, if any.
+    pub fn upload_progress(&self) -> Option<ProgressCallback> {
+        self.transport.upload_progress()
+    }
+
+    /// Dynamically sets or clears the default upload progress callback without requiring client rebuild.
+    pub fn set_upload_progress(&self, callback: Option<ProgressCallback>) {
+        self.transport.set_upload_progress(callback);
     }
 
     /// Current session lifecycle state.
@@ -279,6 +324,19 @@ mod tests {
 
         let vfs = Client::new_vfs("root");
         assert_eq!(vfs.len(), 1);
+
+        assert!(client.upload_limit().is_unlimited());
+        assert!(client.download_limit().is_unlimited());
+
+        client.set_upload_limit(BandwidthLimit::from_mib(2));
+        client.set_download_limit(BandwidthLimit::from_mib(10));
+        assert_eq!(client.upload_limit(), BandwidthLimit::from_mib(2));
+        assert_eq!(client.download_limit(), BandwidthLimit::from_mib(10));
+        assert_eq!(client.limiter().upload_limit(), BandwidthLimit::from_mib(2));
+
+        assert!(client.download_progress().is_none());
+        client.set_download_progress(Some(std::sync::Arc::new(|_p| {})));
+        assert!(client.download_progress().is_some());
 
         let rendered = format!("{client:?}");
         assert!(rendered.contains("Client"));

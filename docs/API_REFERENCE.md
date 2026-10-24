@@ -113,7 +113,16 @@ All client modules in this SDK are built against the official Nextcloud develope
   - `EncryptedDatabase`: SQLCipher database wrapper with automatic migration and schema verification.
   - `CredentialSchema` / `CacheSchema`: Schema DDL definitions and versioning.
 
-### 3.5 `nextcloud-auth`
+### 3.5 `sdk-ratelimit`
+- **Purpose**: Dynamic bandwidth rate limiting, token-bucket traffic shaping, and transfer progress tracking.
+- **Key Types**:
+  - `BandwidthLimit`: Rate constraint (`Unlimited`, `BytesPerSecond`, `from_kib`, `from_mib`).
+  - `TokenBucket`: Thread-safe, non-blocking token bucket algorithm with asynchronous token acquisition and runtime rate adjustment.
+  - `BandwidthLimiter`: High-level traffic shaper coordinating independent upload and download limits on active connections.
+  - `TransferProgress`: Progress snapshot (`transferred_bytes`, `total_bytes`, `fraction`, `percentage`, `is_complete`).
+  - `ProgressCallback`: Thread-safe closure callback invoked with incremental progress events.
+
+### 3.6 `nextcloud-auth`
 - **Purpose**: Authentication schemes implementing `AuthProvider`.
 - **Key Types**:
   - `BasicAuth`: HTTP Basic authentication (`Authorization: Basic base64(user:password)`).
@@ -121,11 +130,11 @@ All client modules in this SDK are built against the official Nextcloud develope
   - `Anonymous`: Anonymous access; injects the mandatory `OCS-APIRequest: true` header.
   - `SecretString`: Secure string wrapper redacting values in `Debug` and preventing accidental printing.
 
-### 3.6 `nextcloud-transport`
-- **Purpose**: Production HTTP transport implementation backed by `reqwest`.
+### 3.7 `nextcloud-transport`
+- **Purpose**: Production HTTP transport implementation backed by `reqwest` with dynamic rate limiting and progress reporting.
 - **Key Types**:
-  - `ReqwestTransport`: Implements `sdk_core::Transport`.
-  - `TransportBuilder`: Fluent builder for configuring server URL, timeouts, and connection parameters.
+  - `ReqwestTransport`: Implements `sdk_core::Transport`, supports dynamic upload/download rate limits (`set_upload_limit`, `set_download_limit`) and progress reporting (`set_download_progress`, `execute_with_progress`).
+  - `TransportBuilder`: Fluent builder for configuring server URL, timeouts, rate limits, and progress callbacks.
   - `TimeoutConfig`: Connect, read, and global timeout settings.
 
 ### 3.7 `nextcloud-ocs`

@@ -27,6 +27,7 @@ nextcloud-rust-sdk/
 │   │   ├── sdk-request/                    # Per-call retry, backoff, and failure state machine
 │   │   ├── sdk-storage/                    # Dual SQLCipher encrypted persistence & key store
 │   │   ├── sdk-keyring/                    # Multi-platform keyring (Linux/Flatpak oo7, macOS Keychain, WinCred)
+│   │   ├── sdk-ratelimit/                  # Bandwidth rate limiting, token-bucket traffic shaping & progress
 │   │   ├── sdk-vfs/                        # Transient virtual tree, node metadata, and thumbnail cache
 │   │   └── sdk-fuse/                       # Desktop FUSE filesystem driver for transient mounts
 │   └── nextcloud/
