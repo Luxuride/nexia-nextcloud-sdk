@@ -10,6 +10,7 @@
 //! - `nextcloud-shares` OCS file sharing and public links,
 //! - `nextcloud-notifications` Nextcloud user notifications,
 //! - `nextcloud-activity` activity feed streams.
+//! - `sdk-storage` encrypted credential and cache database stores.
 //!
 //! This crate is the app-facing surface: it re-exports that vocabulary so one
 //! dependency is enough, and adds the two state machines a client UI needs:
@@ -23,9 +24,21 @@
 //! the work still to be done ([`Command`], [`Effect`]) so an
 //! application can drive them from any runtime and test them without a
 //! server.
+//!
+//! The top-level [`Client`] brings everything together into a stateful,
+//! actor-driven handle configurable via [`ClientBuilder`].
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+pub mod builder;
+pub mod client;
+pub mod error;
+pub mod storage;
+pub mod worker;
+
+pub use builder::ClientBuilder;
+pub use client::Client;
+pub use error::ClientError;
 pub use nextcloud_activity::{Activity, ActivityClient, ActivityFilter};
 pub use nextcloud_auth::{
     Anonymous, AppPassword, BasicAuth, BearerAuth, BearerToken, SecretString,
@@ -52,3 +65,8 @@ pub use sdk_session::{
     Account, Command, LoginFlow, LoginStart, LoginSuccess, PollTarget, PollToken, SessionError,
     SessionEvent, SessionMachine, SessionState,
 };
+pub use sdk_storage::{
+    EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
+};
+pub use storage::{CacheStore, CachedDavEntry, SessionStore};
+pub use worker::{WorkerActor, WorkerTask};
