@@ -1174,6 +1174,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextcloud-deck"
+version = "0.1.0"
+dependencies = [
+ "nextcloud-auth",
+ "sdk-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nextcloud-goa"
 version = "0.1.0"
 dependencies = [
@@ -1217,6 +1227,7 @@ dependencies = [
  "nextcloud-activity",
  "nextcloud-auth",
  "nextcloud-dav",
+ "nextcloud-deck",
  "nextcloud-goa",
  "nextcloud-notifications",
  "nextcloud-ocs",

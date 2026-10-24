@@ -24,6 +24,7 @@ nextcloud-preview = { path = "crates/nextcloud/nextcloud-preview", version = "0.
 nextcloud-goa = { path = "crates/nextcloud/nextcloud-goa", version = "0.1.0" }
 nextcloud-versions = { path = "crates/nextcloud/nextcloud-versions", version = "0.1.0" }
 nextcloud-uploads = { path = "crates/nextcloud/nextcloud-uploads", version = "0.1.0" }
+nextcloud-deck = { path = "crates/nextcloud/nextcloud-deck", version = "0.1.0" }
 nextcloud-talk = { path = "crates/nextcloud/nextcloud-talk", version = "0.1.0" }
 sdk-session = { path = "crates/core/sdk-session", version = "0.1.0" }
 sdk-request = { path = "crates/core/sdk-request", version = "0.1.0" }
@@ -63,6 +64,7 @@ nextcloud-trashbin.workspace = true
 nextcloud-preview.workspace = true
 nextcloud-versions.workspace = true
 nextcloud-uploads.workspace = true
+nextcloud-deck.workspace = true
 nextcloud-talk.workspace = true
 sdk-vfs.workspace = true
 nextcloud-goa.workspace = true

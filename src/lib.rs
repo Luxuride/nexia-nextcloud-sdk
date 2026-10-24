@@ -13,6 +13,7 @@
 //! - `nextcloud-trashbin` WebDAV trashbin management,
 //! - `nextcloud-versions` WebDAV file versioning history and restoration,
 //! - `nextcloud-uploads` WebDAV chunked upload streaming v2,
+//! - `nextcloud-deck` Nextcloud Deck Kanban boards, stacks, and cards,
 //! - `nextcloud-talk` Nextcloud Talk conversations and chat messaging,
 //! - `nextcloud-preview` Nextcloud thumbnail and preview generation,
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
@@ -53,6 +54,7 @@ pub use nextcloud_auth::{
 pub use nextcloud_dav::{
     DavClient, DavPath, DavProperty, DavResource, Depth, Overwrite, PropfindBody,
 };
+pub use nextcloud_deck::{Board, BoardOwner, BoardPermissions, Card, DeckClient, Stack};
 pub use nextcloud_goa::{GnomeOnlineAccounts, GoaAccount, GoaError};
 pub use nextcloud_notifications::{Notification, NotificationAction, NotificationClient};
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
