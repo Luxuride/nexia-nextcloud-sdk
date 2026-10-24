@@ -4,6 +4,7 @@ members = [
     "crates/core/sdk-core",
     "crates/core/sdk-request",
     "crates/core/sdk-session",
+    "crates/core/sdk-storage",
     "crates/nextcloud/nextcloud-auth",
     "crates/nextcloud/nextcloud-transport",
     "crates/nextcloud/nextcloud-ocs",
@@ -25,8 +26,12 @@ nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.1.0" }
 nextcloud-dav = { path = "crates/nextcloud/nextcloud-dav", version = "0.1.0" }
 sdk-session = { path = "crates/core/sdk-session", version = "0.1.0" }
 sdk-request = { path = "crates/core/sdk-request", version = "0.1.0" }
+sdk-storage = { path = "crates/core/sdk-storage", version = "0.1.0" }
 
 base64 = "0.23"
+getrandom = { version = "0.3", features = ["std"] }
+oo7 = "0.6"
 reqwest = "0.13"
+rusqlite = { version = "0.37", features = ["bundled-sqlcipher"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

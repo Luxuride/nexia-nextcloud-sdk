@@ -1,0 +1,17 @@
+[package]
+name = "sdk-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Encrypted SQLite storage and keychain-held keys for the Nextcloud Rust SDK"
+
+[features]
+default = ["keychain"]
+keychain = ["dep:oo7"]
+
+[dependencies]
+getrandom.workspace = true
+rusqlite.workspace = true
+oo7 = { workspace = true, optional = true }
