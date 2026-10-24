@@ -1197,6 +1197,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextcloud-client-config"
+version = "0.1.0"
+dependencies = [
+ "sdk-core",
+ "sdk-keyring",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "nextcloud-dav"
 version = "0.1.0"
 dependencies = [
@@ -1256,6 +1266,7 @@ version = "0.1.0"
 dependencies = [
  "nextcloud-activity",
  "nextcloud-auth",
+ "nextcloud-client-config",
  "nextcloud-dav",
  "nextcloud-deck",
  "nextcloud-goa",

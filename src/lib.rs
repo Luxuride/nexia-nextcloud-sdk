@@ -17,6 +17,7 @@
 //! - `nextcloud-talk` Nextcloud Talk conversations and chat messaging,
 //! - `nextcloud-preview` Nextcloud thumbnail and preview generation,
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
+//! - `nextcloud-client-config` desktop client configuration parser and account discovery,
 //! - `sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
 //! - `sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
@@ -52,6 +53,10 @@ pub use error::ClientError;
 pub use nextcloud_activity::{Activity, ActivityClient, ActivityFilter};
 pub use nextcloud_auth::{
     Anonymous, AppPassword, BasicAuth, BearerAuth, BearerToken, SecretString,
+};
+pub use nextcloud_client_config::{
+    AuthType, ClientConfigError, ClientConfigParser, DesktopClientAccount, discover_config_paths,
+    find_account_credentials, find_active_config_path,
 };
 pub use nextcloud_dav::{
     DavClient, DavPath, DavProperty, DavResource, Depth, Overwrite, PropfindBody,
