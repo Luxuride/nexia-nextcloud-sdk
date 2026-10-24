@@ -81,6 +81,7 @@ impl<'a, T: Transport, A: AuthProvider> DeckClient<'a, T, A> {
     ///
     /// Sends `GET /index.php/apps/deck/api/v1.0/boards`.
     pub async fn list_boards(&self) -> Result<Vec<Board>, Error> {
+        tracing::debug!("Listing Deck boards");
         let api_path = ApiPath::public(format!("{DECK_API_ROOT}/boards"))?;
         let headers = self.authenticated_headers();
         let request = Request::get(api_path.clone()).with_headers(headers);
@@ -93,6 +94,7 @@ impl<'a, T: Transport, A: AuthProvider> DeckClient<'a, T, A> {
     ///
     /// Sends `GET /index.php/apps/deck/api/v1.0/boards/{board_id}`.
     pub async fn get_board(&self, board_id: u64) -> Result<Board, Error> {
+        tracing::debug!(board_id, "Fetching Deck board");
         let api_path = ApiPath::public(format!("{DECK_API_ROOT}/boards/{board_id}"))?;
         let headers = self.authenticated_headers();
         let request = Request::get(api_path.clone()).with_headers(headers);
@@ -105,6 +107,7 @@ impl<'a, T: Transport, A: AuthProvider> DeckClient<'a, T, A> {
     ///
     /// Sends `POST /index.php/apps/deck/api/v1.0/boards` with `{"title": "...", "color": "..."}`.
     pub async fn create_board(&self, title: &str, color: &str) -> Result<Board, Error> {
+        tracing::info!(title, color, "Creating Deck board");
         let api_path = ApiPath::public(format!("{DECK_API_ROOT}/boards"))?;
         let headers = self.authenticated_headers();
         let payload = CreateBoardPayload { title, color };
@@ -124,6 +127,7 @@ impl<'a, T: Transport, A: AuthProvider> DeckClient<'a, T, A> {
     ///
     /// Sends `DELETE /index.php/apps/deck/api/v1.0/boards/{board_id}`.
     pub async fn delete_board(&self, board_id: u64) -> Result<(), Error> {
+        tracing::info!(board_id, "Deleting Deck board");
         let api_path = ApiPath::public(format!("{DECK_API_ROOT}/boards/{board_id}"))?;
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, api_path.clone()).with_headers(headers);
@@ -263,6 +267,12 @@ impl<'a, T: Transport, A: AuthProvider> DeckClient<'a, T, A> {
         response: Response,
     ) -> Result<D, Error> {
         if !response.status().is_success() {
+            tracing::error!(
+                method = ?method,
+                path = %path.as_str(),
+                status = %response.status(),
+                "Deck API request failed"
+            );
             return Err(Error::Status(StatusError::new(
                 method.as_str(),
                 path,
@@ -278,6 +288,12 @@ impl<'a, T: Transport, A: AuthProvider> DeckClient<'a, T, A> {
 
     fn decode_empty(method: HttpMethod, path: ApiPath, response: Response) -> Result<(), Error> {
         if !response.status().is_success() {
+            tracing::error!(
+                method = ?method,
+                path = %path.as_str(),
+                status = %response.status(),
+                "Deck API request failed"
+            );
             return Err(Error::Status(StatusError::new(
                 method.as_str(),
                 path,

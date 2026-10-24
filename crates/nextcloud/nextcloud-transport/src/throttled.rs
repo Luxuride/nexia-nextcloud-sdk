@@ -38,6 +38,12 @@ pub(crate) fn prepare_request_body(
         let chunk_len = chunk.len();
 
         async move {
+            tracing::trace!(
+                chunk_len,
+                current_transferred,
+                total_bytes,
+                "Pacing upload stream chunk"
+            );
             limiter.throttle_upload(chunk_len).await;
             if let Some(cb) = progress {
                 cb(TransferProgress::new(

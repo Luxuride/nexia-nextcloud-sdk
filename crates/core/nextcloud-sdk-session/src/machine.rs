@@ -51,12 +51,25 @@ impl SessionMachine {
     /// state, e.g. a poll answer after a logout.
     pub fn handle(&mut self, event: SessionEvent) -> Result<Command, SessionError> {
         let state = std::mem::replace(&mut self.state, SessionState::Idle);
-        match self.transition(state.clone(), event) {
+        tracing::debug!(?event, current_state = ?state, "Handling session machine event");
+        match self.transition(state.clone(), event.clone()) {
             Ok((next, command)) => {
+                tracing::info!(
+                    current_state = ?state,
+                    next_state = ?next,
+                    ?command,
+                    "Session state transitioned successfully"
+                );
                 self.state = next;
                 Ok(command)
             }
             Err(error) => {
+                tracing::warn!(
+                    current_state = ?state,
+                    ?event,
+                    error = %error,
+                    "Invalid session state machine transition"
+                );
                 self.state = state;
                 Err(error)
             }

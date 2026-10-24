@@ -50,6 +50,7 @@ impl<'a, T: Transport, A: AuthProvider> VersionsClient<'a, T, A> {
     /// Sends a `PROPFIND` request to `/remote.php/dav/versions/{user_id}/versions/{file_id}`
     /// requesting revision metadata (`getlastmodified`, `getcontentlength`, and `getetag`).
     pub async fn list(&self, user_id: &str, file_id: u64) -> Result<Vec<FileVersion>, Error> {
+        tracing::debug!(user_id, file_id, "Listing file versions");
         let user = validate_user(user_id)?;
         let path = ApiPath::dav(format!("versions/{user}/versions/{file_id}"))?;
 
@@ -94,6 +95,12 @@ impl<'a, T: Transport, A: AuthProvider> VersionsClient<'a, T, A> {
         file_id: u64,
         revision_id: &str,
     ) -> Result<Vec<u8>, Error> {
+        tracing::debug!(
+            user_id,
+            file_id,
+            revision_id,
+            "Downloading file version content"
+        );
         let user = validate_user(user_id)?;
         let revision = validate_revision(revision_id)?;
         let path = ApiPath::dav(format!("versions/{user}/versions/{file_id}/{revision}"))?;
@@ -104,6 +111,13 @@ impl<'a, T: Transport, A: AuthProvider> VersionsClient<'a, T, A> {
         let response = self.transport.execute(request).await?;
 
         if !response.status().is_success() {
+            tracing::warn!(
+                user_id,
+                file_id,
+                revision_id,
+                status = %response.status(),
+                "Failed to download file version"
+            );
             return Err(Error::Status(StatusError::new(
                 HttpMethod::Get.as_str(),
                 path,
@@ -125,6 +139,7 @@ impl<'a, T: Transport, A: AuthProvider> VersionsClient<'a, T, A> {
         file_id: u64,
         revision_id: &str,
     ) -> Result<(), Error> {
+        tracing::info!(user_id, file_id, revision_id, "Restoring file version");
         let user = validate_user(user_id)?;
         let revision = validate_revision(revision_id)?;
 

@@ -39,6 +39,7 @@ impl<'a, T: Transport, A: AuthProvider> UserClient<'a, T, A> {
     ///
     /// See <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html#capabilities-api>.
     pub async fn capabilities(&self) -> Result<Capabilities, Error> {
+        tracing::debug!("Fetching Nextcloud server capabilities");
         let path = ApiPath::ocs("cloud/capabilities")?;
         self.ocs
             .get(path, Query::new().format(OcsFormat::Json))
@@ -52,6 +53,7 @@ impl<'a, T: Transport, A: AuthProvider> UserClient<'a, T, A> {
     ///
     /// See <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/LoginFlow/index.html>.
     pub async fn current_user(&self) -> Result<User, Error> {
+        tracing::debug!("Fetching current authenticated user metadata");
         let path = ApiPath::ocs("cloud/user")?;
         self.ocs
             .get(path, Query::new().format(OcsFormat::Json))
@@ -65,6 +67,7 @@ impl<'a, T: Transport, A: AuthProvider> UserClient<'a, T, A> {
     ///
     /// See <https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-api-overview.html#user-metadata>.
     pub async fn get_user(&self, user_id: &str) -> Result<User, Error> {
+        tracing::debug!(user_id, "Fetching user profile metadata");
         let path = ApiPath::ocs(format!("cloud/users/{user_id}"))?;
         self.ocs
             .get(path, Query::new().format(OcsFormat::Json))

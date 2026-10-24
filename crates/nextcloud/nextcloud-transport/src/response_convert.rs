@@ -33,6 +33,7 @@ pub(crate) async fn to_response(
         while let Some(chunk_res) = stream.next().await {
             let chunk = chunk_res.map_err(Error::transport)?;
             let chunk_len = chunk.len();
+            tracing::trace!(chunk_len, transferred_bytes, "Pacing download stream chunk");
             limiter.throttle_download(chunk_len).await;
             transferred_bytes = transferred_bytes.saturating_add(chunk_len as u64);
             body.extend_from_slice(&chunk);

@@ -12,3 +12,4 @@ description = "WebDAV Chunked Upload v2 client for the Nextcloud Rust SDK"
 nextcloud-sdk-core.workspace = true
 nextcloud-auth.workspace = true
 nextcloud-dav.workspace = true
+tracing.workspace = true

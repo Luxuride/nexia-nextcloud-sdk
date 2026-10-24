@@ -16,6 +16,7 @@ keyring = ["dep:nextcloud-sdk-keyring"]
 nextcloud-sdk-core.workspace = true
 nextcloud-sdk-keyring = { workspace = true, optional = true }
 serde.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

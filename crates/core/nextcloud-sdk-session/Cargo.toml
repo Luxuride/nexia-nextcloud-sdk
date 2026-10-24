@@ -11,3 +11,4 @@ description = "Account lifecycle state machine for the Nextcloud Rust SDK"
 [dependencies]
 nextcloud-sdk-core.workspace = true
 nextcloud-auth.workspace = true
+tracing.workspace = true

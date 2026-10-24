@@ -149,6 +149,11 @@ impl TokenBucket {
         };
 
         if delay > Duration::ZERO {
+            tracing::trace!(
+                delay_ms = delay.as_millis(),
+                bytes,
+                "TokenBucket pacing sleep"
+            );
             tokio::time::sleep(delay).await;
         }
     }

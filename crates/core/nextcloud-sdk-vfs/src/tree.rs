@@ -43,6 +43,7 @@ impl VirtualTree {
             Ok(p) => p,
             Err(_) => node.metadata.path.clone(),
         };
+        tracing::debug!(path = %canonical, is_dir = node.metadata.is_directory, "Inserting node into VirtualTree");
         node.metadata.path = canonical.clone();
 
         if node.metadata.is_directory {
@@ -123,12 +124,14 @@ impl VirtualTree {
     /// - [`VfsError::InvalidPath`] if the path format is malformed.
     pub fn hydrate(&mut self, path: &str, content: Vec<u8>) -> Result<(), VfsError> {
         let normalized = normalize_path(path)?;
-        let node = self
-            .nodes
-            .get_mut(&normalized)
-            .ok_or_else(|| VfsError::NotFound(normalized.clone()))?;
+        tracing::info!(path = %normalized, bytes = content.len(), "Hydrating virtual file node");
+        let node = self.nodes.get_mut(&normalized).ok_or_else(|| {
+            tracing::warn!(path = %normalized, "Failed to hydrate node: not found");
+            VfsError::NotFound(normalized.clone())
+        })?;
 
         if node.is_directory() {
+            tracing::warn!(path = %normalized, "Failed to hydrate node: not a file");
             return Err(VfsError::NotAFile(normalized));
         }
 
@@ -145,12 +148,14 @@ impl VirtualTree {
     /// - [`VfsError::InvalidPath`] if the path format is malformed.
     pub fn dehydrate(&mut self, path: &str) -> Result<(), VfsError> {
         let normalized = normalize_path(path)?;
-        let node = self
-            .nodes
-            .get_mut(&normalized)
-            .ok_or_else(|| VfsError::NotFound(normalized.clone()))?;
+        tracing::info!(path = %normalized, "Dehydrating virtual file node");
+        let node = self.nodes.get_mut(&normalized).ok_or_else(|| {
+            tracing::warn!(path = %normalized, "Failed to dehydrate node: not found");
+            VfsError::NotFound(normalized.clone())
+        })?;
 
         if node.is_directory() {
+            tracing::warn!(path = %normalized, "Failed to dehydrate node: not a file");
             return Err(VfsError::NotAFile(normalized));
         }
 

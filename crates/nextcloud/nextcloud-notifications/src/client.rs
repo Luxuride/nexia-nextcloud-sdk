@@ -64,6 +64,7 @@ impl<'a, T: Transport, A: AuthProvider> NotificationClient<'a, T, A> {
     ///
     /// See [Getting the notifications of a user](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#getting-the-notifications-of-a-user).
     pub async fn list(&self) -> Result<Vec<Notification>, Error> {
+        tracing::debug!("Listing user notifications");
         let api_path = ApiPath::ocs(NOTIFICATIONS_API_PATH)?;
         let headers = self.authenticated_headers();
         let request = Request::get(api_path.clone()).with_headers(headers);
@@ -78,6 +79,7 @@ impl<'a, T: Transport, A: AuthProvider> NotificationClient<'a, T, A> {
     ///
     /// See [Get a single notification for a user](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#get-a-single-notification-for-a-user).
     pub async fn get(&self, notification_id: u64) -> Result<Notification, Error> {
+        tracing::debug!(notification_id, "Fetching notification details");
         let api_path = ApiPath::ocs(format!("{NOTIFICATIONS_API_PATH}/{notification_id}"))?;
         let headers = self.authenticated_headers();
         let request = Request::get(api_path.clone()).with_headers(headers);
@@ -92,6 +94,7 @@ impl<'a, T: Transport, A: AuthProvider> NotificationClient<'a, T, A> {
     ///
     /// See [Deleting a notification for a user](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#deleting-a-notification-for-a-user).
     pub async fn delete(&self, notification_id: u64) -> Result<(), Error> {
+        tracing::info!(notification_id, "Deleting notification");
         let api_path = ApiPath::ocs(format!("{NOTIFICATIONS_API_PATH}/{notification_id}"))?;
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, api_path.clone()).with_headers(headers);
@@ -106,6 +109,7 @@ impl<'a, T: Transport, A: AuthProvider> NotificationClient<'a, T, A> {
     ///
     /// See [Deleting all notifications for a user](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#deleting-all-notifications-for-a-user).
     pub async fn delete_all(&self) -> Result<(), Error> {
+        tracing::info!("Deleting all user notifications");
         let api_path = ApiPath::ocs(NOTIFICATIONS_API_PATH)?;
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, api_path.clone()).with_headers(headers);

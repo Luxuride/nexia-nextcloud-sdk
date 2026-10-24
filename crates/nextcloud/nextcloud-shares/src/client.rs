@@ -63,6 +63,7 @@ impl<'a, T: Transport, A: AuthProvider> ShareClient<'a, T, A> {
     ///
     /// See [Get all Shares](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-share-api.html#get-all-shares).
     pub async fn list(&self, path: Option<&str>) -> Result<Vec<Share>, Error> {
+        tracing::debug!(?path, "Listing Nextcloud shares");
         let mut query = Query::new().format(OcsFormat::Json);
         if let Some(target_path) = path {
             query = query.param("path", target_path);
@@ -82,6 +83,7 @@ impl<'a, T: Transport, A: AuthProvider> ShareClient<'a, T, A> {
     ///
     /// See [Get information about a known Share](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-share-api.html#get-information-about-a-known-share).
     pub async fn get(&self, share_id: &str) -> Result<Share, Error> {
+        tracing::debug!(share_id, "Fetching Nextcloud share details");
         let query = Query::new().format(OcsFormat::Json);
         let api_path = ApiPath::ocs(format!("{SHARES_API_PATH}/{share_id}{}", query.build()))?;
         let headers = self.authenticated_headers();
@@ -98,6 +100,7 @@ impl<'a, T: Transport, A: AuthProvider> ShareClient<'a, T, A> {
     ///
     /// See [Delete Share](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-share-api.html#delete-share).
     pub async fn delete(&self, share_id: &str) -> Result<(), Error> {
+        tracing::info!(share_id, "Deleting Nextcloud share");
         let query = Query::new().format(OcsFormat::Json);
         let api_path = ApiPath::ocs(format!("{SHARES_API_PATH}/{share_id}{}", query.build()))?;
         let headers = self.authenticated_headers();
@@ -115,6 +118,7 @@ impl<'a, T: Transport, A: AuthProvider> ShareClient<'a, T, A> {
     ///
     /// See [Create a new Share](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/OCS/ocs-share-api.html#create-a-new-share).
     pub async fn create(&self, request: &CreateShare) -> Result<Share, Error> {
+        tracing::info!(path = %request.path(), share_type = ?request.share_type(), "Creating Nextcloud share");
         let query = Query::new().format(OcsFormat::Json);
         let api_path = ApiPath::ocs(format!("{SHARES_API_PATH}{}", query.build()))?;
         let mut headers = self.authenticated_headers();

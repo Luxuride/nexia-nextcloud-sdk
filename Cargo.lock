@@ -1189,6 +1189,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1197,6 +1198,7 @@ version = "0.1.1"
 dependencies = [
  "base64",
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1207,6 +1209,7 @@ dependencies = [
  "nextcloud-sdk-keyring",
  "serde",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1214,6 +1217,7 @@ name = "nextcloud-dav"
 version = "0.1.1"
 dependencies = [
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1224,6 +1228,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1233,6 +1238,7 @@ dependencies = [
  "nextcloud-auth",
  "nextcloud-sdk-core",
  "serde",
+ "tracing",
  "zbus",
 ]
 
@@ -1245,6 +1251,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1255,6 +1262,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1264,6 +1272,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1272,6 +1281,7 @@ version = "0.1.1"
 dependencies = [
  "nextcloud-auth",
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1307,6 +1317,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1320,6 +1331,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "nextcloud-sdk-vfs",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1329,6 +1341,7 @@ dependencies = [
  "keyring",
  "oo7",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1336,6 +1349,7 @@ name = "nextcloud-sdk-ratelimit"
 version = "0.1.1"
 dependencies = [
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1343,6 +1357,7 @@ name = "nextcloud-sdk-request"
 version = "0.1.1"
 dependencies = [
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1351,6 +1366,7 @@ version = "0.1.1"
 dependencies = [
  "nextcloud-auth",
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1361,6 +1377,7 @@ dependencies = [
  "nextcloud-sdk-keyring",
  "rusqlite",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1370,6 +1387,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1380,6 +1398,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1390,6 +1409,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1401,6 +1421,7 @@ dependencies = [
  "nextcloud-sdk-ratelimit",
  "reqwest",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1410,6 +1431,7 @@ dependencies = [
  "nextcloud-auth",
  "nextcloud-dav",
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1419,6 +1441,7 @@ dependencies = [
  "nextcloud-auth",
  "nextcloud-dav",
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]
@@ -1429,6 +1452,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1438,6 +1462,7 @@ dependencies = [
  "nextcloud-auth",
  "nextcloud-dav",
  "nextcloud-sdk-core",
+ "tracing",
 ]
 
 [[package]]

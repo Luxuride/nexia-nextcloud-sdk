@@ -54,6 +54,7 @@ impl<'a, T: Transport, A: AuthProvider> TrashClient<'a, T, A> {
     ///
     /// The response must be `207 Multi-Status`; any other status becomes [`Error::Status`].
     pub async fn list(&self, user_id: &str) -> Result<Vec<TrashItem>, Error> {
+        tracing::debug!(user_id, "Listing trashbin items");
         let path = trash_root_path(user_id)?;
         let mut headers = self.authenticated_headers();
         headers.set(DEPTH_HEADER, "1");
@@ -93,6 +94,7 @@ impl<'a, T: Transport, A: AuthProvider> TrashClient<'a, T, A> {
         item_id: &str,
         restore_path: &str,
     ) -> Result<(), Error> {
+        tracing::info!(user_id, item_id, restore_path, "Restoring trashbin item");
         let source_path = trash_item_path(user_id, item_id)?;
         let destination_path = restore_destination_path(user_id, restore_path)?;
 
@@ -112,6 +114,7 @@ impl<'a, T: Transport, A: AuthProvider> TrashClient<'a, T, A> {
     ///
     /// Any non-`2xx` status returns [`Error::Status`].
     pub async fn delete(&self, user_id: &str, item_id: &str) -> Result<(), Error> {
+        tracing::info!(user_id, item_id, "Permanently deleting trashbin item");
         let path = trash_item_path(user_id, item_id)?;
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, path.clone()).with_headers(headers);
@@ -126,6 +129,7 @@ impl<'a, T: Transport, A: AuthProvider> TrashClient<'a, T, A> {
     ///
     /// Any non-`2xx` status returns [`Error::Status`].
     pub async fn empty(&self, user_id: &str) -> Result<(), Error> {
+        tracing::warn!(user_id, "Emptying trashbin");
         let path = trash_root_path(user_id)?;
         let headers = self.authenticated_headers();
         let request = Request::new(HttpMethod::Delete, path.clone()).with_headers(headers);
@@ -143,6 +147,12 @@ impl<'a, T: Transport, A: AuthProvider> TrashClient<'a, T, A> {
 
 fn ensure_success(method: HttpMethod, path: &ApiPath, response: &Response) -> Result<(), Error> {
     if !response.status().is_success() {
+        tracing::error!(
+            method = ?method,
+            path = %path.as_str(),
+            status = %response.status(),
+            "Trashbin operation failed"
+        );
         return Err(Error::Status(StatusError::new(
             method.as_str(),
             path.clone(),
@@ -150,6 +160,7 @@ fn ensure_success(method: HttpMethod, path: &ApiPath, response: &Response) -> Re
             response.body(),
         )));
     }
+    tracing::trace!(method = ?method, path = %path.as_str(), "Trashbin operation succeeded");
     Ok(())
 }
 

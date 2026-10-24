@@ -13,3 +13,4 @@ nextcloud-sdk-core.workspace = true
 nextcloud-auth.workspace = true
 zbus = "5.19"
 serde.workspace = true
+tracing.workspace = true

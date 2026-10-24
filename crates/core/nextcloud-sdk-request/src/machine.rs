@@ -75,10 +75,12 @@ impl RequestMachine {
     pub fn start(&mut self) -> Effect {
         match self.state {
             RequestState::Idle => {
+                tracing::debug!(attempt = 1, "Starting first request attempt");
                 self.state = RequestState::InFlight { attempt: 1 };
                 Effect::Send { attempt: 1 }
             }
             RequestState::InFlight { attempt } | RequestState::RetryScheduled { attempt, .. } => {
+                tracing::trace!(attempt, "Request already in-flight or retry scheduled");
                 Effect::Send { attempt }
             }
             RequestState::Succeeded { .. } | RequestState::Failed { .. } => Effect::Finish,
@@ -89,6 +91,7 @@ impl RequestMachine {
     /// Reports that the in-flight attempt produced a response.
     pub fn succeeded(&mut self) -> Effect {
         let attempt = self.state.attempt().max(1);
+        tracing::info!(attempt, "Request succeeded");
         self.state = RequestState::Succeeded { attempt };
         Effect::Finish
     }
@@ -101,6 +104,12 @@ impl RequestMachine {
         let attempt = self.state.attempt().max(1);
         if failure.is_retryable() && self.policy.can_retry_after(attempt) {
             let delay = self.policy.delay_after(attempt);
+            tracing::warn!(
+                ?failure,
+                attempt,
+                delay_ms = delay.as_millis(),
+                "Request attempt failed; scheduling retry"
+            );
             self.state = RequestState::RetryScheduled {
                 attempt,
                 failure,
@@ -111,6 +120,11 @@ impl RequestMachine {
                 attempt: attempt + 1,
             }
         } else {
+            tracing::error!(
+                ?failure,
+                attempt,
+                "Request attempt failed; retry policy exhausted or non-retryable failure"
+            );
             self.state = RequestState::Failed { attempt, failure };
             Effect::GiveUp
         }
@@ -121,6 +135,7 @@ impl RequestMachine {
         match self.state {
             RequestState::RetryScheduled { attempt, .. } => {
                 let next = attempt + 1;
+                tracing::debug!(attempt = next, "Proceeding with next retry attempt");
                 self.state = RequestState::InFlight { attempt: next };
                 Effect::Send { attempt: next }
             }
@@ -134,6 +149,7 @@ impl RequestMachine {
         if self.state.is_finished() {
             return Effect::Finish;
         }
+        tracing::info!(attempt = self.state.attempt(), "Cancelling request");
         self.state = RequestState::Cancelled {
             attempt: self.state.attempt(),
         };

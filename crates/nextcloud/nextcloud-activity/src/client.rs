@@ -45,6 +45,7 @@ impl<'a, T: Transport, A: AuthProvider> ActivityClient<'a, T, A> {
     /// See [Endpoints](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/activity-api.html#endpoints)
     /// and [Parameters](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/activity-api.html#parameters).
     pub async fn list(&self, filter: &ActivityFilter) -> Result<Vec<Activity>, Error> {
+        tracing::debug!("Listing activity stream");
         let path = ApiPath::ocs(ACTIVITY_API_PATH)?;
         self.ocs.get(path, filter.to_query()).await
     }

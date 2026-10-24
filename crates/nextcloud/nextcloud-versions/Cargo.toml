@@ -12,3 +12,4 @@ description = "WebDAV file versions client for the Nextcloud Rust SDK"
 nextcloud-sdk-core.workspace = true
 nextcloud-dav.workspace = true
 nextcloud-auth.workspace = true
+tracing.workspace = true
