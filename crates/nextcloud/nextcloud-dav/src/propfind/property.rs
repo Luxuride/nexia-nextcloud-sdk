@@ -53,6 +53,8 @@ pub enum DavProperty {
     FileId,
     /// `oc:permissions` — permission letters for this resource.
     Permissions,
+    /// `oc:size` — size in bytes, including directory aggregate size.
+    Size,
     /// `nc:has-preview` — whether a preview can be rendered.
     HasPreview,
 }
@@ -67,7 +69,7 @@ impl DavProperty {
             | Self::ResourceType
             | Self::LastModified
             | Self::DisplayName => DavNamespace::Dav,
-            Self::FileId | Self::Permissions => DavNamespace::OwnCloud,
+            Self::FileId | Self::Permissions | Self::Size => DavNamespace::OwnCloud,
             Self::HasPreview => DavNamespace::Nextcloud,
         }
     }
@@ -83,6 +85,7 @@ impl DavProperty {
             Self::DisplayName => "displayname",
             Self::FileId => "fileid",
             Self::Permissions => "permissions",
+            Self::Size => "size",
             Self::HasPreview => "has-preview",
         }
     }
@@ -103,6 +106,7 @@ impl DavProperty {
             Self::DisplayName => "d:displayname",
             Self::FileId => "oc:fileid",
             Self::Permissions => "oc:permissions",
+            Self::Size => "oc:size",
             Self::HasPreview => "nc:has-preview",
         }
     }
@@ -112,7 +116,7 @@ impl DavProperty {
 mod tests {
     use super::{DavNamespace, DavProperty};
 
-    const ALL: [DavProperty; 9] = [
+    const ALL: [DavProperty; 10] = [
         DavProperty::Etag,
         DavProperty::ContentLength,
         DavProperty::ContentType,
@@ -121,6 +125,7 @@ mod tests {
         DavProperty::DisplayName,
         DavProperty::FileId,
         DavProperty::Permissions,
+        DavProperty::Size,
         DavProperty::HasPreview,
     ];
 
@@ -135,6 +140,7 @@ mod tests {
             "d:displayname",
             "oc:fileid",
             "oc:permissions",
+            "oc:size",
             "nc:has-preview",
         ];
         for (property, tag) in ALL.iter().zip(expected) {

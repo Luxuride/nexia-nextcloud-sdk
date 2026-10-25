@@ -64,6 +64,7 @@ impl DavResource {
                 .any(|prop| has_element(prop.inner(), "d:collection")),
             etag: find(DavProperty::Etag),
             content_length: find(DavProperty::ContentLength)
+                .or_else(|| find(DavProperty::Size))
                 .and_then(|value| value.trim().parse().ok()),
             content_type: find(DavProperty::ContentType),
             file_id: find(DavProperty::FileId),

@@ -44,6 +44,17 @@ impl VfsManager {
         &self.cache_dir
     }
 
+    /// Returns an immutable reference to the virtual tree.
+    #[must_use]
+    pub fn tree(&self) -> &VirtualTree {
+        &self.tree
+    }
+
+    /// Returns a mutable reference to the virtual tree.
+    pub fn tree_mut(&mut self) -> &mut VirtualTree {
+        &mut self.tree
+    }
+
     /// Replaces the virtual tree in memory.
     pub fn set_tree(&mut self, tree: VirtualTree) {
         self.tree = tree;

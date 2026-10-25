@@ -67,6 +67,18 @@ impl VirtualTree {
             node.children = Some(children);
         }
 
+        if let Some(existing) = self.nodes.get(&canonical) {
+            if node.metadata.size == 0 && existing.metadata.size > 0 {
+                node.metadata.size = existing.metadata.size;
+            }
+            if !node.metadata.is_directory {
+                if existing.is_hydrated() {
+                    node.hydration = existing.hydration.clone();
+                }
+                node.thumbnails = existing.thumbnails.clone();
+            }
+        }
+
         // Link with parent directory if present
         if let Some(children) = parent_path(&canonical)
             .and_then(|parent| self.nodes.get_mut(&parent))
@@ -183,6 +195,10 @@ impl VirtualTree {
                     }
                 }
             }
+        }
+
+        if summary.total_size == 0 && root_node.metadata.size > 0 {
+            summary.total_size = root_node.metadata.size;
         }
 
         summary
@@ -659,6 +675,9 @@ impl VirtualTree {
 
             let node = if res.is_collection {
                 let mut meta = NodeMetadata::directory(&clean_path);
+                if let Some(len) = res.content_length {
+                    meta = meta.with_size(len);
+                }
                 if let Some(ref etag) = res.etag {
                     meta = meta.with_etag(etag.clone());
                 }
@@ -991,6 +1010,49 @@ mod tests {
         let node = tree.get("/Folder/Sub/file.pdf").unwrap();
         assert_eq!(node.size(), 5000);
         assert_eq!(node.metadata.etag.as_deref(), Some("etag-123"));
+    }
+
+    #[test]
+    fn populate_from_resources_merges_without_losing_existing_nodes() {
+        let mut tree = VirtualTree::new("root");
+        // Step 1: populate root with Documents and Photos
+        let root_resources = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/", true),
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Documents", true)
+                .with_content_length(1000),
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Photos", true)
+                .with_content_length(2000),
+        ];
+        let c1 = tree.populate_from_resources("/remote.php/dav/files/user", &root_resources);
+        assert_eq!(c1, 2);
+        assert_eq!(tree.children("/").len(), 2);
+
+        // Step 2: populate /Documents subfolder with a file
+        let doc_resources = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Documents/", true),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Documents/report.pdf",
+                false,
+            )
+            .with_content_length(500),
+        ];
+        let c2 = tree.populate_from_resources("/remote.php/dav/files/user", &doc_resources);
+        assert_eq!(c2, 2);
+
+        // Verify root still has both Documents and Photos
+        assert_eq!(tree.children("/").len(), 2);
+        assert!(tree.contains("/Photos"));
+        assert!(tree.contains("/Documents"));
+        assert!(tree.contains("/Documents/report.pdf"));
+
+        // Verify directory metrics
+        let doc_summary = tree.directory_size_summary("/Documents");
+        assert_eq!(doc_summary.direct_items(), 1);
+        assert_eq!(doc_summary.total_size, 500);
+
+        // Photos was not populated with children yet, but carries server size
+        let photo_summary = tree.directory_size_summary("/Photos");
+        assert_eq!(photo_summary.total_size, 2000);
     }
 
     #[test]

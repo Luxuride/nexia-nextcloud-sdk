@@ -33,6 +33,7 @@ impl PropfindBody {
             DavProperty::DisplayName,
             DavProperty::FileId,
             DavProperty::Permissions,
+            DavProperty::Size,
             DavProperty::HasPreview,
         ])
     }
