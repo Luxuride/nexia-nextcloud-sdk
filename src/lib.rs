@@ -81,7 +81,10 @@ pub use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
     ServerUrl, StatusCode, StatusError, Transport, UrlError,
 };
-pub use nextcloud_sdk_fuse::{AsyncHydrator, DirEntry, FileAttr, FileType, FuseDriver, InodeTable};
+pub use nextcloud_sdk_fuse::{
+    AsyncHydrator, BackgroundSession, DirEntry, FileAttr, FileType, FuseDriver, InodeTable,
+    MountOption, mount_virtual_fs,
+};
 pub use nextcloud_sdk_keyring::{
     KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring,
 };
