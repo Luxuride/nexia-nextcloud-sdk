@@ -96,9 +96,11 @@ impl<'a, T: Transport, A: AuthProvider> PreviewClient<'a, T, A> {
             return Ok(response.into_body());
         }
 
-        // If /core/preview.png returns 404 (commonly intercepted by Nginx static file rules),
-        // fall back to /core/preview without extension (the Nextcloud App Framework core route).
-        if response.status().as_u16() == 404 {
+        // If /core/preview.png returns 404 or 400 (e.g. intercepted by Nginx static file rules,
+        // or Nextcloud App Framework rejecting .png extension on fileId requests),
+        // fall back to the alternate endpoint without/with extension.
+        let status = response.status().as_u16();
+        if status == 404 || status == 400 {
             let alt_endpoint = if PREVIEW_ENDPOINT.ends_with(".png") {
                 PREVIEW_ENDPOINT.trim_end_matches(".png")
             } else {

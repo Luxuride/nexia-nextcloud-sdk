@@ -283,3 +283,41 @@ fn falls_back_to_core_preview_when_png_endpoint_returns_404() {
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), FAKE_PNG_BYTES);
 }
+
+#[test]
+fn falls_back_to_core_preview_when_png_endpoint_returns_400() {
+    #[derive(Clone, Debug)]
+    struct Fallback400Transport;
+
+    impl Transport for Fallback400Transport {
+        async fn execute(&self, request: Request) -> Result<Response, Error> {
+            if request.path().as_str().contains("core/preview.png") {
+                Ok(Response::new(
+                    StatusCode::new(400),
+                    Headers::new(),
+                    b"Bad Request".to_vec(),
+                ))
+            } else if request.path().as_str().contains("core/preview") {
+                Ok(Response::new(
+                    StatusCode::new(200),
+                    Headers::new(),
+                    FAKE_PNG_BYTES.to_vec(),
+                ))
+            } else {
+                Ok(Response::new(
+                    StatusCode::new(404),
+                    Headers::new(),
+                    Vec::new(),
+                ))
+            }
+        }
+    }
+
+    let transport = Fallback400Transport;
+    let auth = FakeAuth::new("token");
+    let client = PreviewClient::new(&transport, &auth);
+
+    let result = block_on(client.get_by_file_id(42, &PreviewOptions::new()));
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), FAKE_PNG_BYTES);
+}
