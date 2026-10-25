@@ -4,6 +4,7 @@ use nextcloud_ocs::OcsEnvelope;
 use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Headers, HttpMethod, Request, StatusError, Transport,
 };
+use serde::Deserialize;
 
 use crate::custom_branding::CustomBranding;
 use crate::effective_branding::EffectiveBranding;
@@ -38,13 +39,48 @@ impl<'a, T: Transport, A: AuthProvider> ThemingClient<'a, T, A> {
         self.auth
     }
 
-    /// Fetches server theming metadata via `/ocs/v2.php/apps/theming/api/v1/theme`.
+    /// Fetches server theming metadata, querying `/ocs/v2.php/cloud/capabilities` first
+    /// with fallback to `/ocs/v2.php/apps/theming/api/v1/theme`.
     ///
     /// # Errors
     ///
     /// Returns [`ThemingError`] if network transport fails or the server returns an error.
     pub async fn get_theme(&self) -> Result<ThemeInfo, ThemingError> {
         tracing::debug!("Fetching Nextcloud theming metadata");
+
+        // 1. Try querying /ocs/v2.php/cloud/capabilities?format=json (standard Nextcloud capabilities)
+        if let Ok(caps_path) = ApiPath::ocs("cloud/capabilities?format=json") {
+            let mut headers = Headers::new();
+            headers.set(OCS_REQUEST_HEADER, "true");
+            headers.set(ACCEPT_HEADER, ACCEPT_JSON);
+            self.auth.authenticate(&mut headers);
+
+            let request = Request::get(caps_path).with_headers(headers);
+            if let Ok(response) = self.transport.execute(request).await
+                && response.status().is_success()
+            {
+                #[derive(Deserialize)]
+                struct CapabilitiesThemingNode {
+                    #[serde(default)]
+                    theming: Option<ThemeInfo>,
+                }
+
+                #[derive(Deserialize)]
+                struct CapabilitiesContainer {
+                    capabilities: CapabilitiesThemingNode,
+                }
+
+                if let Ok(envelope) =
+                    serde_json::from_slice::<OcsEnvelope<CapabilitiesContainer>>(response.body())
+                    && envelope.meta().is_ok()
+                    && let Some(theme) = envelope.into_data().capabilities.theming
+                {
+                    return Ok(theme);
+                }
+            }
+        }
+
+        // 2. Fall back to /ocs/v2.php/apps/theming/api/v1/theme?format=json
         let api_path = ApiPath::ocs("apps/theming/api/v1/theme?format=json")?;
 
         let mut headers = Headers::new();
@@ -141,7 +177,21 @@ mod tests {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             let path = request.path().as_str();
 
-            if path.contains("apps/theming/api/v1/theme") {
+            if path.contains("cloud/capabilities") {
+                if self.theme_json.is_empty() {
+                    Ok(Response::new(
+                        StatusCode::new(404),
+                        Headers::new(),
+                        Vec::new(),
+                    ))
+                } else {
+                    Ok(Response::new(
+                        StatusCode::new(200),
+                        Headers::new(),
+                        self.theme_json.as_bytes().to_vec(),
+                    ))
+                }
+            } else if path.contains("apps/theming/api/v1/theme") {
                 Ok(Response::new(
                     StatusCode::new(200),
                     Headers::new(),
@@ -217,5 +267,45 @@ mod tests {
         assert_eq!(effective.instance_name(), "Acme Cloud");
         assert_eq!(effective.primary_color(), "#0082c9");
         assert_eq!(custom.build_user_agent(), "Acme Desktop/2.0.0 (Acme Corp)");
+    }
+
+    #[tokio::test]
+    async fn fetch_theme_from_capabilities_with_lossy_bool() {
+        let caps_json = r##"{
+            "ocs": {
+                "meta": {"status": "ok", "statuscode": 200, "message": "OK"},
+                "data": {
+                    "capabilities": {
+                        "theming": {
+                            "name": "Custom Organization Cloud",
+                            "url": "https://custom.org",
+                            "slogan": "Privacy First",
+                            "color": "#e95420",
+                            "color-text": "#ffffff",
+                            "logo": "https://custom.org/logo.svg",
+                            "background-plain": "",
+                            "background-default": "0"
+                        }
+                    }
+                }
+            }
+        }"##;
+
+        let transport = MockTransport {
+            call_count: AtomicUsize::new(0),
+            theme_json: caps_json.to_string(),
+            status_json: String::new(),
+        };
+
+        let auth = Anonymous;
+        let client = ThemingClient::new(&transport, &auth);
+
+        let theme = client.get_theme().await.unwrap();
+        assert_eq!(theme.name(), Some("Custom Organization Cloud"));
+        assert_eq!(theme.color(), Some("#e95420"));
+        assert_eq!(theme.color_text(), Some("#ffffff"));
+        assert_eq!(theme.logo(), Some("https://custom.org/logo.svg"));
+        assert!(!theme.is_background_plain());
+        assert!(!theme.is_background_default());
     }
 }

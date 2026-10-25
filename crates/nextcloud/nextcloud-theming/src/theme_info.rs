@@ -1,6 +1,32 @@
 //! Server theming metadata models.
 
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
+
+pub(crate) fn lossy_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Wire {
+        Bool(bool),
+        Num(i64),
+        Str(String),
+    }
+
+    match Wire::deserialize(deserializer)? {
+        Wire::Bool(b) => Ok(b),
+        Wire::Num(n) => Ok(n != 0),
+        Wire::Str(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" => Ok(true),
+            "false" | "0" | "no" | "" => Ok(false),
+            other => Err(de::Error::custom(format!(
+                "invalid boolean string: {other}"
+            ))),
+        },
+    }
+}
 
 /// Theming and branding configuration advertised by the Nextcloud server.
 ///
@@ -49,10 +75,20 @@ pub struct ThemeInfo {
     #[serde(default)]
     pub background: Option<String>,
     /// Whether plain solid background coloring is enforced.
-    #[serde(default, alias = "background-plain", alias = "background_plain")]
+    #[serde(
+        default,
+        alias = "background-plain",
+        alias = "background_plain",
+        deserialize_with = "lossy_bool"
+    )]
     pub background_plain: bool,
     /// Whether default server background is used.
-    #[serde(default, alias = "background-default", alias = "background_default")]
+    #[serde(
+        default,
+        alias = "background-default",
+        alias = "background_default",
+        deserialize_with = "lossy_bool"
+    )]
     pub background_default: bool,
 }
 
