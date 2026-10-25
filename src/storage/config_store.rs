@@ -312,6 +312,42 @@ impl ConfigStore {
 
         Ok(result)
     }
+
+    /// Stores directory sorting preferences in the configuration database.
+    pub fn set_directory_sort(
+        &self,
+        dir_path: &str,
+        sort_field: &str,
+        sort_order: &str,
+    ) -> Result<(), StorageError> {
+        let clean = if dir_path.is_empty() || dir_path == "/" {
+            "root".to_string()
+        } else {
+            dir_path.trim_matches('/').to_string()
+        };
+        let key = format!("dir_sort:{clean}");
+        let val = format!("{sort_field}:{sort_order}");
+        self.set_setting(&key, &val)
+    }
+
+    /// Loads directory sorting preferences from the configuration database.
+    pub fn get_directory_sort(
+        &self,
+        dir_path: &str,
+    ) -> Result<Option<(String, String)>, StorageError> {
+        let clean = if dir_path.is_empty() || dir_path == "/" {
+            "root".to_string()
+        } else {
+            dir_path.trim_matches('/').to_string()
+        };
+        let key = format!("dir_sort:{clean}");
+        if let Some(val) = self.get_setting(&key)?
+            && let Some((field, order)) = val.split_once(':')
+        {
+            return Ok(Some((field.to_string(), order.to_string())));
+        }
+        Ok(None)
+    }
 }
 
 impl fmt::Debug for ConfigStore {
@@ -319,5 +355,42 @@ impl fmt::Debug for ConfigStore {
         f.debug_struct("ConfigStore")
             .field("path", &self.database.path())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_directory_sort_persistence() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let db_path = std::env::temp_dir().join(format!("test_config_sort_{nanos}.db"));
+        let key = StoreKey::generate().unwrap();
+        let store = ConfigStore::open(&db_path, &key).unwrap();
+
+        assert_eq!(store.get_directory_sort("/Photos").unwrap(), None);
+
+        store.set_directory_sort("/Photos", "size", "desc").unwrap();
+        assert_eq!(
+            store.get_directory_sort("/Photos").unwrap(),
+            Some(("size".to_string(), "desc".to_string()))
+        );
+
+        // Root directory
+        store.set_directory_sort("/", "name", "asc").unwrap();
+        assert_eq!(
+            store.get_directory_sort("/").unwrap(),
+            Some(("name".to_string(), "asc".to_string()))
+        );
+        assert_eq!(
+            store.get_directory_sort("").unwrap(),
+            Some(("name".to_string(), "asc".to_string()))
+        );
+
+        let _ = std::fs::remove_file(&db_path);
     }
 }

@@ -418,6 +418,42 @@ impl Client {
             .map_err(|_| ClientError::WorkerGone)?;
         rx.await.map_err(|_| ClientError::WorkerGone)?
     }
+
+    /// Stores persistent directory sorting preferences in the permanent configuration database.
+    pub async fn store_directory_sort(
+        &self,
+        dir_path: impl Into<String>,
+        sort_field: impl Into<String>,
+        sort_order: impl Into<String>,
+    ) -> Result<(), ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::SetDirectorySort {
+                dir_path: dir_path.into(),
+                sort_field: sort_field.into(),
+                sort_order: sort_order.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Loads persistent directory sorting preferences from the permanent configuration database.
+    pub async fn load_directory_sort(
+        &self,
+        dir_path: impl Into<String>,
+    ) -> Result<Option<(String, String)>, ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::GetDirectorySort {
+                dir_path: dir_path.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
 }
 
 impl fmt::Debug for Client {

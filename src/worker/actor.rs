@@ -187,6 +187,25 @@ impl WorkerActor {
                     .map_err(ClientError::Storage);
                 let _ = reply.send(res);
             }
+            WorkerTask::SetDirectorySort {
+                dir_path,
+                sort_field,
+                sort_order,
+                reply,
+            } => {
+                let res = self
+                    .config_store
+                    .set_directory_sort(&dir_path, &sort_field, &sort_order)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::GetDirectorySort { dir_path, reply } => {
+                let res = self
+                    .config_store
+                    .get_directory_sort(&dir_path)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
         }
     }
 

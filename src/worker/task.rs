@@ -97,6 +97,24 @@ pub enum WorkerTask {
         /// Channel to return list of stored sync mounts.
         reply: oneshot::Sender<Result<Vec<StoredSyncMount>, ClientError>>,
     },
+    /// Store directory sort in permanent config store.
+    SetDirectorySort {
+        /// Remote directory path.
+        dir_path: String,
+        /// Sort field.
+        sort_field: String,
+        /// Sort order.
+        sort_order: String,
+        /// Channel to return completion status.
+        reply: oneshot::Sender<Result<(), ClientError>>,
+    },
+    /// Load directory sort from permanent config store.
+    GetDirectorySort {
+        /// Remote directory path.
+        dir_path: String,
+        /// Channel to return optional (field, order) tuple.
+        reply: oneshot::Sender<Result<Option<(String, String)>, ClientError>>,
+    },
 }
 
 impl fmt::Debug for WorkerTask {
@@ -131,6 +149,14 @@ impl fmt::Debug for WorkerTask {
                 .field("id", id)
                 .finish(),
             Self::ListSyncMounts { .. } => f.write_str("WorkerTask::ListSyncMounts"),
+            Self::SetDirectorySort { dir_path, .. } => f
+                .debug_struct("WorkerTask::SetDirectorySort")
+                .field("dir_path", dir_path)
+                .finish(),
+            Self::GetDirectorySort { dir_path, .. } => f
+                .debug_struct("WorkerTask::GetDirectorySort")
+                .field("dir_path", dir_path)
+                .finish(),
         }
     }
 }
