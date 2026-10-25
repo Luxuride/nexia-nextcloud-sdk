@@ -201,9 +201,15 @@ impl ClientBuilder {
             (None, Some(_)) => return Err(ClientError::MissingConfiguration("storage_paths")),
             (Some(_), None) => return Err(ClientError::MissingConfiguration("store_key")),
             (None, None) => {
-                let temp = std::env::temp_dir().join("nextcloud-sdk-ephemeral");
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0);
+                let pid = std::process::id();
                 let server_clean = server_url.authority().replace([':', '/'], "_");
-                let dir = temp.join(server_clean);
+                let dir = std::env::temp_dir()
+                    .join("nextcloud-sdk-ephemeral")
+                    .join(format!("{server_clean}-{pid}_{nanos}"));
                 std::fs::create_dir_all(&dir).map_err(|e| {
                     ClientError::Storage(StorageError::Path {
                         operation: "create_dir_all",
