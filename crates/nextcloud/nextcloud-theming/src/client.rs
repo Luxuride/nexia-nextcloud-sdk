@@ -145,6 +145,57 @@ impl<'a, T: Transport, A: AuthProvider> ThemingClient<'a, T, A> {
         Ok(info)
     }
 
+    /// Fetches server brand logo or icon bytes, if configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ThemingError`] if no logo is configured, network transport fails,
+    /// or the server returns an error.
+    pub async fn fetch_logo_bytes(&self) -> Result<Vec<u8>, ThemingError> {
+        let theme = self.get_theme().await?;
+        let logo_url = theme
+            .logo_header()
+            .or_else(|| theme.logo())
+            .or_else(|| theme.favicon())
+            .ok_or_else(|| ThemingError::Ocs {
+                status_code: 404,
+                message: "No server logo or icon configured in theming".to_string(),
+            })?;
+
+        // Extract relative path from logo_url (which may be a full URL, absolute path, or relative path)
+        let relative = if let Some(idx) = logo_url.find("://") {
+            let without_proto = &logo_url[idx + 3..];
+            if let Some(slash_idx) = without_proto.find('/') {
+                &without_proto[slash_idx..]
+            } else {
+                "/"
+            }
+        } else {
+            logo_url
+        };
+
+        let clean_path = relative.trim_start_matches('/');
+        let api_path = ApiPath::raw(clean_path)?;
+
+        let mut headers = Headers::new();
+        headers.set(ACCEPT_HEADER, "image/*, */*");
+        self.auth.authenticate(&mut headers);
+
+        let request = Request::get(api_path.clone()).with_headers(headers);
+        let response = self.transport.execute(request).await?;
+
+        if !response.status().is_success() {
+            return Err(ThemingError::Status(StatusError::new(
+                HttpMethod::Get.as_str(),
+                api_path,
+                response.status(),
+                response.body(),
+            )));
+        }
+
+        Ok(response.body().to_vec())
+    }
+
     /// Computes the effective branding for the application, fetching theme info and server status.
     ///
     /// Falls back gracefully if theming app is disabled or server status is unreachable.
@@ -202,6 +253,12 @@ mod tests {
                     StatusCode::new(200),
                     Headers::new(),
                     self.status_json.as_bytes().to_vec(),
+                ))
+            } else if path.contains("logo") {
+                Ok(Response::new(
+                    StatusCode::new(200),
+                    Headers::new(),
+                    b"fake_png_logo_data".to_vec(),
                 ))
             } else {
                 Ok(Response::new(
@@ -307,5 +364,8 @@ mod tests {
         assert_eq!(theme.logo(), Some("https://custom.org/logo.svg"));
         assert!(!theme.is_background_plain());
         assert!(!theme.is_background_default());
+
+        let bytes = client.fetch_logo_bytes().await.unwrap();
+        assert_eq!(bytes, b"fake_png_logo_data");
     }
 }
