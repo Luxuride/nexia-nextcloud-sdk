@@ -130,6 +130,7 @@ impl FuseDriver {
         entries.push(DirEntry::new(parent_ino, 2, FileType::Directory, ".."));
 
         // 3. Children
+        self.hydrator.on_directory_read(&path);
         let children = tree.children(&path);
 
         let mut inodes_guard = self.inodes.write().map_err(|_| EINVAL)?;

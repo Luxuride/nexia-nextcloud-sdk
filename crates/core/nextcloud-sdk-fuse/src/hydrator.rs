@@ -15,6 +15,9 @@ pub trait AsyncHydrator: Send + Sync {
 
     /// Optional notification when directory entries are read in FUSE, allowing prefetching previews.
     fn on_readdir(&self, _paths: &[String]) {}
+
+    /// Optional notification when a directory path is being read in FUSE, allowing on-demand crawl.
+    fn on_directory_read(&self, _path: &str) {}
 }
 
 /// A no-op hydrator that always returns [`VfsError::NotFound`].

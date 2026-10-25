@@ -69,7 +69,17 @@ impl VirtualTree {
 
         if let Some(existing) = self.nodes.get(&canonical) {
             if node.metadata.is_directory {
-                node.is_populated = existing.is_populated;
+                let etag_changed = existing.metadata.etag.is_some()
+                    && node.metadata.etag.is_some()
+                    && existing.metadata.etag != node.metadata.etag;
+                let has_empty_children_with_content =
+                    node.metadata.size > 0 && node.children.as_ref().is_none_or(|c| c.is_empty());
+
+                if etag_changed || has_empty_children_with_content {
+                    node.is_populated = false;
+                } else {
+                    node.is_populated = existing.is_populated;
+                }
             }
             if node.metadata.size == 0 && existing.metadata.size > 0 {
                 node.metadata.size = existing.metadata.size;
@@ -257,7 +267,12 @@ impl VirtualTree {
         let mut dirs: Vec<String> = self
             .nodes
             .values()
-            .filter(|n| n.is_directory() && !n.is_populated)
+            .filter(|n| {
+                n.is_directory()
+                    && (!n.is_populated
+                        || (n.metadata.size > 0
+                            && n.children.as_ref().is_none_or(|c| c.is_empty())))
+            })
             .map(|n| n.metadata.path.clone())
             .collect();
         dirs.sort();
