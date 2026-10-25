@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(summary.display_size(), "3.0 KB (2 files)");
         assert_eq!(
             summary.directory_summary,
-            Some(DirectorySizeSummary::new(3072, 2, 0))
+            Some(DirectorySizeSummary::new(3072, 2, 0).with_sync_state(true, true))
         );
     }
 }

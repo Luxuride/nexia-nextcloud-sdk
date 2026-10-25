@@ -13,6 +13,10 @@ pub struct DirectorySizeSummary {
     pub file_count: usize,
     /// Total number of nested descendant subdirectories.
     pub directory_count: usize,
+    /// Whether at least one descendant file is unhydrated (cloud placeholder).
+    pub has_unhydrated: bool,
+    /// Whether at least one descendant file is local-only or modified waiting to sync.
+    pub has_unsynced: bool,
 }
 
 impl DirectorySizeSummary {
@@ -22,6 +26,8 @@ impl DirectorySizeSummary {
             total_size: 0,
             file_count: 0,
             directory_count: 0,
+            has_unhydrated: false,
+            has_unsynced: false,
         }
     }
 
@@ -31,7 +37,16 @@ impl DirectorySizeSummary {
             total_size,
             file_count,
             directory_count,
+            has_unhydrated: false,
+            has_unsynced: false,
         }
+    }
+
+    /// Sets the hydration and sync status flags.
+    pub const fn with_sync_state(mut self, has_unhydrated: bool, has_unsynced: bool) -> Self {
+        self.has_unhydrated = has_unhydrated;
+        self.has_unsynced = has_unsynced;
+        self
     }
 
     /// Total number of nested items (files plus subdirectories).

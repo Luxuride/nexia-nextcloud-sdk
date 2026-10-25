@@ -132,10 +132,14 @@ impl VirtualTree {
         };
 
         if !root_node.is_directory() {
+            let is_hydrated = root_node.is_hydrated();
+            let is_unsynced = root_node.metadata.etag.is_none();
             return DirectorySizeSummary {
                 total_size: root_node.metadata.size,
                 file_count: 1,
                 directory_count: 0,
+                has_unhydrated: !is_hydrated,
+                has_unsynced: is_unsynced,
             };
         }
 
@@ -160,6 +164,12 @@ impl VirtualTree {
                 } else {
                     summary.file_count += 1;
                     summary.total_size = summary.total_size.saturating_add(node.metadata.size);
+                    if !node.is_hydrated() {
+                        summary.has_unhydrated = true;
+                    }
+                    if node.metadata.etag.is_none() {
+                        summary.has_unsynced = true;
+                    }
                 }
             }
         }
