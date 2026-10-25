@@ -19,6 +19,9 @@ pub struct VirtualNode {
     pub thumbnails: ThumbnailCache,
     /// Canonical paths of direct children if this node is a directory.
     pub children: Option<BTreeSet<String>>,
+    /// Whether this directory has been populated with its children from remote WebDAV.
+    #[serde(default)]
+    pub is_populated: bool,
 }
 
 impl VirtualNode {
@@ -29,6 +32,7 @@ impl VirtualNode {
             hydration: HydrationState::Placeholder,
             thumbnails: ThumbnailCache::new(),
             children: None,
+            is_populated: false,
         }
     }
 
@@ -40,7 +44,15 @@ impl VirtualNode {
             hydration: HydrationState::Placeholder,
             thumbnails: ThumbnailCache::new(),
             children: Some(BTreeSet::new()),
+            is_populated: false,
         }
+    }
+
+    /// Sets whether this directory node has been populated from remote WebDAV.
+    #[must_use]
+    pub const fn with_populated(mut self, populated: bool) -> Self {
+        self.is_populated = populated;
+        self
     }
 
     /// Sets the hydration state for this node.

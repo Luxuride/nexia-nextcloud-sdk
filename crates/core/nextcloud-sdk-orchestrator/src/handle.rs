@@ -383,6 +383,34 @@ impl VfsHandle {
             .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))
     }
 
+    /// Queries whether a directory in the virtual tree has had its children populated from remote WebDAV.
+    pub async fn is_directory_populated(
+        &self,
+        path: impl Into<String>,
+    ) -> OrchestratorResult<bool> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::VfsIsDirectoryPopulated {
+            mount_id: self.mount_id.clone(),
+            path: path.into(),
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))
+    }
+
+    /// Retrieves all directory paths in the tree that have not yet had their children populated.
+    pub async fn unpopulated_directories(&self) -> OrchestratorResult<Vec<String>> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::VfsGetUnpopulatedDirectories {
+            mount_id: self.mount_id.clone(),
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))
+    }
+
     /// Hydrates a file locally by storing provided bytes into local cache storage.
     pub async fn hydrate_local(
         &self,

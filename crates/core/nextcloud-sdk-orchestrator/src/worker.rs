@@ -234,6 +234,29 @@ async fn run_orchestrator_actor(
                 let _ = responder.send(entry);
             }
 
+            OrchestratorCommand::VfsIsDirectoryPopulated {
+                mount_id,
+                path,
+                responder,
+            } => {
+                let is_pop = vfs_managers
+                    .get(&mount_id)
+                    .map(|vfs| vfs.is_directory_populated(&path))
+                    .unwrap_or(false);
+                let _ = responder.send(is_pop);
+            }
+
+            OrchestratorCommand::VfsGetUnpopulatedDirectories {
+                mount_id,
+                responder,
+            } => {
+                let unpopulated = vfs_managers
+                    .get(&mount_id)
+                    .map(|vfs| vfs.unpopulated_directories())
+                    .unwrap_or_default();
+                let _ = responder.send(unpopulated);
+            }
+
             OrchestratorCommand::VfsHydrateLocal {
                 mount_id,
                 path,

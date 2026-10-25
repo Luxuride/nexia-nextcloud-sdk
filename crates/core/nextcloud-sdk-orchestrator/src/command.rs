@@ -101,6 +101,24 @@ pub enum OrchestratorCommand {
         responder: oneshot::Sender<Option<VirtualEntrySummary>>,
     },
 
+    /// Queries whether a directory node has already been populated with children.
+    VfsIsDirectoryPopulated {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// Directory path to query.
+        path: String,
+        /// Response channel returning whether the directory is populated.
+        responder: oneshot::Sender<bool>,
+    },
+
+    /// Retrieves all directory paths in the tree that have not yet had their children populated.
+    VfsGetUnpopulatedDirectories {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// Response channel returning unpopulated directory paths.
+        responder: oneshot::Sender<Vec<String>>,
+    },
+
     /// Hydrates a virtual file locally with provided content bytes.
     VfsHydrateLocal {
         /// Associated mount identifier.

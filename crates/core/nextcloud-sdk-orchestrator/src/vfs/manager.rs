@@ -81,6 +81,18 @@ impl VfsManager {
         self.tree.children_summaries(path)
     }
 
+    /// Returns `true` if the directory exists and has been populated with its children from remote WebDAV.
+    #[must_use]
+    pub fn is_directory_populated(&self, path: &str) -> bool {
+        self.tree.is_directory_populated(path)
+    }
+
+    /// Returns a list of directory paths that have not yet been populated with children from remote WebDAV.
+    #[must_use]
+    pub fn unpopulated_directories(&self) -> Vec<String> {
+        self.tree.unpopulated_directories()
+    }
+
     /// Computes recursive directory size and item count statistics.
     #[must_use]
     pub fn directory_size_summary(&self, path: &str) -> DirectorySizeSummary {

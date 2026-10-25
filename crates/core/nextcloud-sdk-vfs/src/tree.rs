@@ -68,6 +68,9 @@ impl VirtualTree {
         }
 
         if let Some(existing) = self.nodes.get(&canonical) {
+            if node.metadata.is_directory {
+                node.is_populated = existing.is_populated;
+            }
             if node.metadata.size == 0 && existing.metadata.size > 0 {
                 node.metadata.size = existing.metadata.size;
             }
@@ -226,6 +229,39 @@ impl VirtualTree {
         let normalized = normalize_path(path).ok()?;
         self.get(&normalized)
             .map(|node| VirtualEntrySummary::from_node_with_tree(node, self))
+    }
+
+    /// Checks whether a directory exists in the virtual tree and has had its children populated from remote WebDAV.
+    pub fn is_directory_populated(&self, path: &str) -> bool {
+        let Ok(normalized) = normalize_path(path) else {
+            return false;
+        };
+        self.nodes
+            .get(&normalized)
+            .map(|n| n.is_directory() && n.is_populated)
+            .unwrap_or(false)
+    }
+
+    /// Sets whether a directory node has been populated from remote WebDAV.
+    pub fn set_directory_populated(&mut self, path: &str, populated: bool) {
+        if let Ok(normalized) = normalize_path(path)
+            && let Some(node) = self.nodes.get_mut(&normalized)
+            && node.is_directory()
+        {
+            node.is_populated = populated;
+        }
+    }
+
+    /// Returns a sorted list of all directory paths in the tree that have not yet had their children populated.
+    pub fn unpopulated_directories(&self) -> Vec<String> {
+        let mut dirs: Vec<String> = self
+            .nodes
+            .values()
+            .filter(|n| n.is_directory() && !n.is_populated)
+            .map(|n| n.metadata.path.clone())
+            .collect();
+        dirs.sort();
+        dirs
     }
 
     /// Hydrates a file node with in-memory byte content.
@@ -652,6 +688,23 @@ impl VirtualTree {
         let mut inserted = 0;
         let prefix = base_dav_prefix.trim_end_matches('/');
 
+        let mut target_dir = None;
+        if let Some(first) = resources.first() {
+            let relative = if first.href.starts_with(prefix) {
+                &first.href[prefix.len()..]
+            } else {
+                &first.href
+            };
+            let clean_path = if relative.is_empty() || relative == "/" {
+                "/".to_string()
+            } else {
+                format!("/{}", relative.trim_matches('/'))
+            };
+            if first.is_collection {
+                target_dir = Some(clean_path);
+            }
+        }
+
         for res in resources {
             let relative = if res.href.starts_with(prefix) {
                 &res.href[prefix.len()..]
@@ -705,6 +758,10 @@ impl VirtualTree {
 
             self.insert(node);
             inserted += 1;
+        }
+
+        if let Some(target) = target_dir {
+            self.set_directory_populated(&target, true);
         }
 
         inserted
@@ -1053,6 +1110,12 @@ mod tests {
         // Photos was not populated with children yet, but carries server size
         let photo_summary = tree.directory_size_summary("/Photos");
         assert_eq!(photo_summary.total_size, 2000);
+
+        // Verify populated status tracking
+        assert!(tree.is_directory_populated("/"));
+        assert!(tree.is_directory_populated("/Documents"));
+        assert!(!tree.is_directory_populated("/Photos"));
+        assert_eq!(tree.unpopulated_directories(), vec!["/Photos"]);
     }
 
     #[test]
