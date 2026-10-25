@@ -248,7 +248,11 @@ impl VirtualTree {
         };
         self.nodes
             .get(&normalized)
-            .map(|n| n.is_directory() && n.is_populated)
+            .map(|n| {
+                n.is_directory()
+                    && n.is_populated
+                    && !(n.metadata.size > 0 && n.children.as_ref().is_none_or(|c| c.is_empty()))
+            })
             .unwrap_or(false)
     }
 
