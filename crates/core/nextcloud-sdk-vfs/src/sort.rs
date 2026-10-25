@@ -146,6 +146,7 @@ mod tests {
             },
             is_hydrated: false,
             cached_path: None,
+            file_id: None,
             directory_summary: None,
         }
     }
