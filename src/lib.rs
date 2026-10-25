@@ -23,6 +23,7 @@
 //! - `nextcloud-sync` bidirectional synchronization engine, reconciliation, and sync journal,
 //! - `nextcloud-sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `nextcloud-sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
+//! - `nextcloud-sdk-orchestrator` background worker actor and multi-mount synchronization engine with sync status icons,
 //! - `nextcloud-sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
 //! - `nextcloud-sdk-ratelimit` dynamic bandwidth rate limiting and transfer progress reporting,
 //! - `nextcloud-sdk-storage` encrypted credential and cache database stores.
@@ -82,6 +83,12 @@ pub use nextcloud_sdk_core::{
 pub use nextcloud_sdk_fuse::{AsyncHydrator, DirEntry, FileAttr, FileType, FuseDriver, InodeTable};
 pub use nextcloud_sdk_keyring::{
     KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring,
+};
+pub use nextcloud_sdk_orchestrator::{
+    DownloadQueueCoordinator, FolderSyncRunner, MountDescriptor, MountId, MountMode, MountState,
+    MountStatus, MountsHandle, NextcloudOrchestrator, OrchestratorConfig, OrchestratorError,
+    OrchestratorEvent, OrchestratorHandle, OrchestratorResult, SyncFileStatus, VfsHandle,
+    VfsManager,
 };
 pub use nextcloud_sdk_request::{Effect, Failure, RequestMachine, RequestState, RetryPolicy};
 pub use nextcloud_sdk_session::{

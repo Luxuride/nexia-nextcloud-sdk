@@ -1301,6 +1301,7 @@ dependencies = [
  "nextcloud-sdk-core",
  "nextcloud-sdk-fuse",
  "nextcloud-sdk-keyring",
+ "nextcloud-sdk-orchestrator",
  "nextcloud-sdk-ratelimit",
  "nextcloud-sdk-request",
  "nextcloud-sdk-session",
@@ -1342,6 +1343,25 @@ version = "0.1.2"
 dependencies = [
  "keyring",
  "oo7",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "nextcloud-sdk-orchestrator"
+version = "0.1.2"
+dependencies = [
+ "nextcloud-auth",
+ "nextcloud-dav",
+ "nextcloud-sdk-core",
+ "nextcloud-sdk-storage",
+ "nextcloud-sdk-vfs",
+ "nextcloud-shares",
+ "nextcloud-sync",
+ "nextcloud-theming",
+ "nextcloud-transport",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]
