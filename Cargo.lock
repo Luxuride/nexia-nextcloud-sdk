@@ -1307,7 +1307,9 @@ dependencies = [
  "nextcloud-sdk-storage",
  "nextcloud-sdk-vfs",
  "nextcloud-shares",
+ "nextcloud-sync",
  "nextcloud-talk",
+ "nextcloud-theming",
  "nextcloud-transport",
  "nextcloud-trashbin",
  "nextcloud-uploads",
@@ -1402,6 +1404,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nextcloud-sync"
+version = "0.1.1"
+dependencies = [
+ "nextcloud-sdk-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "nextcloud-talk"
 version = "0.1.1"
 dependencies = [
@@ -1409,6 +1422,19 @@ dependencies = [
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "nextcloud-theming"
+version = "0.1.1"
+dependencies = [
+ "nextcloud-auth",
+ "nextcloud-ocs",
+ "nextcloud-sdk-core",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 

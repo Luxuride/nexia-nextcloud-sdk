@@ -19,6 +19,8 @@
 //! - `nextcloud-goa` GNOME Online Accounts desktop D-Bus single-sign-on integration,
 //! - `nextcloud-kaccounts` KDE Plasma KAccounts desktop single-sign-on integration,
 //! - `nextcloud-client-config` desktop client configuration parser and account discovery,
+//! - `nextcloud-theming` theming, custom branding metadata, and unauthenticated server status,
+//! - `nextcloud-sync` bidirectional synchronization engine, reconciliation, and sync journal,
 //! - `nextcloud-sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `nextcloud-sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
 //! - `nextcloud-sdk-keyring` multi-platform keyring abstraction with Flatpak and native desktop support,
@@ -90,12 +92,22 @@ pub use nextcloud_sdk_storage::{
     EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
 };
 pub use nextcloud_sdk_vfs::{
-    BreadcrumbSegment, HydratedContent, HydrationState, NavigationHistory, NodeMetadata,
-    ResourceIconCategory, ThumbnailCache, VfsError, VirtualNode, VirtualTree, breadcrumb_segments,
-    file_name, format_bytes, normalize_path, parent_path,
+    BreadcrumbSegment, DavResourceSummary, DirectorySizeSummary, HierarchySeeder, HydratedContent,
+    HydrationState, NavigationHistory, NextcloudPermissions, NodeMetadata, ResourceIconCategory,
+    StandardNextcloudSeeder, ThumbnailCache, VfsError, VirtualEntrySummary, VirtualNode,
+    VirtualTree, breadcrumb_segments, file_name, format_bytes, normalize_path, parent_path,
 };
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
+pub use nextcloud_sync::{
+    DiscoveredLocalFile, DiscoveredRemoteFile, DownloadExecutor, DownloadPriority,
+    DownloadProgress, DownloadQueueEvent, DownloadQueueSnapshot, DownloadStatus, DownloadTask,
+    DownloadTaskId, JournalEntry, SyncAction, SyncDownloadQueue, SyncError, SyncJournal, reconcile,
+    scan_local_directory,
+};
 pub use nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient, UnknownRoomTypeError};
+pub use nextcloud_theming::{
+    CustomBranding, EffectiveBranding, ServerStatusInfo, ThemeInfo, ThemingClient, ThemingError,
+};
 pub use nextcloud_transport::{
     BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport, TimeoutConfig,
     TransferProgress, TransportBuildError, TransportBuilder,

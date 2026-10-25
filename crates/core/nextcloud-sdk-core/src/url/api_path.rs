@@ -22,6 +22,8 @@ pub enum ApiPath {
     Dav(String),
     /// `/index.php/...`
     Public(String),
+    /// Root-level endpoint such as `/status.php`.
+    Raw(String),
 }
 
 impl ApiPath {
@@ -46,10 +48,15 @@ impl ApiPath {
         ))
     }
 
+    /// Path relative to server root without prefix (e.g. `"status.php"` -> `"/status.php"`).
+    pub fn raw(relative: impl AsRef<str>) -> Result<Self, UrlError> {
+        Ok(Self::Raw(normalise(relative.as_ref())?))
+    }
+
     /// Full path including its API root.
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Ocs(path) | Self::Dav(path) | Self::Public(path) => path,
+            Self::Ocs(path) | Self::Dav(path) | Self::Public(path) | Self::Raw(path) => path,
         }
     }
 }
@@ -100,5 +107,11 @@ mod tests {
     fn empty_relative_path_is_the_root() {
         let path = ApiPath::ocs("   ").unwrap();
         assert_eq!(path.as_str(), "/ocs/v2.php");
+    }
+
+    #[test]
+    fn raw_path_addresses_root_endpoints() {
+        let path = ApiPath::raw("status.php").unwrap();
+        assert_eq!(path.as_str(), "/status.php");
     }
 }

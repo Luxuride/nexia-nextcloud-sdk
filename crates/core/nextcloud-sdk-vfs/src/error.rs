@@ -14,6 +14,12 @@ pub enum VfsError {
     NotADirectory(String),
     /// The provided path is invalid or malformed.
     InvalidPath(String),
+    /// The target path already exists in the tree.
+    TargetAlreadyExists(String),
+    /// Attempted to move a directory into itself or one of its descendants.
+    CannotMoveIntoSelf(String),
+    /// The root directory cannot be moved or renamed.
+    CannotModifyRoot,
 }
 
 impl fmt::Display for VfsError {
@@ -23,6 +29,16 @@ impl fmt::Display for VfsError {
             Self::NotAFile(path) => write!(f, "path is a directory, not a file: `{path}`"),
             Self::NotADirectory(path) => write!(f, "path is a file, not a directory: `{path}`"),
             Self::InvalidPath(path) => write!(f, "invalid virtual file system path: `{path}`"),
+            Self::TargetAlreadyExists(path) => {
+                write!(f, "target path already exists in virtual tree: `{path}`")
+            }
+            Self::CannotMoveIntoSelf(path) => {
+                write!(
+                    f,
+                    "cannot move directory into itself or descendant: `{path}`"
+                )
+            }
+            Self::CannotModifyRoot => write!(f, "cannot rename or move root directory"),
         }
     }
 }
@@ -46,5 +62,14 @@ mod tests {
 
         let err = VfsError::InvalidPath("../escaped".into());
         assert!(err.to_string().contains("../escaped"));
+
+        let err = VfsError::TargetAlreadyExists("/photos".into());
+        assert!(err.to_string().contains("/photos"));
+
+        let err = VfsError::CannotMoveIntoSelf("/photos".into());
+        assert!(err.to_string().contains("/photos"));
+
+        let err = VfsError::CannotModifyRoot;
+        assert_eq!(err.to_string(), "cannot rename or move root directory");
     }
 }

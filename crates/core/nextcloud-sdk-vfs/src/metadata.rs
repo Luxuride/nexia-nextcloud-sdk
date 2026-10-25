@@ -123,6 +123,13 @@ impl NodeMetadata {
         self.permissions = Some(permissions.into());
         self
     }
+
+    /// Decodes the raw permission string into typed capabilities, if available.
+    pub fn parsed_permissions(&self) -> Option<crate::permissions::NextcloudPermissions> {
+        self.permissions
+            .as_deref()
+            .map(crate::permissions::NextcloudPermissions::parse)
+    }
 }
 
 #[cfg(test)]

@@ -36,6 +36,7 @@ pub struct Client {
     transport: ReqwestTransport,
     task_tx: mpsc::Sender<WorkerTask>,
     state_rx: watch::Receiver<SessionState>,
+    branding: Option<nextcloud_theming::CustomBranding>,
 }
 
 impl Client {
@@ -49,13 +50,20 @@ impl Client {
         transport: ReqwestTransport,
         task_tx: mpsc::Sender<WorkerTask>,
         state_rx: watch::Receiver<SessionState>,
+        branding: Option<nextcloud_theming::CustomBranding>,
     ) -> Self {
         Self {
             server_url,
             transport,
             task_tx,
             state_rx,
+            branding,
         }
+    }
+
+    /// Client application custom branding metadata, if configured.
+    pub fn branding(&self) -> Option<&nextcloud_theming::CustomBranding> {
+        self.branding.as_ref()
     }
 
     /// The base URL of the Nextcloud instance.
@@ -285,6 +293,28 @@ impl Client {
     pub fn new_vfs(root_name: impl Into<String>) -> VirtualTree {
         VirtualTree::new(root_name)
     }
+
+    /// Constructs a [`ThemingClient`](nextcloud_theming::ThemingClient) using authenticated credentials.
+    pub fn theming<'a>(
+        &'a self,
+        auth: &'a BasicAuth,
+    ) -> nextcloud_theming::ThemingClient<'a, ReqwestTransport, BasicAuth> {
+        nextcloud_theming::ThemingClient::new(&self.transport, auth)
+    }
+
+    /// Constructs an unauthenticated [`ThemingClient`](nextcloud_theming::ThemingClient).
+    pub fn anonymous_theming(
+        &self,
+    ) -> nextcloud_theming::ThemingClient<'_, ReqwestTransport, nextcloud_auth::Anonymous> {
+        nextcloud_theming::ThemingClient::new(&self.transport, &nextcloud_auth::Anonymous)
+    }
+
+    /// Fetches unauthenticated server status from `/status.php`.
+    pub async fn server_status(
+        &self,
+    ) -> Result<nextcloud_theming::ServerStatusInfo, nextcloud_theming::ThemingError> {
+        self.anonymous_theming().server_status().await
+    }
 }
 
 impl fmt::Debug for Client {
@@ -292,6 +322,7 @@ impl fmt::Debug for Client {
         f.debug_struct("Client")
             .field("server_url", &self.server_url)
             .field("session_state", &*self.state_rx.borrow())
+            .field("branding", &self.branding)
             .finish()
     }
 }
@@ -311,7 +342,7 @@ mod tests {
         let (_state_tx, state_rx) = watch::channel(SessionState::Idle);
         let (task_tx, _task_rx) = mpsc::channel(1);
 
-        let client = Client::new(server_url.clone(), transport, task_tx, state_rx);
+        let client = Client::new(server_url.clone(), transport, task_tx, state_rx, None);
 
         assert_eq!(client.server_url(), &server_url);
         assert_eq!(client.session_state(), SessionState::Idle);

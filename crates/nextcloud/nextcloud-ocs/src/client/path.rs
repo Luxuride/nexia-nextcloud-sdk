@@ -15,6 +15,7 @@ pub(crate) fn with_query(path: &ApiPath, query: &Query) -> ApiPath {
         ApiPath::Ocs(base) => ApiPath::Ocs(format!("{base}{suffix}")),
         ApiPath::Dav(base) => ApiPath::Dav(format!("{base}{suffix}")),
         ApiPath::Public(base) => ApiPath::Public(format!("{base}{suffix}")),
+        ApiPath::Raw(base) => ApiPath::Raw(format!("{base}{suffix}")),
     }
 }
 

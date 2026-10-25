@@ -1,0 +1,20 @@
+[package]
+name = "nextcloud-theming"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+description = "Nextcloud theming, custom branding metadata, and server status client"
+
+[dependencies]
+nextcloud-ocs.workspace = true
+nextcloud-sdk-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+nextcloud-auth = { path = "../nextcloud-auth" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

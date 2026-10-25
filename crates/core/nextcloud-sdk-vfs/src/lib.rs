@@ -8,21 +8,31 @@
 #![forbid(unsafe_code)]
 
 pub mod category;
+pub mod dir_size;
+pub mod entry;
 pub mod error;
 pub mod hydration;
 pub mod metadata;
 pub mod navigation;
 pub mod node;
 pub mod path;
+pub mod permissions;
+pub mod resource;
+pub mod seed;
 pub mod thumbnail;
 pub mod tree;
 
 pub use category::{ResourceIconCategory, format_bytes};
+pub use dir_size::DirectorySizeSummary;
+pub use entry::VirtualEntrySummary;
 pub use error::VfsError;
 pub use hydration::{HydratedContent, HydrationState};
 pub use metadata::NodeMetadata;
 pub use navigation::{BreadcrumbSegment, NavigationHistory, breadcrumb_segments};
 pub use node::VirtualNode;
 pub use path::{file_name, normalize_path, parent_path};
+pub use permissions::NextcloudPermissions;
+pub use resource::DavResourceSummary;
+pub use seed::{HierarchySeeder, StandardNextcloudSeeder};
 pub use thumbnail::ThumbnailCache;
 pub use tree::VirtualTree;
