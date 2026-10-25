@@ -714,6 +714,9 @@ impl VirtualTree {
                 if let Some(ref etag) = res.etag {
                     meta = meta.with_etag(etag.clone());
                 }
+                if let Some(ref lm) = res.last_modified {
+                    meta = meta.with_modified_at(lm.clone());
+                }
                 if let Some(id) = res.file_id {
                     meta = meta.with_file_id(id);
                 }
@@ -723,6 +726,9 @@ impl VirtualTree {
                     NodeMetadata::file(&clean_path).with_size(res.content_length.unwrap_or(0));
                 if let Some(ref etag) = res.etag {
                     meta = meta.with_etag(etag.clone());
+                }
+                if let Some(ref lm) = res.last_modified {
+                    meta = meta.with_modified_at(lm.clone());
                 }
                 if let Some(ref mime) = res.content_type {
                     meta = meta.with_mime_type(mime.clone());

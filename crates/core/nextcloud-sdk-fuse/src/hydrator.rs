@@ -12,6 +12,9 @@ pub trait AsyncHydrator: Send + Sync {
         &self,
         canonical_path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>;
+
+    /// Optional notification when directory entries are read in FUSE, allowing prefetching previews.
+    fn on_readdir(&self, _paths: &[String]) {}
 }
 
 /// A no-op hydrator that always returns [`VfsError::NotFound`].

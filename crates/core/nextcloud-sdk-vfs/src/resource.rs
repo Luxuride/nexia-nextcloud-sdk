@@ -19,6 +19,8 @@ pub struct DavResourceSummary {
     pub file_id: Option<u64>,
     /// Whether the Nextcloud instance advertises a thumbnail preview for this resource.
     pub has_preview: Option<bool>,
+    /// Last modified timestamp string as reported by WebDAV (`d:getlastmodified`).
+    pub last_modified: Option<String>,
 }
 
 impl DavResourceSummary {
@@ -32,7 +34,15 @@ impl DavResourceSummary {
             content_type: None,
             file_id: None,
             has_preview: None,
+            last_modified: None,
         }
+    }
+
+    /// Sets the last modified date string.
+    #[must_use]
+    pub fn with_last_modified(mut self, last_modified: impl Into<String>) -> Self {
+        self.last_modified = Some(last_modified.into());
+        self
     }
 
     /// Sets the file ID.

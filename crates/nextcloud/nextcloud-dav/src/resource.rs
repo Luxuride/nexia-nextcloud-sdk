@@ -27,6 +27,8 @@ pub struct DavResource {
     pub file_id: Option<String>,
     /// `nc:has-preview`.
     pub has_preview: Option<bool>,
+    /// `d:getlastmodified`, last modification HTTP date or string if reported.
+    pub last_modified: Option<String>,
 }
 
 impl DavResource {
@@ -69,6 +71,7 @@ impl DavResource {
             content_type: find(DavProperty::ContentType),
             file_id: find(DavProperty::FileId),
             has_preview: find(DavProperty::HasPreview).map(|value| is_truthy(value.as_str())),
+            last_modified: find(DavProperty::LastModified),
         })
     }
 }
