@@ -106,11 +106,11 @@ fn ensure_success(method: HttpMethod, path: ApiPath, response: Response) -> Resu
     if response.status().is_success() {
         Ok(response.into_body())
     } else {
-        tracing::error!(
+        tracing::debug!(
             method = ?method,
             path = %path.as_str(),
             status = %response.status(),
-            "Preview request failed"
+            "Preview request returned non-success status"
         );
         Err(Error::Status(StatusError::new(
             method.as_str(),
