@@ -42,6 +42,7 @@ pub struct ClientBuilder {
     download_limit: Option<BandwidthLimit>,
     download_progress: Option<ProgressCallback>,
     upload_progress: Option<ProgressCallback>,
+    branding: Option<nextcloud_theming::CustomBranding>,
 }
 
 impl Default for ClientBuilder {
@@ -65,7 +66,14 @@ impl ClientBuilder {
             download_limit: None,
             download_progress: None,
             upload_progress: None,
+            branding: None,
         }
+    }
+
+    /// Configures client application custom branding metadata.
+    pub fn branding(mut self, branding: nextcloud_theming::CustomBranding) -> Self {
+        self.branding = Some(branding);
+        self
     }
 
     /// Sets the Nextcloud server instance base URL. (Required)
@@ -216,6 +224,9 @@ impl ClientBuilder {
         };
 
         let mut transport_builder = TransportBuilder::with_server(server_url.clone());
+        if let Some(ref branding) = self.branding {
+            transport_builder = transport_builder.user_agent(branding.build_user_agent());
+        }
         if let Some(timeouts) = self.timeout_config {
             transport_builder = transport_builder.timeouts(timeouts);
         }
@@ -252,7 +263,13 @@ impl ClientBuilder {
         });
 
         tracing::info!(server_url = %server_url, "Nextcloud Client constructed successfully");
-        Ok(Client::new(server_url, transport, task_tx, state_rx))
+        Ok(Client::new(
+            server_url,
+            transport,
+            task_tx,
+            state_rx,
+            self.branding,
+        ))
     }
 }
 
@@ -391,6 +408,37 @@ mod tests {
         client.set_download_limit(BandwidthLimit::from_kib(250));
         assert!(client.upload_limit().is_unlimited());
         assert_eq!(client.download_limit(), BandwidthLimit::from_kib(250));
+
+        std::fs::remove_file(&auth).ok();
+        std::fs::remove_file(&cache).ok();
+    }
+
+    #[tokio::test]
+    async fn builder_configures_custom_branding() {
+        let server_url = ServerUrl::parse("https://cloud.example.org").unwrap();
+        let auth = temp_path("branding_auth");
+        let cache = temp_path("branding_cache");
+        let key = StoreKey::generate().unwrap();
+
+        let branding = nextcloud_theming::CustomBranding::new("Enterprise Nextcloud")
+            .with_app_version("3.0.0")
+            .with_vendor("Enterprise Corp")
+            .with_primary_color("#123456");
+
+        let client = ClientBuilder::new()
+            .server_url(server_url)
+            .storage_paths(&auth, &cache)
+            .store_key(key)
+            .branding(branding.clone())
+            .build()
+            .await
+            .expect("build client with branding");
+
+        assert_eq!(client.branding(), Some(&branding));
+        assert_eq!(
+            branding.build_user_agent(),
+            "Enterprise Nextcloud/3.0.0 (Enterprise Corp)"
+        );
 
         std::fs::remove_file(&auth).ok();
         std::fs::remove_file(&cache).ok();

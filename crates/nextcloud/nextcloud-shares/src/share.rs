@@ -138,9 +138,38 @@ impl Share {
         self.token.as_deref()
     }
 
+    /// Sets the public share token.
+    #[must_use]
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
+    }
+
     /// Public URL for accessing the share, if applicable.
     pub fn url(&self) -> Option<&str> {
         self.url.as_deref()
+    }
+
+    /// Sets the public URL for the share.
+    #[must_use]
+    pub fn with_url(mut self, url: impl Into<String>) -> Self {
+        self.url = Some(url.into());
+        self
+    }
+
+    /// Formats the canonical public URL for this share given a Nextcloud server base URL.
+    ///
+    /// If the share entity already contains a full `url`, it is returned.
+    /// Otherwise, if a `token` is present, formats as `"{server_base_url}/s/{token}"`.
+    pub fn public_url(&self, server_base_url: &str) -> Option<String> {
+        if let Some(ref url) = self.url
+            && !url.is_empty()
+        {
+            return Some(url.clone());
+        }
+        self.token
+            .as_ref()
+            .map(|token| format!("{}/s/{}", server_base_url.trim_end_matches('/'), token))
     }
 
     /// Expiration date or timestamp of the share, if set.
@@ -327,5 +356,21 @@ mod tests {
         assert_eq!(share.id(), "105");
         assert_eq!(share.share_type(), ShareType::PublicLink);
         assert_eq!(share.token(), Some("abcdef123456"));
+        assert_eq!(
+            share.public_url("https://example.com"),
+            Some("https://example.com/s/abcdef123456".to_string())
+        );
+
+        let token_only_share = Share::new(
+            "106",
+            ShareType::PublicLink,
+            "/Doc.txt",
+            SharePermissions::READ,
+        )
+        .with_token("token789");
+        assert_eq!(
+            token_only_share.public_url("https://mycloud.org/"),
+            Some("https://mycloud.org/s/token789".to_string())
+        );
     }
 }

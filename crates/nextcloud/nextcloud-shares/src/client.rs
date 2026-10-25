@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 
 use crate::request::CreateShare;
 use crate::share::Share;
+use crate::share_type::ShareType;
 
 /// Relative path to Nextcloud's Files Sharing OCS API beneath `/ocs/v2.php`.
 ///
@@ -133,6 +134,40 @@ impl<'a, T: Transport, A: AuthProvider> ShareClient<'a, T, A> {
         let data =
             self.decode_envelope_data::<ShareOrList>(HttpMethod::Post, api_path, response)?;
         data.into_share().map_err(Error::Decode)
+    }
+
+    /// Convenience helper to create a public link share for `path`.
+    pub async fn create_public_link(&self, path: &str) -> Result<Share, Error> {
+        let request = CreateShare::public_link(path);
+        self.create(&request).await
+    }
+
+    /// Retrieves an existing public link share for `path`, if one exists.
+    pub async fn get_public_link(&self, path: &str) -> Result<Option<Share>, Error> {
+        let shares = self.list(Some(path)).await?;
+        Ok(shares
+            .into_iter()
+            .find(|s| s.share_type() == ShareType::PublicLink))
+    }
+
+    /// Retrieves an existing public link share for `path`, or creates a new one if none exists.
+    pub async fn get_or_create_public_link(&self, path: &str) -> Result<Share, Error> {
+        if let Some(existing) = self.get_public_link(path).await? {
+            return Ok(existing);
+        }
+        self.create_public_link(path).await
+    }
+
+    /// Deletes any public link share currently associated with `path`.
+    ///
+    /// Returns `true` if a public link share was found and deleted, or `false` if none existed.
+    pub async fn delete_public_link(&self, path: &str) -> Result<bool, Error> {
+        if let Some(existing) = self.get_public_link(path).await? {
+            self.delete(existing.id()).await?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     fn authenticated_headers(&self) -> Headers {
