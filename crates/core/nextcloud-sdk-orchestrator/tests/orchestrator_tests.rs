@@ -95,6 +95,11 @@ async fn test_orchestrator_multi_mount_and_sync_status() {
     assert!(local_path.exists());
     assert_eq!(std::fs::read(&local_path).unwrap(), content);
 
+    // Verify snapshot reflects changes in memory
+    let snap = vfs.snapshot().await.unwrap();
+    assert!(snap.get("/Documents").is_some());
+    assert!(snap.get("/Documents/readme.txt").is_some());
+
     // After hydration, file status is Synced (ok icon)
     let status_hydrated = handle
         .mounts()

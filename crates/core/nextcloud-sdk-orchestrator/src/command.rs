@@ -91,6 +91,14 @@ pub enum OrchestratorCommand {
         responder: oneshot::Sender<OrchestratorResult<usize>>,
     },
 
+    /// Retrieves a complete snapshot clone of the in-memory virtual file tree.
+    VfsSnapshot {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// Response channel returning the virtual tree clone or error.
+        responder: oneshot::Sender<OrchestratorResult<nextcloud_sdk_vfs::VirtualTree>>,
+    },
+
     /// Retrieves a single entry summary from the virtual filesystem.
     VfsGetEntry {
         /// Associated mount identifier.

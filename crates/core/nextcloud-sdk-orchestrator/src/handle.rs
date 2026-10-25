@@ -367,6 +367,18 @@ impl VfsHandle {
             .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
     }
 
+    /// Retrieves a complete snapshot clone of the in-memory virtual tree.
+    pub async fn snapshot(&self) -> OrchestratorResult<nextcloud_sdk_vfs::VirtualTree> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::VfsSnapshot {
+            mount_id: self.mount_id.clone(),
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
     /// Retrieves an entry summary from the virtual filesystem.
     pub async fn entry(
         &self,

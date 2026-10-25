@@ -232,6 +232,17 @@ async fn run_orchestrator_actor(
                 }
             }
 
+            OrchestratorCommand::VfsSnapshot {
+                mount_id,
+                responder,
+            } => {
+                if let Some(vfs) = vfs_managers.get(&mount_id) {
+                    let _ = responder.send(Ok(vfs.tree().clone()));
+                } else {
+                    let _ = responder.send(Err(OrchestratorError::MountNotFound { id: mount_id }));
+                }
+            }
+
             OrchestratorCommand::VfsGetEntry {
                 mount_id,
                 path,
