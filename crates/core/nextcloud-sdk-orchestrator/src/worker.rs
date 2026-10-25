@@ -208,6 +208,23 @@ async fn run_orchestrator_actor(
                 }
             }
 
+            OrchestratorCommand::VfsPopulateResources {
+                mount_id,
+                dav_prefix,
+                resources,
+                responder,
+            } => {
+                if let Some(vfs) = vfs_managers.get_mut(&mount_id) {
+                    let mut tree = nextcloud_sdk_vfs::VirtualTree::new(vfs.root_name());
+                    let count = tree.populate_from_resources(&dav_prefix, &resources);
+                    vfs.set_tree(tree);
+                    let _ = vfs.persist_tree();
+                    let _ = responder.send(Ok(count));
+                } else {
+                    let _ = responder.send(Err(OrchestratorError::MountNotFound { id: mount_id }));
+                }
+            }
+
             OrchestratorCommand::VfsGetEntry {
                 mount_id,
                 path,

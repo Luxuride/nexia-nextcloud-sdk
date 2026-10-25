@@ -79,6 +79,18 @@ pub enum OrchestratorCommand {
         responder: oneshot::Sender<OrchestratorResult<Vec<VirtualEntrySummary>>>,
     },
 
+    /// Repopulates the virtual tree for a mount from remote WebDAV resource summaries.
+    VfsPopulateResources {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// Remote WebDAV base path prefix.
+        dav_prefix: String,
+        /// List of remote resource summaries.
+        resources: Vec<nextcloud_sdk_vfs::DavResourceSummary>,
+        /// Response channel returning the number of entries populated.
+        responder: oneshot::Sender<OrchestratorResult<usize>>,
+    },
+
     /// Retrieves a single entry summary from the virtual filesystem.
     VfsGetEntry {
         /// Associated mount identifier.

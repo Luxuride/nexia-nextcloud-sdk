@@ -297,6 +297,24 @@ impl VfsHandle {
             .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
     }
 
+    /// Clears and repopulates the virtual file tree with remote WebDAV resource summaries.
+    pub async fn populate_from_resources(
+        &self,
+        dav_prefix: impl Into<String>,
+        resources: Vec<nextcloud_sdk_vfs::DavResourceSummary>,
+    ) -> OrchestratorResult<usize> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::VfsPopulateResources {
+            mount_id: self.mount_id.clone(),
+            dav_prefix: dav_prefix.into(),
+            resources,
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
     /// Retrieves an entry summary from the virtual filesystem.
     pub async fn entry(
         &self,

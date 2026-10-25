@@ -38,12 +38,14 @@ impl DesktopSso {
                     a.username().to_string(),
                 );
                 if seen.insert(key) {
+                    let secret = SecretString::new(a.auth().credentials().password().expose());
                     results.push(DiscoveredAccount {
                         source: AccountSource::GnomeOnlineAccounts,
                         server_url: a.server_url().clone(),
                         username: a.username().to_string(),
-                        display_name: None,
+                        display_name: Some(a.presentation_identity().to_string()),
                         dav_user: None,
+                        password: Some(secret),
                     });
                 }
             }
@@ -62,6 +64,7 @@ impl DesktopSso {
                         username: a.username,
                         display_name: Some(a.name),
                         dav_user: None,
+                        password: None,
                     });
                 }
             }
@@ -81,6 +84,7 @@ impl DesktopSso {
                             username: a.username,
                             display_name: a.display_name,
                             dav_user: a.dav_user,
+                            password: None,
                         });
                     }
                 }
@@ -100,6 +104,10 @@ impl DesktopSso {
         account: &DiscoveredAccount,
         keyring: &K,
     ) -> Result<Option<SecretString>, SsoError> {
+        if let Some(ref secret) = account.password {
+            return Ok(Some(secret.clone()));
+        }
+
         tracing::debug!(
             server = %account.server_url,
             user = %account.username,
@@ -135,6 +143,7 @@ mod tests {
             username: "alice".to_string(),
             display_name: Some("Alice Example".to_string()),
             dav_user: None,
+            password: None,
         };
 
         let keyring = MemoryKeyring::new();
@@ -159,5 +168,24 @@ mod tests {
         let resolved = sso.resolve_credentials(&account, &keyring).await.unwrap();
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap().expose_secret(), "my-app-password");
+    }
+
+    #[tokio::test]
+    async fn resolves_prepopulated_password_without_keyring() {
+        let account = DiscoveredAccount {
+            source: AccountSource::GnomeOnlineAccounts,
+            server_url: ServerUrl::parse("https://cloud.example.com").unwrap(),
+            username: "bob".to_string(),
+            display_name: None,
+            dav_user: None,
+            password: Some(SecretString::new("pre-resolved-secret")),
+        };
+
+        let keyring = MemoryKeyring::new();
+        let sso = DesktopSso::new();
+
+        let resolved = sso.resolve_credentials(&account, &keyring).await.unwrap();
+        assert!(resolved.is_some());
+        assert_eq!(resolved.unwrap().expose_secret(), "pre-resolved-secret");
     }
 }

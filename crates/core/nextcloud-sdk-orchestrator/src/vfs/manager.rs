@@ -44,6 +44,20 @@ impl VfsManager {
         &self.cache_dir
     }
 
+    /// Replaces the virtual tree in memory.
+    pub fn set_tree(&mut self, tree: VirtualTree) {
+        self.tree = tree;
+    }
+
+    /// Access the root node display name.
+    #[must_use]
+    pub fn root_name(&self) -> String {
+        self.tree
+            .get("/")
+            .map(|n| n.metadata.name.clone())
+            .unwrap_or_else(|| "Nextcloud".to_string())
+    }
+
     /// Returns an entry summary for the given virtual path if present in the tree.
     #[must_use]
     pub fn entry(&self, path: &str) -> Option<VirtualEntrySummary> {

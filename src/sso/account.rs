@@ -1,4 +1,5 @@
 use nextcloud_sdk_core::ServerUrl;
+use nextcloud_sdk_keyring::SecretString;
 
 /// The origin or desktop subsystem where a Nextcloud account was discovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,9 +25,30 @@ pub struct DiscoveredAccount {
     pub display_name: Option<String>,
     /// WebDAV user name, if different from `username`.
     pub dav_user: Option<String>,
+    /// Secure credential secret, if resolved during discovery.
+    pub password: Option<SecretString>,
 }
 
 impl DiscoveredAccount {
+    /// Creates a new discovered account without credentials.
+    pub fn new(source: AccountSource, server_url: ServerUrl, username: impl Into<String>) -> Self {
+        Self {
+            source,
+            server_url,
+            username: username.into(),
+            display_name: None,
+            dav_user: None,
+            password: None,
+        }
+    }
+
+    /// Attaches an already-resolved credential secret to this discovered account.
+    #[must_use]
+    pub fn with_password(mut self, password: SecretString) -> Self {
+        self.password = Some(password);
+        self
+    }
+
     /// Returns the WebDAV username or falls back to `username`.
     pub fn dav_username(&self) -> &str {
         self.dav_user.as_deref().unwrap_or(&self.username)
