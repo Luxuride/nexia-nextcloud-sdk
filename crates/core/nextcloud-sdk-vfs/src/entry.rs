@@ -29,6 +29,9 @@ pub struct VirtualEntrySummary {
     pub permissions: Option<String>,
     /// Content MIME type.
     pub mime_type: Option<String>,
+    /// Nextcloud internal numeric file ID (`oc:fileid`), if reported by the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<u64>,
     /// Semantic Freedesktop icon category determined by the SDK.
     pub icon_category: ResourceIconCategory,
     /// Whether the file is currently a metadata-only placeholder or hydrated.
@@ -88,6 +91,7 @@ impl From<&VirtualNode> for VirtualEntrySummary {
             modified_at: node.metadata.modified_at.clone(),
             permissions: node.metadata.permissions.clone(),
             mime_type: node.metadata.mime_type.clone(),
+            file_id: node.metadata.file_id,
             icon_category: node.metadata.icon_category(),
             is_hydrated: node.hydration.is_hydrated(),
             cached_path: node.hydration.cached_path().map(|p| p.to_path_buf()),

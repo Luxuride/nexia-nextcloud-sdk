@@ -662,6 +662,9 @@ impl VirtualTree {
                 if let Some(ref etag) = res.etag {
                     meta = meta.with_etag(etag.clone());
                 }
+                if let Some(id) = res.file_id {
+                    meta = meta.with_file_id(id);
+                }
                 VirtualNode::new_directory(meta)
             } else {
                 let mut meta =
@@ -674,6 +677,9 @@ impl VirtualTree {
                 }
                 if let Some(has_prev) = res.has_preview {
                     meta = meta.with_has_preview(has_prev);
+                }
+                if let Some(id) = res.file_id {
+                    meta = meta.with_file_id(id);
                 }
                 VirtualNode::new_file(meta)
             };

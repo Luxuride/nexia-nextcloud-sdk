@@ -15,6 +15,8 @@ pub struct DavResourceSummary {
     pub etag: Option<String>,
     /// Content MIME type, if available.
     pub content_type: Option<String>,
+    /// Nextcloud internal numeric file ID (`oc:fileid`), if available.
+    pub file_id: Option<u64>,
     /// Whether the Nextcloud instance advertises a thumbnail preview for this resource.
     pub has_preview: Option<bool>,
 }
@@ -28,8 +30,16 @@ impl DavResourceSummary {
             content_length: None,
             etag: None,
             content_type: None,
+            file_id: None,
             has_preview: None,
         }
+    }
+
+    /// Sets the file ID.
+    #[must_use]
+    pub const fn with_file_id(mut self, file_id: u64) -> Self {
+        self.file_id = Some(file_id);
+        self
     }
 
     /// Sets the file size in bytes.
