@@ -37,6 +37,7 @@ nextcloud-sdk-vfs = { path = "crates/core/nextcloud-sdk-vfs", version = "0.1.3" 
 nextcloud-sdk-fuse = { path = "crates/core/nextcloud-sdk-fuse", version = "0.1.3" }
 nextcloud-theming = { path = "crates/nextcloud/nextcloud-theming", version = "0.1.3" }
 nextcloud-sync = { path = "crates/nextcloud/nextcloud-sync", version = "0.1.3" }
+nextcloud-search = { path = "crates/nextcloud/nextcloud-search", version = "0.1.3" }
 nextcloud-sdk-orchestrator = { path = "crates/core/nextcloud-sdk-orchestrator", version = "0.1.3" }
 
 base64 = "0.23"
@@ -80,6 +81,7 @@ nextcloud-kaccounts.workspace = true
 nextcloud-sdk-vfs.workspace = true
 nextcloud-sdk-fuse.workspace = true
 nextcloud-theming.workspace = true
+nextcloud-search.workspace = true
 nextcloud-sync.workspace = true
 nextcloud-sdk-orchestrator.workspace = true
 nextcloud-goa.workspace = true

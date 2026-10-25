@@ -20,6 +20,7 @@
 //! - `nextcloud-kaccounts` KDE Plasma KAccounts desktop single-sign-on integration,
 //! - `nextcloud-client-config` desktop client configuration parser and account discovery,
 //! - `nextcloud-theming` theming, custom branding metadata, and unauthenticated server status,
+//! - `nextcloud-search` Nextcloud Unified Search providers and queries,
 //! - `nextcloud-sync` bidirectional synchronization engine, reconciliation, and sync journal,
 //! - `nextcloud-sdk-vfs` transient mounting virtual tree with metadata and thumbnails,
 //! - `nextcloud-sdk-fuse` transient VFS FUSE driver for desktop filesystem mounting,
@@ -104,6 +105,7 @@ pub use nextcloud_sdk_vfs::{
     StandardNextcloudSeeder, ThumbnailCache, VfsError, VirtualEntrySummary, VirtualNode,
     VirtualTree, breadcrumb_segments, file_name, format_bytes, normalize_path, parent_path,
 };
+pub use nextcloud_search::{SearchClient, SearchEntry, SearchProvider, SearchResultSet};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
 pub use nextcloud_sync::{
     DiscoveredLocalFile, DiscoveredRemoteFile, DownloadExecutor, DownloadPriority,

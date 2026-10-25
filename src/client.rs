@@ -12,6 +12,7 @@ use nextcloud_preview::PreviewClient;
 use nextcloud_sdk_core::ServerUrl;
 use nextcloud_sdk_session::{LoginStart, SessionState};
 use nextcloud_sdk_vfs::VirtualTree;
+use nextcloud_search::SearchClient;
 use nextcloud_shares::ShareClient;
 use nextcloud_talk::TalkClient;
 use nextcloud_transport::{BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport};
@@ -237,6 +238,14 @@ impl Client {
         ocs: &'a OcsClient<ReqwestTransport, BasicAuth>,
     ) -> ActivityClient<'a, ReqwestTransport, BasicAuth> {
         ActivityClient::new(ocs)
+    }
+
+    /// Constructs a [`SearchClient`] borrowing an [`OcsClient`].
+    pub fn search<'a>(
+        &'a self,
+        ocs: &'a OcsClient<ReqwestTransport, BasicAuth>,
+    ) -> SearchClient<'a, ReqwestTransport, BasicAuth> {
+        SearchClient::new(ocs)
     }
 
     /// Constructs a [`PreviewClient`] using current credentials.

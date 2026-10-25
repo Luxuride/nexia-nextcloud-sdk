@@ -1307,6 +1307,7 @@ dependencies = [
  "nextcloud-sdk-session",
  "nextcloud-sdk-storage",
  "nextcloud-sdk-vfs",
+ "nextcloud-search",
  "nextcloud-shares",
  "nextcloud-sync",
  "nextcloud-talk",
@@ -1404,6 +1405,17 @@ dependencies = [
 name = "nextcloud-sdk-vfs"
 version = "0.1.3"
 dependencies = [
+ "nextcloud-sdk-core",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "nextcloud-search"
+version = "0.1.3"
+dependencies = [
+ "nextcloud-ocs",
  "nextcloud-sdk-core",
  "serde",
  "serde_json",
