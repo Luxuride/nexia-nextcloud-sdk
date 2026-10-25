@@ -140,6 +140,75 @@ impl VfsManager {
         Ok(())
     }
 
+    /// Calculates the number of hydrated files and their aggregated bytes on disk.
+    #[must_use]
+    pub fn calculate_hydrated_storage(&self) -> (usize, u64) {
+        let mut count = 0;
+        let mut total_bytes = 0;
+        for path in self.tree.paths() {
+            if let Some(node) = self.tree.get(path)
+                && !node.hydration.is_placeholder()
+            {
+                count += 1;
+                match &node.hydration {
+                    nextcloud_sdk_vfs::HydrationState::Hydrated(
+                        nextcloud_sdk_vfs::HydratedContent::Path(p),
+                    ) => {
+                        if let Ok(meta) = fs::metadata(p) {
+                            total_bytes += meta.len();
+                        } else {
+                            total_bytes += node.metadata.size;
+                        }
+                    }
+                    nextcloud_sdk_vfs::HydrationState::Hydrated(
+                        nextcloud_sdk_vfs::HydratedContent::Bytes(b),
+                    ) => {
+                        total_bytes += b.len() as u64;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        (count, total_bytes)
+    }
+
+    /// Dehydrates all locally hydrated files in this VFS, deleting cache files from disk and returning freed bytes.
+    pub fn clear_all_hydrated(&mut self) -> (usize, u64) {
+        let paths: Vec<String> = self
+            .tree
+            .paths()
+            .filter(|p| {
+                self.tree
+                    .get(p)
+                    .map(|n| !n.hydration.is_placeholder())
+                    .unwrap_or(false)
+            })
+            .map(|s| s.to_string())
+            .collect();
+
+        let mut count = 0;
+        let mut freed = 0;
+        for path in paths {
+            if let Some(node) = self.tree.get(&path)
+                && let nextcloud_sdk_vfs::HydrationState::Hydrated(
+                    nextcloud_sdk_vfs::HydratedContent::Path(p),
+                ) = &node.hydration
+            {
+                if let Ok(meta) = fs::metadata(p) {
+                    freed += meta.len();
+                } else {
+                    freed += node.metadata.size;
+                }
+                let _ = fs::remove_file(p);
+            }
+            if self.tree.dehydrate(&path).is_ok() {
+                count += 1;
+            }
+        }
+        let _ = self.persist_tree();
+        (count, freed)
+    }
+
     /// Adds a new directory node to the virtual tree.
     pub fn create_directory(&mut self, path: &str) -> OrchestratorResult<()> {
         let meta = NodeMetadata::directory(path);

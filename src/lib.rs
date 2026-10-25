@@ -86,10 +86,10 @@ pub use nextcloud_sdk_keyring::{
     KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring,
 };
 pub use nextcloud_sdk_orchestrator::{
-    DownloadQueueCoordinator, FolderSyncRunner, MountDescriptor, MountId, MountMode, MountState,
-    MountStatus, MountsHandle, NextcloudOrchestrator, OrchestratorConfig, OrchestratorError,
-    OrchestratorEvent, OrchestratorHandle, OrchestratorResult, SyncFileStatus, VfsHandle,
-    VfsManager,
+    DownloadQueueCoordinator, FolderSyncRunner, MountDescriptor, MountId, MountMode,
+    MountProgressSnapshot, MountState, MountStatus, MountStorageUsage, MountsHandle,
+    NextcloudOrchestrator, OrchestratorConfig, OrchestratorError, OrchestratorEvent,
+    OrchestratorHandle, OrchestratorResult, SyncFileStatus, VfsHandle, VfsManager,
 };
 pub use nextcloud_sdk_request::{Effect, Failure, RequestMachine, RequestState, RetryPolicy};
 pub use nextcloud_sdk_session::{

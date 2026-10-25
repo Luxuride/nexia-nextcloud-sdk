@@ -260,6 +260,58 @@ impl MountsHandle {
             .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))
     }
 
+    /// Computes disk space usage and cached file capacity for a mount point.
+    pub async fn storage_usage(
+        &self,
+        id: MountId,
+    ) -> OrchestratorResult<crate::mount::MountStorageUsage> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::GetMountStorageUsage {
+            mount_id: id,
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Clears cached files or hydrated local replicas for a mount point, returning freed bytes.
+    pub async fn clear_cache(&self, id: MountId, clear_hydrated: bool) -> OrchestratorResult<u64> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::ClearMountCache {
+            mount_id: id,
+            clear_hydrated,
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Clears shared cached thumbnails across all mounts, returning freed bytes.
+    pub async fn clear_thumbnail_cache(&self) -> OrchestratorResult<u64> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::ClearThumbnailCache { responder })
+            .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Retrieves the current progress snapshot for an individual mount point.
+    pub async fn progress(
+        &self,
+        id: MountId,
+    ) -> OrchestratorResult<crate::mount::MountProgressSnapshot> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::GetMountProgress {
+            mount_id: id,
+            responder,
+        })
+        .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
     async fn send_cmd(&self, cmd: OrchestratorCommand) -> OrchestratorResult<()> {
         self.cmd_tx.send(cmd).await.map_err(|_| {
             OrchestratorError::WorkerShutdown("orchestrator actor is closed".to_string())

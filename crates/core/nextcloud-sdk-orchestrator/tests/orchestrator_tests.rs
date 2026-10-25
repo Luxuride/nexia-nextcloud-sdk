@@ -227,3 +227,66 @@ async fn test_orchestrator_multi_mount_and_sync_status() {
     // 7. Shutdown orchestrator
     handle.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_orchestrator_mount_storage_usage_and_cleanup() {
+    let temp = TestDir::new("storage");
+    let cache_dir = temp.path().join("cache");
+    let target = temp.path().join("target");
+    std::fs::create_dir_all(&target).unwrap();
+
+    let config = OrchestratorConfig::new(&cache_dir);
+    let orchestrator = NextcloudOrchestrator::start(config).unwrap();
+    let handle = orchestrator.handle();
+
+    let desc = MountDescriptor::new("acc-1", "/", &target, MountMode::VirtualVfs)
+        .with_display_name("Main VFS");
+    let mount_id = handle.mounts().add_mount(desc).await.unwrap();
+
+    // Hydrate a file via VFS
+    let content = b"Hello, Nextcloud storage metrics!";
+    handle
+        .vfs(mount_id.clone())
+        .hydrate_local("/doc.txt", content.to_vec())
+        .await
+        .unwrap();
+
+    // Add a dummy thumbnail in thumbnails dir
+    let thumbs_dir = cache_dir.join("thumbnails");
+    std::fs::create_dir_all(&thumbs_dir).unwrap();
+    std::fs::write(thumbs_dir.join("test_thumb_64.png"), b"fake_png_data").unwrap();
+
+    // Calculate usage
+    let usage = handle
+        .mounts()
+        .storage_usage(mount_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(usage.hydrated_files_count, 1);
+    assert_eq!(usage.local_bytes, content.len() as u64);
+    assert_eq!(usage.shared_thumbnail_bytes, 13); // b"fake_png_data".len()
+
+    // Query progress
+    let progress = handle.mounts().progress(mount_id.clone()).await.unwrap();
+    assert_eq!(progress.mount_id, mount_id);
+
+    // Clear mount hydrated cache
+    let freed_hydrated = handle
+        .mounts()
+        .clear_cache(mount_id.clone(), true)
+        .await
+        .unwrap();
+    assert_eq!(freed_hydrated, content.len() as u64);
+
+    // Clear thumbnail cache
+    let freed_thumbs = handle.mounts().clear_thumbnail_cache().await.unwrap();
+    assert_eq!(freed_thumbs, 13);
+
+    // Re-verify usage is now zero
+    let usage_after = handle.mounts().storage_usage(mount_id).await.unwrap();
+    assert_eq!(usage_after.hydrated_files_count, 0);
+    assert_eq!(usage_after.local_bytes, 0);
+    assert_eq!(usage_after.shared_thumbnail_bytes, 0);
+
+    handle.shutdown().await.unwrap();
+}

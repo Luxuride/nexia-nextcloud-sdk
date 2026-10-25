@@ -87,4 +87,7 @@ pub enum OrchestratorEvent {
 
     /// Progress update emitted by a queued file download.
     DownloadProgress(DownloadProgress),
+
+    /// Live progress update for a mount point.
+    MountProgress(crate::mount::MountProgressSnapshot),
 }

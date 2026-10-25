@@ -24,7 +24,10 @@ pub use download::DownloadQueueCoordinator;
 pub use error::{OrchestratorError, OrchestratorResult};
 pub use event::OrchestratorEvent;
 pub use handle::{MountsHandle, OrchestratorHandle, VfsHandle};
-pub use mount::{MountDescriptor, MountId, MountMode, MountState, MountStatus, SyncFileStatus};
+pub use mount::{
+    MountDescriptor, MountId, MountMode, MountProgressSnapshot, MountState, MountStatus,
+    MountStorageUsage, SyncFileStatus,
+};
 pub use sync::FolderSyncRunner;
 pub use vfs::VfsManager;
 pub use worker::NextcloudOrchestrator;

@@ -449,6 +449,81 @@ async fn run_orchestrator_actor(
                 let _ = responder.send(is_paused);
             }
 
+            OrchestratorCommand::GetMountStorageUsage {
+                mount_id,
+                responder,
+            } => {
+                if let Some((desc, _state)) = mount_manager.get_mount(&mount_id) {
+                    let desc = desc.clone();
+                    let (hydrated_count, local_bytes) =
+                        if let Some(vfs) = vfs_managers.get(&mount_id) {
+                            vfs.calculate_hydrated_storage()
+                        } else if desc.local_target.exists() {
+                            scan_dir_usage(&desc.local_target)
+                        } else {
+                            (0, 0)
+                        };
+
+                    let shared_thumbnail_bytes =
+                        calculate_dir_bytes(&config.base_cache_dir.join("thumbnails"));
+                    let usage = crate::mount::MountStorageUsage::new(
+                        mount_id,
+                        local_bytes,
+                        hydrated_count,
+                        shared_thumbnail_bytes,
+                    );
+                    let _ = responder.send(Ok(usage));
+                } else {
+                    let _ = responder.send(Err(OrchestratorError::MountNotFound { id: mount_id }));
+                }
+            }
+
+            OrchestratorCommand::ClearMountCache {
+                mount_id,
+                clear_hydrated: _,
+                responder,
+            } => {
+                if let Some(vfs) = vfs_managers.get_mut(&mount_id) {
+                    let (_count, freed) = vfs.clear_all_hydrated();
+                    let _ = responder.send(Ok(freed));
+                } else if mount_manager.get_mount(&mount_id).is_some() {
+                    let journal = config
+                        .base_cache_dir
+                        .join("mounts")
+                        .join(mount_id.as_str())
+                        .join("sync.journal");
+                    let mut freed = 0;
+                    if journal.exists() {
+                        if let Ok(meta) = std::fs::metadata(&journal) {
+                            freed += meta.len();
+                        }
+                        let _ = std::fs::remove_file(&journal);
+                    }
+                    let _ = responder.send(Ok(freed));
+                } else {
+                    let _ = responder.send(Err(OrchestratorError::MountNotFound { id: mount_id }));
+                }
+            }
+
+            OrchestratorCommand::ClearThumbnailCache { responder } => {
+                let thumbs_dir = config.base_cache_dir.join("thumbnails");
+                let freed = clear_dir_files(&thumbs_dir);
+                let _ = responder.send(Ok(freed));
+            }
+
+            OrchestratorCommand::GetMountProgress {
+                mount_id,
+                responder,
+            } => {
+                if let Some((_desc, state)) = mount_manager.get_mount(&mount_id) {
+                    let progress =
+                        crate::mount::MountProgressSnapshot::new(mount_id, state.status.clone());
+                    let _ = responder.send(Ok(progress));
+                } else {
+                    let _ = responder.send(Err(OrchestratorError::MountNotFound { id: mount_id }));
+                }
+            }
+
             OrchestratorCommand::Shutdown { responder } => {
                 debug!("received shutdown command in orchestrator actor");
                 let _ = responder.send(());
@@ -458,4 +533,58 @@ async fn run_orchestrator_actor(
     }
 
     info!("nextcloud orchestrator actor terminated gracefully");
+}
+
+fn scan_dir_usage(dir: &std::path::Path) -> (usize, u64) {
+    let mut count = 0;
+    let mut bytes = 0;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    let (sub_count, sub_bytes) = scan_dir_usage(&entry.path());
+                    count += sub_count;
+                    bytes += sub_bytes;
+                } else if file_type.is_file() {
+                    count += 1;
+                    if let Ok(meta) = entry.metadata() {
+                        bytes += meta.len();
+                    }
+                }
+            }
+        }
+    }
+    (count, bytes)
+}
+
+fn calculate_dir_bytes(dir: &std::path::Path) -> u64 {
+    let mut bytes = 0;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_file()
+                && let Ok(meta) = entry.metadata()
+            {
+                bytes += meta.len();
+            }
+        }
+    }
+    bytes
+}
+
+fn clear_dir_files(dir: &std::path::Path) -> u64 {
+    let mut freed = 0;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_file()
+            {
+                if let Ok(meta) = entry.metadata() {
+                    freed += meta.len();
+                }
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    freed
 }

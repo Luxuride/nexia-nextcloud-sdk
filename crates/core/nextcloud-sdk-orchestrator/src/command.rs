@@ -205,6 +205,38 @@ pub enum OrchestratorCommand {
         responder: oneshot::Sender<bool>,
     },
 
+    /// Calculates the disk space usage and cached file capacity for a specific mount.
+    GetMountStorageUsage {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// Response channel returning the computed storage usage breakdown.
+        responder: oneshot::Sender<OrchestratorResult<crate::mount::MountStorageUsage>>,
+    },
+
+    /// Clears cached files or hydrated local replicas for a mount.
+    ClearMountCache {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// If `true`, dehydrates and removes local hydrated files.
+        clear_hydrated: bool,
+        /// Response channel returning the number of bytes freed.
+        responder: oneshot::Sender<OrchestratorResult<u64>>,
+    },
+
+    /// Clears shared cached thumbnails across all mounts.
+    ClearThumbnailCache {
+        /// Response channel returning the number of bytes freed.
+        responder: oneshot::Sender<OrchestratorResult<u64>>,
+    },
+
+    /// Retrieves the current progress snapshot for an individual mount point.
+    GetMountProgress {
+        /// Associated mount identifier.
+        mount_id: MountId,
+        /// Response channel returning the live progress snapshot.
+        responder: oneshot::Sender<OrchestratorResult<crate::mount::MountProgressSnapshot>>,
+    },
+
     /// Gracefully stops the orchestrator worker event loop.
     Shutdown {
         /// Response channel acknowledging shutdown.
