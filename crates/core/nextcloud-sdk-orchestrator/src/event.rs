@@ -79,6 +79,12 @@ pub enum OrchestratorEvent {
         active_account_id: String,
     },
 
+    /// Global synchronization has been paused across all mounts.
+    GlobalSyncPaused,
+
+    /// Global synchronization has been resumed across all mounts.
+    GlobalSyncResumed,
+
     /// Progress update emitted by a queued file download.
     DownloadProgress(DownloadProgress),
 }

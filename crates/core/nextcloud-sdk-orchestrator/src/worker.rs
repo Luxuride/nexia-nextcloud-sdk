@@ -319,6 +319,14 @@ async fn run_orchestrator_actor(
                 mount_id,
                 responder,
             } => {
+                if mount_manager.is_mount_paused(&mount_id) {
+                    let _ = responder.send(Err(OrchestratorError::InvalidPath {
+                        path: mount_id.to_string(),
+                        reason: "synchronization is paused for this mount".to_string(),
+                    }));
+                    continue;
+                }
+
                 let mount_opt = mount_manager.get_mount(&mount_id).map(|(d, _)| d.clone());
                 if let Some(mount) = mount_opt {
                     let _ = mount_manager.set_mount_status(&mount_id, MountStatus::Syncing);
@@ -370,6 +378,58 @@ async fn run_orchestrator_actor(
                 } else {
                     let _ = responder.send(Err(OrchestratorError::MountNotFound { id: mount_id }));
                 }
+            }
+
+            OrchestratorCommand::PauseMount { id, responder } => {
+                match mount_manager.pause_mount(&id) {
+                    Ok(()) => {
+                        let _ = event_tx.send(OrchestratorEvent::MountStatusChanged {
+                            id,
+                            status: MountStatus::Paused,
+                        });
+                        let _ = responder.send(Ok(()));
+                    }
+                    Err(e) => {
+                        let _ = responder.send(Err(e));
+                    }
+                }
+            }
+
+            OrchestratorCommand::ResumeMount { id, responder } => {
+                match mount_manager.resume_mount(&id) {
+                    Ok(()) => {
+                        let _ = event_tx.send(OrchestratorEvent::MountStatusChanged {
+                            id,
+                            status: MountStatus::Idle,
+                        });
+                        let _ = responder.send(Ok(()));
+                    }
+                    Err(e) => {
+                        let _ = responder.send(Err(e));
+                    }
+                }
+            }
+
+            OrchestratorCommand::IsMountPaused { id, responder } => {
+                let is_paused = mount_manager.is_mount_paused(&id);
+                let _ = responder.send(is_paused);
+            }
+
+            OrchestratorCommand::PauseAllSync { responder } => {
+                mount_manager.pause_all();
+                let _ = event_tx.send(OrchestratorEvent::GlobalSyncPaused);
+                let _ = responder.send(Ok(()));
+            }
+
+            OrchestratorCommand::ResumeAllSync { responder } => {
+                mount_manager.resume_all();
+                let _ = event_tx.send(OrchestratorEvent::GlobalSyncResumed);
+                let _ = responder.send(Ok(()));
+            }
+
+            OrchestratorCommand::IsGlobalSyncPaused { responder } => {
+                let is_paused = mount_manager.is_globally_paused();
+                let _ = responder.send(is_paused);
             }
 
             OrchestratorCommand::Shutdown { responder } => {
