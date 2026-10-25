@@ -143,7 +143,15 @@ impl TransportBuilder {
         tracing::debug!(server = %server, "Building ReqwestTransport");
         self.timeouts.validate()?;
 
-        let builder = self.timeouts.apply(reqwest::Client::builder());
+        let builder = self
+            .timeouts
+            .apply(reqwest::Client::builder())
+            .tcp_nodelay(true)
+            .http2_adaptive_window(true)
+            .http2_keep_alive_interval(Some(std::time::Duration::from_secs(30)))
+            .http2_keep_alive_timeout(std::time::Duration::from_secs(10))
+            .http2_keep_alive_while_idle(true)
+            .pool_max_idle_per_host(32);
         let builder = match self.user_agent {
             Some(user_agent) => {
                 reqwest::header::HeaderValue::from_str(&user_agent).map_err(|source| {
