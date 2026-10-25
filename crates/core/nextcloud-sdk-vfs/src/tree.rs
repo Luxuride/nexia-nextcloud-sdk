@@ -140,6 +140,9 @@ impl VirtualTree {
                 directory_count: 0,
                 has_unhydrated: !is_hydrated,
                 has_unsynced: is_unsynced,
+                direct_size: root_node.metadata.size,
+                direct_file_count: 1,
+                direct_directory_count: 0,
             };
         }
 
@@ -148,6 +151,14 @@ impl VirtualTree {
 
         if let Some(children) = &root_node.children {
             for child_path in children {
+                if let Some(child_node) = self.get(child_path) {
+                    if child_node.is_directory() {
+                        summary.direct_directory_count += 1;
+                    } else {
+                        summary.direct_file_count += 1;
+                        summary.direct_size += child_node.metadata.size;
+                    }
+                }
                 queue.push(child_path.clone());
             }
         }

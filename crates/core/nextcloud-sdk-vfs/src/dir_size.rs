@@ -17,6 +17,15 @@ pub struct DirectorySizeSummary {
     pub has_unhydrated: bool,
     /// Whether at least one descendant file is local-only or modified waiting to sync.
     pub has_unsynced: bool,
+    /// Total direct size in bytes of files immediately inside this directory.
+    #[serde(default)]
+    pub direct_size: u64,
+    /// Number of files immediately inside this directory.
+    #[serde(default)]
+    pub direct_file_count: usize,
+    /// Number of subdirectories immediately inside this directory.
+    #[serde(default)]
+    pub direct_directory_count: usize,
 }
 
 impl DirectorySizeSummary {
@@ -28,6 +37,9 @@ impl DirectorySizeSummary {
             directory_count: 0,
             has_unhydrated: false,
             has_unsynced: false,
+            direct_size: 0,
+            direct_file_count: 0,
+            direct_directory_count: 0,
         }
     }
 
@@ -39,6 +51,9 @@ impl DirectorySizeSummary {
             directory_count,
             has_unhydrated: false,
             has_unsynced: false,
+            direct_size: 0,
+            direct_file_count: 0,
+            direct_directory_count: 0,
         }
     }
 
@@ -47,6 +62,24 @@ impl DirectorySizeSummary {
         self.has_unhydrated = has_unhydrated;
         self.has_unsynced = has_unsynced;
         self
+    }
+
+    /// Sets the direct item counts and direct files size.
+    pub const fn with_direct(
+        mut self,
+        direct_size: u64,
+        direct_file_count: usize,
+        direct_directory_count: usize,
+    ) -> Self {
+        self.direct_size = direct_size;
+        self.direct_file_count = direct_file_count;
+        self.direct_directory_count = direct_directory_count;
+        self
+    }
+
+    /// Number of direct items (direct files + direct subdirectories) immediately within this directory.
+    pub const fn direct_items(&self) -> usize {
+        self.direct_file_count + self.direct_directory_count
     }
 
     /// Total number of nested items (files plus subdirectories).
