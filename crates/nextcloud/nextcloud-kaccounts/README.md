@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-nextcloud-kaccounts = "0.1.1"
+nextcloud-kaccounts = "0.1.2"
 ```
 
 ## Features

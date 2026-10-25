@@ -8,7 +8,7 @@ Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sd
 
 ```toml
 [dependencies]
-nextcloud-sdk-request = "0.1.1"
+nextcloud-sdk-request = "0.1.2"
 ```
 
 ## Features
