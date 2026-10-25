@@ -78,25 +78,16 @@ Autonomous AI agents and contributors using LLMs (Claude, Gemini, GPT, etc.) are
 
 ## 5. Releasing
 
-Releases are cut from a tag on `main`; the `Release` workflow does the rest.
+Releases are automated via [release-plz](https://github.com/release-plz/release-plz).
 
-1. Bump `version` under `[workspace.package]` in `Cargo.toml` and the matching
-   `version = "…"` entries under `[workspace.dependencies]`.
-2. Update the crate READMEs and `docs/GETTING_STARTED.md` install snippets to
-   the new version, and add a `CHANGELOG.md` section for it.
-3. Commit, push, and wait for `CI` to pass on `main`.
-4. Tag and push:
-   ```sh
-   git tag v0.1.1
-   git push origin v0.1.1
-   ```
+1. Follow **Conventional Commits** (`feat:`, `fix:`, `chore:`, etc.) for all changes.
+2. When changes land on `main`, the `Release` workflow runs `release-plz`:
+   - Evaluates conventional commits and computes the next semantic version.
+   - Automatically maintains and updates an open **Release PR** containing version bumps in `Cargo.toml` and updates to `CHANGELOG.md`.
+3. When the Release PR is reviewed and merged into `main`:
+   - `release-plz` detects the version bump.
+   - Creates the git tag (`v<version>`).
+   - Publishes each workspace crate to crates.io in topological dependency order.
+   - Generates the GitHub Release with changelog notes.
 
-The workflow refuses a tag that disagrees with the workspace version, re-runs
-the four gates, publishes every crate in dependency order (riding out the
-crates.io new-crate rate limit), and creates the GitHub release from the
-matching `CHANGELOG.md` section. It needs a `CARGO_REGISTRY_TOKEN` repository
-secret holding a crates.io API token.
-
-Publishing is only safe from a clean tree, so never run `cargo publish` by hand
-while the workflow is in flight: crates.io refuses a version that already
-exists, and the workflow skips crates it finds already published.
+The workflow requires `CARGO_REGISTRY_TOKEN` configured as a repository secret and GitHub Actions workflow write permissions for contents and pull requests.

@@ -2,7 +2,7 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
-## Unreleased
+## 0.1.2
 
 ### Added
 

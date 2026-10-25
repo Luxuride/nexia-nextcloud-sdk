@@ -10,7 +10,7 @@ Add the SDK and Tokio runtime dependencies to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-nextcloud-rust-sdk = "0.1.1"
+nextcloud-rust-sdk = "0.1.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -18,10 +18,10 @@ If you only require specific stateless subsets (e.g., WebDAV without storage or 
 
 ```toml
 [dependencies]
-nextcloud-sdk-core = "0.1.1"
-nextcloud-auth = "0.1.1"
-nextcloud-transport = "0.1.1"
-nextcloud-dav = "0.1.1"
+nextcloud-sdk-core = "0.1.2"
+nextcloud-auth = "0.1.2"
+nextcloud-transport = "0.1.2"
+nextcloud-dav = "0.1.2"
 ```
 
 ---

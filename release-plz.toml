@@ -1,0 +1,41 @@
+[workspace]
+git_tag_name = "v{{ version }}"
+changelog_update = false
+git_release_enable = false
+pr_branch_prefix = "release-plz-"
+
+[[package]]
+name = "nextcloud-rust-sdk"
+changelog_path = "CHANGELOG.md"
+changelog_update = true
+git_release_enable = true
+git_tag_name = "v{{ version }}"
+changelog_include = [
+    "nextcloud-sdk-core",
+    "nextcloud-auth",
+    "nextcloud-transport",
+    "nextcloud-ocs",
+    "nextcloud-dav",
+    "nextcloud-notifications",
+    "nextcloud-shares",
+    "nextcloud-users",
+    "nextcloud-activity",
+    "nextcloud-trashbin",
+    "nextcloud-preview",
+    "nextcloud-goa",
+    "nextcloud-versions",
+    "nextcloud-uploads",
+    "nextcloud-deck",
+    "nextcloud-talk",
+    "nextcloud-client-config",
+    "nextcloud-kaccounts",
+    "nextcloud-sdk-session",
+    "nextcloud-sdk-request",
+    "nextcloud-sdk-storage",
+    "nextcloud-sdk-keyring",
+    "nextcloud-sdk-ratelimit",
+    "nextcloud-sdk-vfs",
+    "nextcloud-sdk-fuse",
+    "nextcloud-theming",
+    "nextcloud-sync",
+]

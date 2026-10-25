@@ -2,7 +2,13 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,121 +19,22 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  verify:
-    name: verify
+  release-plz:
+    name: Release-plz
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      crates: ${{ steps.version.outputs.crates }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Derive version and publish order from the tag
-        id: version
-        run: |
-          tag=${GITHUB_REF_NAME#v}
-          manifest=$(cargo metadata --format-version 1 --no-deps \
-            | jq -r '.packages[0].version')
-          if [ "$tag" != "$manifest" ]; then
-            echo "tag $GITHUB_REF_NAME != workspace version $manifest" >&2
-            exit 1
-          fi
-          crates=$(python3 scripts/crate-publish-order.py \
-            | jq -R . | jq -cs .)
-          echo "version=$tag" >> "$GITHUB_OUTPUT"
-          echo "crates=$crates" >> "$GITHUB_OUTPUT"
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
-      - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 
-  publish:
-    name: publish ${{ matrix.crate }}
-    needs: verify
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    timeout-minutes: 360
-    strategy:
-      # crates.io rate limits new crate names and every crate here depends on
-      # the ones before it, so the matrix runs one entry at a time in order.
-      # Each entry gets its own short-lived trusted-publishing token, which
-      # would expire long before a single job finished this list.
-      max-parallel: 1
-      fail-fast: false
-      matrix:
-        crate: ${{ fromJSON(needs.verify.outputs.crates) }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Authenticate with crates.io
-        id: auth
-        uses: rust-lang/crates-io-auth-action@v1
-      - name: Publish
+      - name: Run release-plz
+        uses: release-plz/action@v0.5
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-          CRATE: ${{ matrix.crate }}
-        run: |
-          set -uo pipefail
-          for attempt in $(seq 1 5); do
-            if output=$(cargo publish -p "$CRATE" 2>&1); then
-              echo "published $CRATE"
-              exit 0
-            fi
-            if grep -q "already exists on crates.io" <<<"$output"; then
-              echo "$CRATE is already published"
-              exit 0
-            fi
-            if grep -qE "no matching package named" <<<"$output"; then
-              echo "a dependency of $CRATE is not on crates.io yet, waiting"
-              sleep 60
-              continue
-            fi
-            retry_at=$(sed -n \
-              's/.*Please try again after \(.*\) GMT.*/\1/p' <<<"$output" \
-              | head -1)
-            if [ -z "$retry_at" ]; then
-              echo "publishing $CRATE failed:" >&2
-              echo "$output" >&2
-              exit 1
-            fi
-            wait_seconds=$(( $(date -u -d "$retry_at GMT" +%s) \
-              - $(date -u +%s) + 15 ))
-            echo "rate limited, retrying $CRATE in ${wait_seconds}s"
-            sleep "$wait_seconds"
-          done
-          echo "$CRATE still rate limited after 5 attempts" >&2
-          exit 1
-
-  github-release:
-    name: github release
-    needs: [verify, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Publish GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.verify.outputs.version }}
-        run: |
-          set -uo pipefail
-          notes=$(mktemp)
-          if scripts/release-notes.sh "$VERSION" > "$notes" \
-            && [ -s "$notes" ]; then
-            args=(--notes-file "$notes")
-          else
-            args=(--generate-notes)
-          fi
-          gh release create "v$VERSION" --title "v$VERSION" "${args[@]}"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
