@@ -60,3 +60,42 @@ impl CacheSchema {
         )",
     ];
 }
+
+/// Tables the configuration and runtime database is expected to carry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConfigSchema;
+
+impl ConfigSchema {
+    /// Schema version recorded in `PRAGMA user_version`.
+    pub const VERSION: i64 = 1;
+
+    /// DDL creating every table of the configuration database.
+    pub const CREATE: &'static [&'static str] = &[
+        "CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        "CREATE TABLE IF NOT EXISTS sync_mount (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            remote_path TEXT NOT NULL,
+            local_target TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            display_name TEXT,
+            enabled INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        "CREATE TABLE IF NOT EXISTS theme_cache (
+            server TEXT PRIMARY KEY,
+            name TEXT,
+            slogan TEXT,
+            color TEXT,
+            color_text TEXT,
+            logo_path TEXT,
+            background_url TEXT,
+            updated_at INTEGER NOT NULL
+        )",
+    ];
+}

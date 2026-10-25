@@ -5,7 +5,7 @@ use rusqlite::Connection;
 
 use crate::error::StorageError;
 use crate::key::StoreKey;
-use crate::schema::{CacheSchema, CredentialSchema};
+use crate::schema::{CacheSchema, ConfigSchema, CredentialSchema};
 
 /// An open SQLCipher database.
 ///
@@ -66,6 +66,13 @@ impl EncryptedDatabase {
     pub fn open_cache_store(path: impl AsRef<Path>, key: &StoreKey) -> Result<Self, StorageError> {
         let database = Self::open(path, key)?;
         database.apply_schema(CacheSchema::CREATE, CacheSchema::VERSION)?;
+        Ok(database)
+    }
+
+    /// Opens the configuration database and installs its schema.
+    pub fn open_config_store(path: impl AsRef<Path>, key: &StoreKey) -> Result<Self, StorageError> {
+        let database = Self::open(path, key)?;
+        database.apply_schema(ConfigSchema::CREATE, ConfigSchema::VERSION)?;
         Ok(database)
     }
 

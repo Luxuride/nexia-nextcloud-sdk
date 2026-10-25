@@ -53,6 +53,12 @@ pub enum SyncFileStatus {
     /// File is currently being uploaded or downloaded.
     Syncing,
 
+    /// File is currently hydrating or downloading from Nextcloud.
+    SyncingDown,
+
+    /// File is currently uploading local changes to Nextcloud.
+    SyncingUp,
+
     /// A conflict between local and remote versions was detected.
     Conflict,
 
@@ -70,7 +76,7 @@ impl SyncFileStatus {
         match self {
             Self::Synced => "emblem-ok-symbolic",
             Self::OnlineOnly => "cloud-symbolic",
-            Self::Syncing => "emblem-synchronizing-symbolic",
+            Self::Syncing | Self::SyncingDown | Self::SyncingUp => "emblem-synchronizing-symbolic",
             Self::Conflict => "dialog-warning-symbolic",
             Self::Ignored => "action-unavailable-symbolic",
             Self::Error(_) => "dialog-error-symbolic",
@@ -84,6 +90,8 @@ impl SyncFileStatus {
             Self::Synced => "emblem-default-symbolic",
             Self::OnlineOnly => "folder-remote-symbolic",
             Self::Syncing => "view-refresh-symbolic",
+            Self::SyncingDown => "go-down-symbolic",
+            Self::SyncingUp => "go-up-symbolic",
             Self::Conflict => "emblem-important-symbolic",
             Self::Ignored => "emblem-readonly-symbolic",
             Self::Error(_) => "error-symbolic",
@@ -97,6 +105,8 @@ impl SyncFileStatus {
             Self::Synced => "Available offline (fully synchronized)",
             Self::OnlineOnly => "Available online only (metadata placeholder)",
             Self::Syncing => "Synchronizing with server…",
+            Self::SyncingDown => "Downloading from server…",
+            Self::SyncingUp => "Uploading to server…",
             Self::Conflict => "Conflicting modifications detected",
             Self::Ignored => "Ignored by sync rules",
             Self::Error(_) => "Synchronization error",

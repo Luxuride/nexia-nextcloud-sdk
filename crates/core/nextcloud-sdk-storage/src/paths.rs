@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::database::EncryptedDatabase;
 use crate::{StorageError, StoreKey};
 
-/// File locations of the two SDK databases.
+/// File locations of the SDK databases.
 ///
 /// Paths are chosen by the application, not derived from a crate-level
 /// constant, so a desktop app can keep them in `$XDG_DATA_HOME` while a
@@ -13,24 +13,53 @@ use crate::{StorageError, StoreKey};
 pub struct StoragePaths {
     auth: PathBuf,
     cache: PathBuf,
+    config: PathBuf,
 }
 
 impl StoragePaths {
-    /// Uses exactly these two files.
+    /// Uses specified auth and cache files, deriving config path beside cache.
     pub fn new(auth: impl Into<PathBuf>, cache: impl Into<PathBuf>) -> Self {
+        let auth = auth.into();
+        let cache = cache.into();
+        let config_name = format!(
+            "{}_config.db",
+            cache
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("cache")
+        );
+        let config = cache.with_file_name(config_name);
         Self {
-            auth: auth.into(),
-            cache: cache.into(),
+            auth,
+            cache,
+            config,
         }
     }
 
-    /// Puts both databases in `directory`.
-    pub fn in_directory(directory: impl AsRef<Path>) -> Self {
-        let directory = directory.as_ref();
-        Self::new(directory.join("auth.db"), directory.join("cache.db"))
+    /// Uses explicit paths for auth, cache, and config databases.
+    pub fn new_with_config(
+        auth: impl Into<PathBuf>,
+        cache: impl Into<PathBuf>,
+        config: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            auth: auth.into(),
+            cache: cache.into(),
+            config: config.into(),
+        }
     }
 
-    /// Defaults to `<data dir>/nextcloud-rust-sdk/{auth,cache}.db`.
+    /// Puts all databases in `directory`.
+    pub fn in_directory(directory: impl AsRef<Path>) -> Self {
+        let directory = directory.as_ref();
+        Self::new_with_config(
+            directory.join("auth.db"),
+            directory.join("cache.db"),
+            directory.join("config.db"),
+        )
+    }
+
+    /// Defaults to `<data dir>/nextcloud-rust-sdk/{auth,cache,config}.db`.
     ///
     /// Uses `$XDG_DATA_HOME`, falling back to `$HOME/.local/share`.
     pub fn default_xdg() -> Result<Self, StorageError> {
@@ -62,6 +91,11 @@ impl StoragePaths {
         &self.cache
     }
 
+    /// Path of the configuration database.
+    pub fn config(&self) -> &Path {
+        &self.config
+    }
+
     /// Opens (creating if needed) the credentials database with `key`.
     pub fn open_auth_db(&self, key: &StoreKey) -> Result<EncryptedDatabase, StorageError> {
         EncryptedDatabase::open_credential_store(&self.auth, key)
@@ -72,9 +106,14 @@ impl StoragePaths {
         EncryptedDatabase::open_cache_store(&self.cache, key)
     }
 
-    /// Creates both parent directories, so a first run can create the files.
+    /// Opens (creating if needed) the configuration database with `key`.
+    pub fn open_config_db(&self, key: &StoreKey) -> Result<EncryptedDatabase, StorageError> {
+        EncryptedDatabase::open_config_store(&self.config, key)
+    }
+
+    /// Creates all parent directories, so a first run can create the files.
     pub fn ensure_directories(&self) -> Result<(), StorageError> {
-        for path in [&self.auth, &self.cache] {
+        for path in [&self.auth, &self.cache, &self.config] {
             if let Some(parent) = path.parent()
                 && !parent.as_os_str().is_empty()
             {
@@ -92,6 +131,7 @@ impl fmt::Debug for StoragePaths {
         f.debug_struct("StoragePaths")
             .field("auth", &self.auth)
             .field("cache", &self.cache)
+            .field("config", &self.config)
             .finish()
     }
 }
@@ -105,13 +145,16 @@ mod tests {
         let paths = StoragePaths::in_directory("/tmp/nc");
         assert_eq!(paths.auth(), std::path::Path::new("/tmp/nc/auth.db"));
         assert_eq!(paths.cache(), std::path::Path::new("/tmp/nc/cache.db"));
+        assert_eq!(paths.config(), std::path::Path::new("/tmp/nc/config.db"));
     }
 
     #[test]
     fn explicit_paths_are_kept_verbatim() {
-        let paths = StoragePaths::new("/a/auth.sqlite", "/b/cache.sqlite");
+        let paths =
+            StoragePaths::new_with_config("/a/auth.sqlite", "/b/cache.sqlite", "/c/config.sqlite");
         assert_eq!(paths.auth(), std::path::Path::new("/a/auth.sqlite"));
         assert_eq!(paths.cache(), std::path::Path::new("/b/cache.sqlite"));
+        assert_eq!(paths.config(), std::path::Path::new("/c/config.sqlite"));
     }
 
     #[test]

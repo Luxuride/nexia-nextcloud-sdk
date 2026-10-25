@@ -4,6 +4,7 @@ use nextcloud_sdk_session::{LoginStart, SessionState};
 use tokio::sync::oneshot;
 
 use crate::error::ClientError;
+use crate::storage::{CachedTheme, StoredSyncMount};
 
 /// Result of querying cached server capabilities (`(user_id, body)`).
 pub type CachedCapabilities = Option<(String, Vec<u8>)>;
@@ -49,6 +50,53 @@ pub enum WorkerTask {
         /// Channel to return the current state.
         reply: oneshot::Sender<SessionState>,
     },
+    /// Store visual branding theme in permanent config store.
+    StoreTheme {
+        /// Theme to persist.
+        theme: CachedTheme,
+        /// Channel to return completion status.
+        reply: oneshot::Sender<Result<(), ClientError>>,
+    },
+    /// Load visual branding theme from permanent config store.
+    LoadTheme {
+        /// Channel to return cached theme.
+        reply: oneshot::Sender<Result<Option<CachedTheme>, ClientError>>,
+    },
+    /// Store setting in permanent config store.
+    SetSetting {
+        /// Setting key.
+        key: String,
+        /// Setting value.
+        value: String,
+        /// Channel to return completion status.
+        reply: oneshot::Sender<Result<(), ClientError>>,
+    },
+    /// Load setting from permanent config store.
+    GetSetting {
+        /// Setting key.
+        key: String,
+        /// Channel to return optional setting value.
+        reply: oneshot::Sender<Result<Option<String>, ClientError>>,
+    },
+    /// Store sync mount in permanent config store.
+    StoreSyncMount {
+        /// Mount configuration.
+        mount: StoredSyncMount,
+        /// Channel to return completion status.
+        reply: oneshot::Sender<Result<(), ClientError>>,
+    },
+    /// Remove sync mount from permanent config store.
+    RemoveSyncMount {
+        /// Mount identifier.
+        id: String,
+        /// Channel to return completion status.
+        reply: oneshot::Sender<Result<(), ClientError>>,
+    },
+    /// List all sync mounts from permanent config store.
+    ListSyncMounts {
+        /// Channel to return list of stored sync mounts.
+        reply: oneshot::Sender<Result<Vec<StoredSyncMount>, ClientError>>,
+    },
 }
 
 impl fmt::Debug for WorkerTask {
@@ -64,6 +112,25 @@ impl fmt::Debug for WorkerTask {
             Self::LoadCapabilities { .. } => f.write_str("WorkerTask::LoadCapabilities"),
             Self::ClearCache { .. } => f.write_str("WorkerTask::ClearCache"),
             Self::GetSessionState { .. } => f.write_str("WorkerTask::GetSessionState"),
+            Self::StoreTheme { .. } => f.write_str("WorkerTask::StoreTheme"),
+            Self::LoadTheme { .. } => f.write_str("WorkerTask::LoadTheme"),
+            Self::SetSetting { key, .. } => f
+                .debug_struct("WorkerTask::SetSetting")
+                .field("key", key)
+                .finish(),
+            Self::GetSetting { key, .. } => f
+                .debug_struct("WorkerTask::GetSetting")
+                .field("key", key)
+                .finish(),
+            Self::StoreSyncMount { mount, .. } => f
+                .debug_struct("WorkerTask::StoreSyncMount")
+                .field("id", &mount.id)
+                .finish(),
+            Self::RemoveSyncMount { id, .. } => f
+                .debug_struct("WorkerTask::RemoveSyncMount")
+                .field("id", id)
+                .finish(),
+            Self::ListSyncMounts { .. } => f.write_str("WorkerTask::ListSyncMounts"),
         }
     }
 }

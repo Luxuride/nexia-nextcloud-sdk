@@ -3,5 +3,5 @@
 mod actor;
 mod task;
 
-pub use actor::WorkerActor;
+pub use actor::{WorkerActor, WorkerStores};
 pub use task::WorkerTask;

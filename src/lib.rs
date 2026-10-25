@@ -130,5 +130,7 @@ pub use nextcloud_users::{
 };
 pub use nextcloud_versions::{FileVersion, VersionsClient};
 pub use sso::{AccountSource, DesktopSso, DiscoveredAccount, SsoError};
-pub use storage::{CacheStore, CachedDavEntry, SessionStore};
-pub use worker::{WorkerActor, WorkerTask};
+pub use storage::{
+    CacheStore, CachedDavEntry, CachedTheme, ConfigStore, SessionStore, StoredSyncMount,
+};
+pub use worker::{WorkerActor, WorkerStores, WorkerTask};

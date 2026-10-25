@@ -12,7 +12,7 @@ use nextcloud_users::UserClient;
 use tokio::sync::{mpsc, watch};
 
 use crate::error::ClientError;
-use crate::storage::{CacheStore, SessionStore};
+use crate::storage::{CacheStore, ConfigStore, SessionStore};
 use crate::worker::task::WorkerTask;
 
 #[derive(serde::Deserialize)]
@@ -35,6 +35,27 @@ struct PollSuccessWire {
     app_password: String,
 }
 
+/// Persistent database stores bundled for the background worker actor.
+pub struct WorkerStores {
+    /// Session credential store.
+    pub session: SessionStore,
+    /// Cached capabilities and metadata store.
+    pub cache: CacheStore,
+    /// Configuration, theming, and sync mount store.
+    pub config: ConfigStore,
+}
+
+impl WorkerStores {
+    /// Creates a new bundle of storage adapters.
+    pub const fn new(session: SessionStore, cache: CacheStore, config: ConfigStore) -> Self {
+        Self {
+            session,
+            cache,
+            config,
+        }
+    }
+}
+
 /// Background worker actor maintaining state transitions, network tasks, and storage persistence.
 pub struct WorkerActor {
     server_url: ServerUrl,
@@ -42,6 +63,7 @@ pub struct WorkerActor {
     session_machine: SessionMachine,
     session_store: SessionStore,
     cache_store: CacheStore,
+    config_store: ConfigStore,
     state_tx: watch::Sender<SessionState>,
     task_rx: mpsc::Receiver<WorkerTask>,
 }
@@ -52,8 +74,7 @@ impl WorkerActor {
         server_url: ServerUrl,
         transport: ReqwestTransport,
         session_machine: SessionMachine,
-        session_store: SessionStore,
-        cache_store: CacheStore,
+        stores: WorkerStores,
         state_tx: watch::Sender<SessionState>,
         task_rx: mpsc::Receiver<WorkerTask>,
     ) -> Self {
@@ -61,8 +82,9 @@ impl WorkerActor {
             server_url,
             transport,
             session_machine,
-            session_store,
-            cache_store,
+            session_store: stores.session,
+            cache_store: stores.cache,
+            config_store: stores.config,
             state_tx,
             task_rx,
         }
@@ -115,6 +137,55 @@ impl WorkerActor {
             }
             WorkerTask::GetSessionState { reply } => {
                 let _ = reply.send(self.session_machine.state().clone());
+            }
+            WorkerTask::StoreTheme { theme, reply } => {
+                let res = self
+                    .config_store
+                    .store_theme(self.server_url.as_str(), &theme)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::LoadTheme { reply } => {
+                let res = self
+                    .config_store
+                    .load_theme(self.server_url.as_str())
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::SetSetting { key, value, reply } => {
+                let res = self
+                    .config_store
+                    .set_setting(&key, &value)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::GetSetting { key, reply } => {
+                let res = self
+                    .config_store
+                    .get_setting(&key)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::StoreSyncMount { mount, reply } => {
+                let res = self
+                    .config_store
+                    .store_sync_mount(&mount)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::RemoveSyncMount { id, reply } => {
+                let res = self
+                    .config_store
+                    .remove_sync_mount(&id)
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
+            }
+            WorkerTask::ListSyncMounts { reply } => {
+                let res = self
+                    .config_store
+                    .list_sync_mounts()
+                    .map_err(ClientError::Storage);
+                let _ = reply.send(res);
             }
         }
     }
@@ -309,10 +380,12 @@ mod tests {
     async fn debug_formats_without_leaking_credentials() {
         let auth_path = temp_path("auth");
         let cache_path = temp_path("cache");
+        let config_path = temp_path("config");
         let key = StoreKey::generate().unwrap();
 
         let session_store = SessionStore::open(&auth_path, &key).unwrap();
         let cache_store = CacheStore::open(&cache_path, &key).unwrap();
+        let config_store = ConfigStore::open(&config_path, &key).unwrap();
 
         let server_url = ServerUrl::parse("https://cloud.example.org").unwrap();
         let transport = TransportBuilder::with_server(server_url.clone())
@@ -321,12 +394,12 @@ mod tests {
         let (state_tx, _state_rx) = watch::channel(SessionState::Idle);
         let (_task_tx, task_rx) = mpsc::channel(1);
 
+        let stores = WorkerStores::new(session_store, cache_store, config_store);
         let actor = WorkerActor::new(
             server_url,
             transport,
             SessionMachine::new(),
-            session_store,
-            cache_store,
+            stores,
             state_tx,
             task_rx,
         );
@@ -338,5 +411,6 @@ mod tests {
 
         std::fs::remove_file(&auth_path).ok();
         std::fs::remove_file(&cache_path).ok();
+        std::fs::remove_file(&config_path).ok();
     }
 }

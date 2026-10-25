@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::client::Client;
 use crate::error::ClientError;
-use crate::storage::{CacheStore, SessionStore};
+use crate::storage::{CacheStore, ConfigStore, SessionStore};
 use crate::worker::WorkerActor;
 
 type KeyLoader = Box<
@@ -224,6 +224,7 @@ impl ClientBuilder {
 
         let session_store = SessionStore::open(storage_paths.auth(), &key)?;
         let cache_store = CacheStore::open(storage_paths.cache(), &key)?;
+        let config_store = ConfigStore::open(storage_paths.config(), &key)?;
 
         let session_machine = if let Some(account) = self.initial_account {
             session_store.store_account(&account)?;
@@ -265,12 +266,12 @@ impl ClientBuilder {
         let (task_tx, task_rx) = mpsc::channel(32);
         let (state_tx, state_rx) = watch::channel(initial_state);
 
+        let stores = crate::worker::WorkerStores::new(session_store, cache_store, config_store);
         let actor = WorkerActor::new(
             server_url.clone(),
             transport.clone(),
             session_machine,
-            session_store,
-            cache_store,
+            stores,
             state_tx,
             task_rx,
         );

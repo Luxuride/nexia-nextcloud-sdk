@@ -324,6 +324,100 @@ impl Client {
     ) -> Result<nextcloud_theming::ServerStatusInfo, nextcloud_theming::ThemingError> {
         self.anonymous_theming().server_status().await
     }
+
+    /// Stores or updates visual branding theme metadata in the local permanent config database.
+    pub async fn store_cached_theme(
+        &self,
+        theme: crate::storage::CachedTheme,
+    ) -> Result<(), ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::StoreTheme { theme, reply })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Retrieves visual branding theme metadata from the local permanent config database.
+    pub async fn load_cached_theme(
+        &self,
+    ) -> Result<Option<crate::storage::CachedTheme>, ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::LoadTheme { reply })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Stores a persistent runtime setting in the permanent configuration database.
+    pub async fn set_setting(
+        &self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<(), ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::SetSetting {
+                key: key.into(),
+                value: value.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Retrieves a persistent runtime setting from the permanent configuration database.
+    pub async fn get_setting(&self, key: impl Into<String>) -> Result<Option<String>, ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::GetSetting {
+                key: key.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Stores or updates a sync mount in the permanent configuration database.
+    pub async fn store_sync_mount(
+        &self,
+        mount: crate::storage::StoredSyncMount,
+    ) -> Result<(), ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::StoreSyncMount { mount, reply })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Removes a sync mount by its unique identifier from the permanent configuration database.
+    pub async fn remove_sync_mount(&self, id: impl Into<String>) -> Result<(), ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::RemoveSyncMount {
+                id: id.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
+
+    /// Lists all sync mounts stored in the permanent configuration database.
+    pub async fn list_sync_mounts(
+        &self,
+    ) -> Result<Vec<crate::storage::StoredSyncMount>, ClientError> {
+        let (reply, rx) = oneshot::channel();
+        self.task_tx
+            .send(WorkerTask::ListSyncMounts { reply })
+            .await
+            .map_err(|_| ClientError::WorkerGone)?;
+        rx.await.map_err(|_| ClientError::WorkerGone)?
+    }
 }
 
 impl fmt::Debug for Client {

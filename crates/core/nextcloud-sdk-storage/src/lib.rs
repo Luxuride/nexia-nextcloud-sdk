@@ -36,7 +36,7 @@ pub use error::StorageError;
 pub use key::StoreKey;
 pub use key_store::KeyStore;
 pub use paths::StoragePaths;
-pub use schema::{CacheSchema, CredentialSchema};
+pub use schema::{CacheSchema, ConfigSchema, CredentialSchema};
 
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainKeyStore;
