@@ -192,17 +192,28 @@ impl ClientBuilder {
 
         tracing::info!(server_url = %server_url, "Building Nextcloud Client");
 
-        let storage_paths = self
-            .storage_paths
-            .ok_or(ClientError::MissingConfiguration("storage_paths"))?;
-
-        let key_source = self
-            .store_key
-            .ok_or(ClientError::MissingConfiguration("store_key"))?;
-
-        let key = match key_source {
-            StoreKeySource::Direct(k) => k,
-            StoreKeySource::Loader(loader) => loader().await.map_err(ClientError::Storage)?,
+        let (storage_paths, key) = match (self.storage_paths, self.store_key) {
+            (Some(paths), Some(StoreKeySource::Direct(k))) => (paths, k),
+            (Some(paths), Some(StoreKeySource::Loader(loader))) => {
+                let k = loader().await.map_err(ClientError::Storage)?;
+                (paths, k)
+            }
+            (None, Some(_)) => return Err(ClientError::MissingConfiguration("storage_paths")),
+            (Some(_), None) => return Err(ClientError::MissingConfiguration("store_key")),
+            (None, None) => {
+                let temp = std::env::temp_dir().join("nextcloud-sdk-ephemeral");
+                let server_clean = server_url.authority().replace([':', '/'], "_");
+                let dir = temp.join(server_clean);
+                std::fs::create_dir_all(&dir).map_err(|e| {
+                    ClientError::Storage(StorageError::Path {
+                        operation: "create_dir_all",
+                        source: Box::new(e),
+                    })
+                })?;
+                let paths = StoragePaths::new(dir.join("auth.db"), dir.join("cache.db"));
+                let k = StoreKey::generate().map_err(ClientError::Storage)?;
+                (paths, k)
+            }
         };
 
         let session_store = SessionStore::open(storage_paths.auth(), &key)?;

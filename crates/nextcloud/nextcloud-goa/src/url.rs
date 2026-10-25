@@ -93,6 +93,14 @@ mod tests {
     }
 
     #[test]
+    fn parses_userinfo_and_default_port() {
+        let parsed =
+            parse_webdav_url("https://luxuride@nextcloud.luxuride.eu:443/remote.php/dav/").unwrap();
+        assert_eq!(parsed.as_str(), "https://nextcloud.luxuride.eu");
+        assert_eq!(parsed.authority(), "nextcloud.luxuride.eu");
+    }
+
+    #[test]
     fn rejects_invalid_urls() {
         assert!(matches!(parse_webdav_url(""), Err(GoaError::Url(_))));
         assert!(matches!(

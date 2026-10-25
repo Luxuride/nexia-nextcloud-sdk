@@ -125,7 +125,14 @@ impl fmt::Debug for ServerUrl {
 
 fn normalise_authority(authority: &str, scheme: Scheme) -> Result<String, UrlError> {
     let authority = authority.to_ascii_lowercase();
-    match authority.rsplit_once(':') {
+    let authority_without_user = match authority.rsplit_once('@') {
+        Some((_userinfo, host_port)) => host_port,
+        None => &authority,
+    };
+    if authority_without_user.is_empty() {
+        return Err(UrlError::MissingHost);
+    }
+    match authority_without_user.rsplit_once(':') {
         Some((host, port)) if port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty() => {
             let port: u16 = port.parse().map_err(|_| UrlError::MissingHost)?;
             if port == scheme.default_port() {
@@ -134,7 +141,7 @@ fn normalise_authority(authority: &str, scheme: Scheme) -> Result<String, UrlErr
                 Ok(format!("{host}:{port}"))
             }
         }
-        _ => Ok(authority),
+        _ => Ok(authority_without_user.to_owned()),
     }
 }
 
@@ -190,5 +197,16 @@ mod tests {
     #[test]
     fn rejects_traversal_in_prefix() {
         assert!(ServerUrl::parse("https://example.org/a/../b").is_err());
+    }
+
+    #[test]
+    fn strips_userinfo() {
+        let url = ServerUrl::parse("https://user:pass@cloud.example.org:443").unwrap();
+        assert_eq!(url.authority(), "cloud.example.org");
+        assert_eq!(url.as_str(), "https://cloud.example.org");
+
+        let url2 = ServerUrl::parse("https://alice@cloud.example.org/remote.php/webdav").unwrap();
+        assert_eq!(url2.authority(), "cloud.example.org");
+        assert_eq!(url2.as_str(), "https://cloud.example.org/remote.php/webdav");
     }
 }

@@ -12,6 +12,17 @@ use crate::sso::error::SsoError;
 #[derive(Clone, Debug, Default)]
 pub struct DesktopSso;
 
+fn canonical_key(server_url: &nextcloud_sdk_core::ServerUrl, username: &str) -> (String, String) {
+    let auth = server_url.authority();
+    let host = auth.split(':').next().unwrap_or(auth);
+    let resolved = std::net::ToSocketAddrs::to_socket_addrs(&(host, 443))
+        .ok()
+        .and_then(|mut iter| iter.next())
+        .map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|| auth.to_string());
+    (resolved, username.to_ascii_lowercase())
+}
+
 impl DesktopSso {
     /// Creates a new SSO discovery coordinator.
     pub fn new() -> Self {
@@ -25,7 +36,7 @@ impl DesktopSso {
     /// continues gracefully.
     pub async fn discover_accounts(&self) -> Vec<DiscoveredAccount> {
         tracing::info!("Starting desktop SSO account discovery across subsystems");
-        let mut results = Vec::new();
+        let mut results: Vec<DiscoveredAccount> = Vec::new();
         let mut seen = HashSet::new();
 
         // 1. GNOME Online Accounts (via D-Bus session bus)
@@ -33,12 +44,9 @@ impl DesktopSso {
             && let Ok(accounts) = goa.list_accounts().await
         {
             for a in accounts {
-                let key = (
-                    a.server_url().as_str().to_string(),
-                    a.username().to_string(),
-                );
-                if seen.insert(key) {
-                    let secret = SecretString::new(a.auth().credentials().password().expose());
+                let key = canonical_key(a.server_url(), a.username());
+                let secret = SecretString::new(a.auth().credentials().password().expose());
+                if seen.insert(key.clone()) {
                     results.push(DiscoveredAccount {
                         source: AccountSource::GnomeOnlineAccounts,
                         server_url: a.server_url().clone(),
@@ -47,6 +55,12 @@ impl DesktopSso {
                         dav_user: None,
                         password: Some(secret),
                     });
+                } else if let Some(existing) = results
+                    .iter_mut()
+                    .find(|r| canonical_key(&r.server_url, &r.username) == key)
+                    && existing.password.is_none()
+                {
+                    existing.password = Some(secret);
                 }
             }
         }
@@ -56,7 +70,7 @@ impl DesktopSso {
             && let Ok(accounts) = db.list_accounts()
         {
             for a in accounts {
-                let key = (a.server_url.as_str().to_string(), a.username.clone());
+                let key = canonical_key(&a.server_url, &a.username);
                 if seen.insert(key) {
                     results.push(DiscoveredAccount {
                         source: AccountSource::KdeKAccounts,
@@ -76,7 +90,7 @@ impl DesktopSso {
                 && let Ok(accounts) = nextcloud_client_config::ClientConfigParser::parse_file(&path)
             {
                 for a in accounts {
-                    let key = (a.server_url.as_str().to_string(), a.username.clone());
+                    let key = canonical_key(&a.server_url, &a.username);
                     if seen.insert(key) {
                         results.push(DiscoveredAccount {
                             source: AccountSource::DesktopClient,
