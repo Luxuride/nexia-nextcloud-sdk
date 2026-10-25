@@ -478,9 +478,28 @@ async fn run_orchestrator_actor(
             } => {
                 if let Some((desc, _state)) = mount_manager.get_mount(&mount_id) {
                     let desc = desc.clone();
+                    let vfs_dir = config
+                        .base_cache_dir
+                        .join("mounts")
+                        .join(mount_id.as_str())
+                        .join("vfs");
                     let (hydrated_count, local_bytes) =
-                        if let Some(vfs) = vfs_managers.get(&mount_id) {
-                            vfs.calculate_hydrated_storage()
+                        if desc.local_target.exists() && desc.local_target != vfs_dir {
+                            let (count, bytes) = scan_dir_usage(&desc.local_target);
+                            if count > 0 || bytes > 0 {
+                                (count, bytes)
+                            } else if let Some(vfs) = vfs_managers.get(&mount_id) {
+                                vfs.calculate_hydrated_storage()
+                            } else {
+                                (0, 0)
+                            }
+                        } else if let Some(vfs) = vfs_managers.get(&mount_id) {
+                            let (vfs_count, vfs_bytes) = vfs.calculate_hydrated_storage();
+                            if (vfs_count > 0 || vfs_bytes > 0) || !desc.local_target.exists() {
+                                (vfs_count, vfs_bytes)
+                            } else {
+                                scan_dir_usage(&desc.local_target)
+                            }
                         } else if desc.local_target.exists() {
                             scan_dir_usage(&desc.local_target)
                         } else {
@@ -568,11 +587,14 @@ fn scan_dir_usage(dir: &std::path::Path) -> (usize, u64) {
                     let (sub_count, sub_bytes) = scan_dir_usage(&entry.path());
                     count += sub_count;
                     bytes += sub_bytes;
-                } else if file_type.is_file() {
-                    count += 1;
-                    if let Ok(meta) = entry.metadata() {
-                        bytes += meta.len();
+                } else if file_type.is_file()
+                    && let Ok(meta) = entry.metadata()
+                {
+                    let len = meta.len();
+                    if len > 0 {
+                        count += 1;
                     }
+                    bytes += len;
                 }
             }
         }
@@ -584,11 +606,14 @@ fn calculate_dir_bytes(dir: &std::path::Path) -> u64 {
     let mut bytes = 0;
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type()
-                && file_type.is_file()
-                && let Ok(meta) = entry.metadata()
-            {
-                bytes += meta.len();
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    bytes += calculate_dir_bytes(&entry.path());
+                } else if file_type.is_file()
+                    && let Ok(meta) = entry.metadata()
+                {
+                    bytes += meta.len();
+                }
             }
         }
     }

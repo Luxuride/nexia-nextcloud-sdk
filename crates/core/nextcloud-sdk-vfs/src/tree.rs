@@ -686,37 +686,17 @@ impl VirtualTree {
         resources: &[crate::resource::DavResourceSummary],
     ) -> usize {
         let mut inserted = 0;
-        let prefix = base_dav_prefix.trim_end_matches('/');
 
         let mut target_dir = None;
         if let Some(first) = resources.first() {
-            let relative = if first.href.starts_with(prefix) {
-                &first.href[prefix.len()..]
-            } else {
-                &first.href
-            };
-            let clean_path = if relative.is_empty() || relative == "/" {
-                "/".to_string()
-            } else {
-                format!("/{}", relative.trim_matches('/'))
-            };
+            let clean_path = extract_clean_dav_path(&first.href, base_dav_prefix);
             if first.is_collection {
                 target_dir = Some(clean_path);
             }
         }
 
         for res in resources {
-            let relative = if res.href.starts_with(prefix) {
-                &res.href[prefix.len()..]
-            } else {
-                &res.href
-            };
-
-            let clean_path = if relative.is_empty() || relative == "/" {
-                "/".to_string()
-            } else {
-                format!("/{}", relative.trim_matches('/'))
-            };
+            let clean_path = extract_clean_dav_path(&res.href, base_dav_prefix);
 
             if clean_path == "/" {
                 continue;
@@ -775,6 +755,64 @@ impl VirtualTree {
             self.ensure_directory_chain(&parent);
         }
         self.insert(VirtualNode::new_directory(NodeMetadata::directory(path)));
+    }
+}
+
+fn percent_decode(s: &str) -> String {
+    let mut bytes = Vec::with_capacity(s.len());
+    let mut chars = s.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let h1 = chars.next();
+            let h2 = chars.next();
+            if let (Some(h1), Some(h2)) = (h1, h2) {
+                let hex_str = [h1, h2];
+                if let Ok(hex) = std::str::from_utf8(&hex_str)
+                    && let Ok(val) = u8::from_str_radix(hex, 16)
+                {
+                    bytes.push(val);
+                    continue;
+                }
+            }
+        }
+        bytes.push(b);
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| s.to_string())
+}
+
+fn extract_clean_dav_path(href: &str, base_dav_prefix: &str) -> String {
+    let decoded = percent_decode(href);
+    let prefix = base_dav_prefix.trim_end_matches('/');
+
+    let path_after_prefix = if let Some(idx) = decoded.find(prefix) {
+        &decoded[idx + prefix.len()..]
+    } else if let Some(idx) = decoded.find("/remote.php/dav/files/") {
+        let after_files = &decoded[idx + "/remote.php/dav/files/".len()..];
+        if let Some(slash) = after_files.find('/') {
+            &after_files[slash..]
+        } else {
+            ""
+        }
+    } else if let Some(idx) = decoded.find("/remote.php/webdav") {
+        &decoded[idx + "/remote.php/webdav".len()..]
+    } else if let Some(p) = decoded.strip_prefix(prefix) {
+        p
+    } else if let Some(idx) = decoded.find("://") {
+        let after_scheme = &decoded[idx + 3..];
+        if let Some(first_slash) = after_scheme.find('/') {
+            &after_scheme[first_slash..]
+        } else {
+            &decoded
+        }
+    } else {
+        &decoded
+    };
+
+    let trimmed = path_after_prefix.trim_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", trimmed)
     }
 }
 
@@ -1163,5 +1201,43 @@ mod tests {
         let work_entry = tree.entry_summary("/Docs/Work").unwrap();
         assert_eq!(work_entry.size, 900);
         assert_eq!(work_entry.display_size(), "900 B (2 files)");
+    }
+
+    #[test]
+    fn populate_from_resources_handles_absolute_urls_and_percent_encoding() {
+        let mut tree = VirtualTree::new("root");
+        let prefix = "/remote.php/dav/files/alice";
+        let resources = vec![
+            crate::resource::DavResourceSummary::new(
+                "https://cloud.example.com/remote.php/dav/files/alice/",
+                true,
+            ),
+            crate::resource::DavResourceSummary::new(
+                "https://cloud.example.com/remote.php/dav/files/alice/My%20Documents/",
+                true,
+            ),
+            crate::resource::DavResourceSummary::new(
+                "https://cloud.example.com/remote.php/dav/files/alice/My%20Documents/Work%20Plan.pdf",
+                false,
+            )
+            .with_content_length(2048),
+        ];
+
+        let inserted = tree.populate_from_resources(prefix, &resources);
+        assert_eq!(inserted, 2);
+        assert!(tree.is_directory_populated("/"));
+
+        let root_children = tree.children_summaries("/");
+        assert_eq!(root_children.len(), 1);
+        assert_eq!(root_children[0].path, "/My Documents");
+        assert_eq!(root_children[0].name, "My Documents");
+        assert!(root_children[0].is_directory);
+
+        let sub_children = tree.children_summaries("/My Documents");
+        assert_eq!(sub_children.len(), 1);
+        assert_eq!(sub_children[0].path, "/My Documents/Work Plan.pdf");
+        assert_eq!(sub_children[0].name, "Work Plan.pdf");
+        assert_eq!(sub_children[0].size, 2048);
+        assert!(!sub_children[0].is_directory);
     }
 }
