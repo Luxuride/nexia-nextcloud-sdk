@@ -2,6 +2,17 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
+## [0.1.3](https://github.com/Luxuride/nextcloud-rust-sdk/compare/v0.1.2...v0.1.3) - 2026-10-25
+
+### Added
+
+- *(orchestrator)* add specific and global pause sync, and restrict release workflow to manual dispatch ([#37](https://github.com/Luxuride/nextcloud-rust-sdk/pull/37))
+- *(orchestrator)* add background actor orchestrator with multi-mount support and sync status icons ([#36](https://github.com/Luxuride/nextcloud-rust-sdk/pull/36))
+
+### Other
+
+- *(release)* bump workspace version to 0.1.3 ([#38](https://github.com/Luxuride/nextcloud-rust-sdk/pull/38))
+
 ## 0.1.2
 
 ### Added
