@@ -122,14 +122,21 @@ async fn run_orchestrator_actor(
                 let mount_dir = config.base_cache_dir.join("mounts").join(id.as_str());
                 let vfs = VfsManager::new(mount_dir.join("vfs"), &descriptor.remote_path);
 
+                if mount_manager.get_mount(&id).is_some() {
+                    vfs_managers.entry(id.clone()).or_insert(vfs);
+                    let _ = responder.send(Ok(id));
+                    continue;
+                }
+
                 match mount_manager.add_mount(descriptor.clone()) {
                     Ok(new_id) => {
                         vfs_managers.insert(new_id.clone(), vfs);
                         let _ = event_tx.send(OrchestratorEvent::MountAdded(descriptor));
                         let _ = responder.send(Ok(new_id));
                     }
-                    Err(e) => {
-                        let _ = responder.send(Err(e));
+                    Err(_e) => {
+                        vfs_managers.entry(id.clone()).or_insert(vfs);
+                        let _ = responder.send(Ok(id));
                     }
                 }
             }
