@@ -11,6 +11,7 @@ use crate::mount::{MountDescriptor, MountId, MountState, MountStatus, SyncFileSt
 pub struct MountManager {
     mounts: HashMap<MountId, (MountDescriptor, MountState)>,
     file_statuses: HashMap<(MountId, String), SyncFileStatus>,
+    global_paused: bool,
 }
 
 impl MountManager {
@@ -18,6 +19,68 @@ impl MountManager {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns `true` if synchronization is globally paused across all mounts.
+    #[must_use]
+    pub fn is_globally_paused(&self) -> bool {
+        self.global_paused
+    }
+
+    /// Globally pauses synchronization across all mounts.
+    pub fn pause_all(&mut self) {
+        self.global_paused = true;
+        for (_, state) in self.mounts.values_mut() {
+            if state.status != MountStatus::Unmounted {
+                state.status = MountStatus::Paused;
+            }
+        }
+    }
+
+    /// Globally resumes synchronization across all mounts.
+    pub fn resume_all(&mut self) {
+        self.global_paused = false;
+        for (_, state) in self.mounts.values_mut() {
+            if state.status == MountStatus::Paused {
+                state.status = MountStatus::Idle;
+            }
+        }
+    }
+
+    /// Pauses synchronization specifically for a single mount point.
+    pub fn pause_mount(&mut self, id: &MountId) -> OrchestratorResult<()> {
+        let (_, state) = self
+            .mounts
+            .get_mut(id)
+            .ok_or_else(|| OrchestratorError::MountNotFound { id: id.clone() })?;
+
+        state.status = MountStatus::Paused;
+        Ok(())
+    }
+
+    /// Resumes synchronization specifically for a single mount point.
+    pub fn resume_mount(&mut self, id: &MountId) -> OrchestratorResult<()> {
+        let (_, state) = self
+            .mounts
+            .get_mut(id)
+            .ok_or_else(|| OrchestratorError::MountNotFound { id: id.clone() })?;
+
+        if state.status == MountStatus::Paused {
+            state.status = MountStatus::Idle;
+        }
+        Ok(())
+    }
+
+    /// Returns `true` if a specific mount point is currently paused (or globally paused).
+    #[must_use]
+    pub fn is_mount_paused(&self, id: &MountId) -> bool {
+        if self.global_paused {
+            return true;
+        }
+        self.mounts
+            .get(id)
+            .map(|(_, state)| state.status == MountStatus::Paused)
+            .unwrap_or(false)
     }
 
     /// Registers a new mount point. Fails if a mount with the same ID or local target already exists.
@@ -216,5 +279,46 @@ mod tests {
             manager.status_for_local_path(&local_file),
             Some(SyncFileStatus::Synced)
         );
+    }
+
+    #[test]
+    fn test_pause_and_resume_specific_and_global() {
+        let mut manager = MountManager::new();
+        let target_a = PathBuf::from("/mnt/mount_a");
+        let target_b = PathBuf::from("/mnt/mount_b");
+
+        let desc_a = MountDescriptor::new("acc-1", "/", &target_a, MountMode::VirtualVfs);
+        let id_a = desc_a.id.clone();
+        manager.add_mount(desc_a).unwrap();
+
+        let desc_b = MountDescriptor::new("acc-1", "/Photos", &target_b, MountMode::VirtualVfs);
+        let id_b = desc_b.id.clone();
+        manager.add_mount(desc_b).unwrap();
+
+        assert!(!manager.is_globally_paused());
+        assert!(!manager.is_mount_paused(&id_a));
+        assert!(!manager.is_mount_paused(&id_b));
+
+        // Pause specific mount A
+        manager.pause_mount(&id_a).unwrap();
+        assert!(manager.is_mount_paused(&id_a));
+        assert!(!manager.is_mount_paused(&id_b));
+        assert!(!manager.is_globally_paused());
+
+        // Resume mount A
+        manager.resume_mount(&id_a).unwrap();
+        assert!(!manager.is_mount_paused(&id_a));
+
+        // Pause globally
+        manager.pause_all();
+        assert!(manager.is_globally_paused());
+        assert!(manager.is_mount_paused(&id_a));
+        assert!(manager.is_mount_paused(&id_b));
+
+        // Resume globally
+        manager.resume_all();
+        assert!(!manager.is_globally_paused());
+        assert!(!manager.is_mount_paused(&id_a));
+        assert!(!manager.is_mount_paused(&id_b));
     }
 }

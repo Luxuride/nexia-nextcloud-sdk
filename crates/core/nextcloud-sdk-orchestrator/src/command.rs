@@ -151,6 +151,48 @@ pub enum OrchestratorCommand {
         responder: oneshot::Sender<OrchestratorResult<()>>,
     },
 
+    /// Specifically pauses synchronization for a single mount point.
+    PauseMount {
+        /// Target mount identifier.
+        id: MountId,
+        /// Response channel acknowledging pause.
+        responder: oneshot::Sender<OrchestratorResult<()>>,
+    },
+
+    /// Specifically resumes synchronization for a single mount point.
+    ResumeMount {
+        /// Target mount identifier.
+        id: MountId,
+        /// Response channel acknowledging resume.
+        responder: oneshot::Sender<OrchestratorResult<()>>,
+    },
+
+    /// Queries whether a specific mount point is currently paused.
+    IsMountPaused {
+        /// Target mount identifier.
+        id: MountId,
+        /// Response channel returning whether the mount is paused.
+        responder: oneshot::Sender<bool>,
+    },
+
+    /// Globally pauses synchronization across all mounts and background download queues.
+    PauseAllSync {
+        /// Response channel acknowledging global pause.
+        responder: oneshot::Sender<OrchestratorResult<()>>,
+    },
+
+    /// Globally resumes synchronization across all mounts and background download queues.
+    ResumeAllSync {
+        /// Response channel acknowledging global resume.
+        responder: oneshot::Sender<OrchestratorResult<()>>,
+    },
+
+    /// Queries whether synchronization is globally paused.
+    IsGlobalSyncPaused {
+        /// Response channel returning whether global sync is paused.
+        responder: oneshot::Sender<bool>,
+    },
+
     /// Gracefully stops the orchestrator worker event loop.
     Shutdown {
         /// Response channel acknowledging shutdown.

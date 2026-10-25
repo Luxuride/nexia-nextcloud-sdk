@@ -138,6 +138,92 @@ async fn test_orchestrator_multi_mount_and_sync_status() {
         assert_eq!(s.emblem_name(), "view-refresh-symbolic");
     }
 
-    // 6. Shutdown orchestrator
+    // 6. Test Specific and Global Pause / Resume
+    assert!(!handle.is_sync_paused().await.unwrap());
+    assert!(
+        !handle
+            .mounts()
+            .is_paused(sub_mount_id.clone())
+            .await
+            .unwrap()
+    );
+
+    // Pause specific mount
+    handle
+        .mounts()
+        .pause_mount(sub_mount_id.clone())
+        .await
+        .unwrap();
+    assert!(
+        handle
+            .mounts()
+            .is_paused(sub_mount_id.clone())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !handle
+            .mounts()
+            .is_paused(root_mount_id.clone())
+            .await
+            .unwrap()
+    );
+    assert!(!handle.is_sync_paused().await.unwrap());
+
+    // Syncing a paused mount fails with a clear paused error
+    let sync_attempt = handle.mounts().sync_mount(sub_mount_id.clone()).await;
+    assert!(sync_attempt.is_err());
+
+    // Resume specific mount
+    handle
+        .mounts()
+        .resume_mount(sub_mount_id.clone())
+        .await
+        .unwrap();
+    assert!(
+        !handle
+            .mounts()
+            .is_paused(sub_mount_id.clone())
+            .await
+            .unwrap()
+    );
+
+    // Pause all sync globally
+    handle.pause_all_sync().await.unwrap();
+    assert!(handle.is_sync_paused().await.unwrap());
+    assert!(
+        handle
+            .mounts()
+            .is_paused(sub_mount_id.clone())
+            .await
+            .unwrap()
+    );
+    assert!(
+        handle
+            .mounts()
+            .is_paused(root_mount_id.clone())
+            .await
+            .unwrap()
+    );
+
+    // Resume all sync globally
+    handle.resume_all_sync().await.unwrap();
+    assert!(!handle.is_sync_paused().await.unwrap());
+    assert!(
+        !handle
+            .mounts()
+            .is_paused(sub_mount_id.clone())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !handle
+            .mounts()
+            .is_paused(root_mount_id.clone())
+            .await
+            .unwrap()
+    );
+
+    // 7. Shutdown orchestrator
     handle.shutdown().await.unwrap();
 }

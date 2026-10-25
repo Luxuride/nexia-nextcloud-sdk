@@ -49,6 +49,51 @@ impl OrchestratorHandle {
         self.event_tx.subscribe()
     }
 
+    /// Globally pauses synchronization across all mounts and background queues.
+    pub async fn pause_all_sync(&self) -> OrchestratorResult<()> {
+        let (responder, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(OrchestratorCommand::PauseAllSync { responder })
+            .await
+            .map_err(|_| {
+                OrchestratorError::WorkerShutdown(
+                    "orchestrator actor is not responding".to_string(),
+                )
+            })?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Globally resumes synchronization across all mounts and background queues.
+    pub async fn resume_all_sync(&self) -> OrchestratorResult<()> {
+        let (responder, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(OrchestratorCommand::ResumeAllSync { responder })
+            .await
+            .map_err(|_| {
+                OrchestratorError::WorkerShutdown(
+                    "orchestrator actor is not responding".to_string(),
+                )
+            })?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Queries whether synchronization is globally paused.
+    pub async fn is_sync_paused(&self) -> OrchestratorResult<bool> {
+        let (responder, rx) = oneshot::channel();
+        self.cmd_tx
+            .send(OrchestratorCommand::IsGlobalSyncPaused { responder })
+            .await
+            .map_err(|_| {
+                OrchestratorError::WorkerShutdown(
+                    "orchestrator actor is not responding".to_string(),
+                )
+            })?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))
+    }
+
     /// Sends a graceful shutdown command to the background worker actor.
     pub async fn shutdown(&self) -> OrchestratorResult<()> {
         let (responder, rx) = oneshot::channel();
@@ -186,6 +231,33 @@ impl MountsHandle {
         .await?;
         rx.await
             .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Specifically pauses synchronization for a single mount point.
+    pub async fn pause_mount(&self, id: MountId) -> OrchestratorResult<()> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::PauseMount { id, responder })
+            .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Specifically resumes synchronization for a single mount point.
+    pub async fn resume_mount(&self, id: MountId) -> OrchestratorResult<()> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::ResumeMount { id, responder })
+            .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))?
+    }
+
+    /// Queries whether a specific mount point is currently paused.
+    pub async fn is_paused(&self, id: MountId) -> OrchestratorResult<bool> {
+        let (responder, rx) = oneshot::channel();
+        self.send_cmd(OrchestratorCommand::IsMountPaused { id, responder })
+            .await?;
+        rx.await
+            .map_err(|_| OrchestratorError::WorkerShutdown("actor dropped response".to_string()))
     }
 
     async fn send_cmd(&self, cmd: OrchestratorCommand) -> OrchestratorResult<()> {
