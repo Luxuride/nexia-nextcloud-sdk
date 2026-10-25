@@ -19,6 +19,7 @@ pub mod path;
 pub mod permissions;
 pub mod resource;
 pub mod seed;
+pub mod sort;
 pub mod thumbnail;
 pub mod tree;
 
@@ -34,5 +35,6 @@ pub use path::{file_name, normalize_path, parent_path};
 pub use permissions::NextcloudPermissions;
 pub use resource::DavResourceSummary;
 pub use seed::{HierarchySeeder, StandardNextcloudSeeder};
+pub use sort::{FileSortCriteria, FileSortField, FileSortOrder};
 pub use thumbnail::ThumbnailCache;
 pub use tree::VirtualTree;

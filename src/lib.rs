@@ -100,10 +100,11 @@ pub use nextcloud_sdk_storage::{
     EncryptedDatabase, KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
 };
 pub use nextcloud_sdk_vfs::{
-    BreadcrumbSegment, DavResourceSummary, DirectorySizeSummary, HierarchySeeder, HydratedContent,
-    HydrationState, NavigationHistory, NextcloudPermissions, NodeMetadata, ResourceIconCategory,
-    StandardNextcloudSeeder, ThumbnailCache, VfsError, VirtualEntrySummary, VirtualNode,
-    VirtualTree, breadcrumb_segments, file_name, format_bytes, normalize_path, parent_path,
+    BreadcrumbSegment, DavResourceSummary, DirectorySizeSummary, FileSortCriteria, FileSortField,
+    FileSortOrder, HierarchySeeder, HydratedContent, HydrationState, NavigationHistory,
+    NextcloudPermissions, NodeMetadata, ResourceIconCategory, StandardNextcloudSeeder,
+    ThumbnailCache, VfsError, VirtualEntrySummary, VirtualNode, VirtualTree, breadcrumb_segments,
+    file_name, format_bytes, normalize_path, parent_path,
 };
 pub use nextcloud_search::{SearchClient, SearchEntry, SearchProvider, SearchResultSet};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
