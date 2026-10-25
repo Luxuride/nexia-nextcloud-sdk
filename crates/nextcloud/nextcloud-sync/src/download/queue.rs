@@ -76,6 +76,12 @@ pub struct SyncDownloadQueue {
     snapshot_tx: watch::Sender<DownloadQueueSnapshot>,
 }
 
+impl std::fmt::Debug for SyncDownloadQueue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyncDownloadQueue").finish()
+    }
+}
+
 impl Default for SyncDownloadQueue {
     fn default() -> Self {
         Self::new()

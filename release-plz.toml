@@ -40,4 +40,5 @@ changelog_include = [
     "nextcloud-sdk-fuse",
     "nextcloud-theming",
     "nextcloud-sync",
+    "nextcloud-sdk-orchestrator",
 ]
