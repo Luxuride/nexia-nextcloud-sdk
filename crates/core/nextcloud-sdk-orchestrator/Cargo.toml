@@ -20,6 +20,3 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros", "time", "fs", "io-util"] }
 tracing.workspace = true
 
-[dev-dependencies]
-nextcloud-transport.workspace = true
-nextcloud-auth.workspace = true
