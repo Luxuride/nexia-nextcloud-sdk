@@ -14,11 +14,14 @@
 pub mod attr;
 pub mod driver;
 pub mod entry;
+pub mod fs;
 pub mod hydrator;
 pub mod inode;
 
 pub use attr::{FileAttr, FileType};
 pub use driver::FuseDriver;
 pub use entry::DirEntry;
+pub use fs::mount_virtual_fs;
+pub use fuser::{BackgroundSession, MountOption};
 pub use hydrator::{AsyncHydrator, NoopHydrator};
 pub use inode::{FUSE_ROOT_INODE, InodeTable};

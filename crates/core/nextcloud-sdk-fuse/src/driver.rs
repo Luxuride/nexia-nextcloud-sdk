@@ -22,6 +22,7 @@ pub struct FuseDriver {
     tree: Arc<RwLock<VirtualTree>>,
     inodes: Arc<RwLock<InodeTable>>,
     hydrator: Arc<dyn AsyncHydrator>,
+    runtime: Option<tokio::runtime::Handle>,
 }
 
 impl FuseDriver {
@@ -47,7 +48,19 @@ impl FuseDriver {
             tree,
             inodes: Arc::new(RwLock::new(inodes)),
             hydrator,
+            runtime: tokio::runtime::Handle::try_current().ok(),
         }
+    }
+
+    /// Configures the tokio runtime handle for executing async hydration during FUSE operations.
+    pub fn with_runtime(mut self, runtime: tokio::runtime::Handle) -> Self {
+        self.runtime = Some(runtime);
+        self
+    }
+
+    /// Returns the optional tokio runtime handle used for hydration.
+    pub fn runtime_handle(&self) -> Option<tokio::runtime::Handle> {
+        self.runtime.clone()
     }
 
     /// Looks up a child node by `name` inside the parent directory identified by `parent_ino`.
