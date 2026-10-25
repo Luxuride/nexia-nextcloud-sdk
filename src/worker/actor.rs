@@ -9,9 +9,10 @@ use nextcloud_sdk_session::{
 };
 use nextcloud_transport::ReqwestTransport;
 use nextcloud_users::UserClient;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::error::ClientError;
+use crate::event::ClientEvent;
 use crate::storage::{CacheStore, ConfigStore, SessionStore};
 use crate::worker::task::WorkerTask;
 
@@ -66,6 +67,7 @@ pub struct WorkerActor {
     config_store: ConfigStore,
     state_tx: watch::Sender<SessionState>,
     task_rx: mpsc::Receiver<WorkerTask>,
+    event_tx: broadcast::Sender<ClientEvent>,
 }
 
 impl WorkerActor {
@@ -77,6 +79,7 @@ impl WorkerActor {
         stores: WorkerStores,
         state_tx: watch::Sender<SessionState>,
         task_rx: mpsc::Receiver<WorkerTask>,
+        event_tx: broadcast::Sender<ClientEvent>,
     ) -> Self {
         Self {
             server_url,
@@ -87,6 +90,7 @@ impl WorkerActor {
             config_store: stores.config,
             state_tx,
             task_rx,
+            event_tx,
         }
     }
 
@@ -143,6 +147,9 @@ impl WorkerActor {
                     .config_store
                     .store_theme(self.server_url.as_str(), &theme)
                     .map_err(ClientError::Storage);
+                if res.is_ok() {
+                    let _ = self.event_tx.send(ClientEvent::ThemeUpdated(theme));
+                }
                 let _ = reply.send(res);
             }
             WorkerTask::LoadTheme { reply } => {
@@ -171,6 +178,9 @@ impl WorkerActor {
                     .config_store
                     .store_sync_mount(&mount)
                     .map_err(ClientError::Storage);
+                if res.is_ok() {
+                    let _ = self.event_tx.send(ClientEvent::SyncMountAdded(mount));
+                }
                 let _ = reply.send(res);
             }
             WorkerTask::RemoveSyncMount { id, reply } => {
@@ -178,6 +188,9 @@ impl WorkerActor {
                     .config_store
                     .remove_sync_mount(&id)
                     .map_err(ClientError::Storage);
+                if res.is_ok() {
+                    let _ = self.event_tx.send(ClientEvent::SyncMountRemoved(id));
+                }
                 let _ = reply.send(res);
             }
             WorkerTask::ListSyncMounts { reply } => {
@@ -412,6 +425,7 @@ mod tests {
             .unwrap();
         let (state_tx, _state_rx) = watch::channel(SessionState::Idle);
         let (_task_tx, task_rx) = mpsc::channel(1);
+        let (event_tx, _event_rx) = broadcast::channel(16);
 
         let stores = WorkerStores::new(session_store, cache_store, config_store);
         let actor = WorkerActor::new(
@@ -421,6 +435,7 @@ mod tests {
             stores,
             state_tx,
             task_rx,
+            event_tx,
         );
 
         let rendered = format!("{actor:?}");

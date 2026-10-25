@@ -50,6 +50,7 @@
 pub mod builder;
 pub mod client;
 pub mod error;
+pub mod event;
 pub mod sso;
 pub mod storage;
 pub mod worker;
@@ -57,6 +58,7 @@ pub mod worker;
 pub use builder::ClientBuilder;
 pub use client::Client;
 pub use error::ClientError;
+pub use event::ClientEvent;
 pub use nextcloud_activity::{Activity, ActivityClient, ActivityFilter};
 pub use nextcloud_auth::{
     Anonymous, AppPassword, BasicAuth, BearerAuth, BearerToken, SecretString,

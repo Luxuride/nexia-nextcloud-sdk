@@ -20,10 +20,11 @@ use nextcloud_trashbin::TrashClient;
 use nextcloud_uploads::UploadClient;
 use nextcloud_users::UserClient;
 use nextcloud_versions::VersionsClient;
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 use crate::builder::ClientBuilder;
 use crate::error::ClientError;
+use crate::event::ClientEvent;
 use crate::worker::WorkerTask;
 
 /// A stateful, cloneable handle to the Nextcloud client.
@@ -38,6 +39,7 @@ pub struct Client {
     task_tx: mpsc::Sender<WorkerTask>,
     state_rx: watch::Receiver<SessionState>,
     branding: Option<nextcloud_theming::CustomBranding>,
+    event_tx: broadcast::Sender<ClientEvent>,
 }
 
 impl Client {
@@ -52,6 +54,7 @@ impl Client {
         task_tx: mpsc::Sender<WorkerTask>,
         state_rx: watch::Receiver<SessionState>,
         branding: Option<nextcloud_theming::CustomBranding>,
+        event_tx: broadcast::Sender<ClientEvent>,
     ) -> Self {
         Self {
             server_url,
@@ -59,7 +62,13 @@ impl Client {
             task_tx,
             state_rx,
             branding,
+            event_tx,
         }
+    }
+
+    /// Subscribes to the broadcast stream of reactive client lifecycle, sync mount, and theming events.
+    pub fn subscribe_events(&self) -> broadcast::Receiver<ClientEvent> {
+        self.event_tx.subscribe()
     }
 
     /// Client application custom branding metadata, if configured.
@@ -480,8 +489,16 @@ mod tests {
             .unwrap();
         let (_state_tx, state_rx) = watch::channel(SessionState::Idle);
         let (task_tx, _task_rx) = mpsc::channel(1);
+        let (event_tx, _event_rx) = broadcast::channel(16);
 
-        let client = Client::new(server_url.clone(), transport, task_tx, state_rx, None);
+        let client = Client::new(
+            server_url.clone(),
+            transport,
+            task_tx,
+            state_rx,
+            None,
+            event_tx,
+        );
 
         assert_eq!(client.server_url(), &server_url);
         assert_eq!(client.session_state(), SessionState::Idle);
@@ -519,5 +536,44 @@ mod tests {
         let rendered = format!("{client:?}");
         assert!(rendered.contains("Client"));
         assert!(rendered.contains("https://cloud.example.org"));
+    }
+
+    #[tokio::test]
+    async fn client_subscribes_to_events() {
+        let server_url = ServerUrl::parse("https://cloud.example.org").unwrap();
+        let transport = TransportBuilder::with_server(server_url.clone())
+            .build()
+            .unwrap();
+        let (_state_tx, state_rx) = watch::channel(SessionState::Idle);
+        let (task_tx, _task_rx) = mpsc::channel(1);
+        let (event_tx, _event_rx) = broadcast::channel(16);
+
+        let client = Client::new(
+            server_url,
+            transport,
+            task_tx,
+            state_rx,
+            None,
+            event_tx.clone(),
+        );
+
+        let mut subscriber = client.subscribe_events();
+        let mount = crate::storage::StoredSyncMount {
+            id: "mount-1".to_string(),
+            account_id: "alice".to_string(),
+            remote_path: "/Photos".to_string(),
+            local_target: "/tmp/Photos".to_string(),
+            mode: "VirtualVfs".to_string(),
+            display_name: None,
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+        };
+
+        event_tx
+            .send(crate::event::ClientEvent::SyncMountAdded(mount.clone()))
+            .unwrap();
+        let received = subscriber.recv().await.unwrap();
+        assert_eq!(received, crate::event::ClientEvent::SyncMountAdded(mount));
     }
 }

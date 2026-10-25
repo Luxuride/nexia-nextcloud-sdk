@@ -265,6 +265,7 @@ impl ClientBuilder {
         let initial_state = session_machine.state().clone();
         let (task_tx, task_rx) = mpsc::channel(32);
         let (state_tx, state_rx) = watch::channel(initial_state);
+        let (event_tx, _) = tokio::sync::broadcast::channel(128);
 
         let stores = crate::worker::WorkerStores::new(session_store, cache_store, config_store);
         let actor = WorkerActor::new(
@@ -274,6 +275,7 @@ impl ClientBuilder {
             stores,
             state_tx,
             task_rx,
+            event_tx.clone(),
         );
 
         tokio::spawn(async move {
@@ -287,6 +289,7 @@ impl ClientBuilder {
             task_tx,
             state_rx,
             self.branding,
+            event_tx,
         ))
     }
 }
