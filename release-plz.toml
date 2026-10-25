@@ -1,15 +1,17 @@
 [workspace]
-git_tag_name = "v{{ version }}"
-changelog_update = false
+git_tag_enable = false
 git_release_enable = false
+changelog_update = false
 pr_branch_prefix = "release-plz-"
 
 [[package]]
 name = "nextcloud-rust-sdk"
 changelog_path = "CHANGELOG.md"
 changelog_update = true
-git_release_enable = true
+git_tag_enable = true
 git_tag_name = "v{{ version }}"
+git_release_enable = true
+git_release_name = "v{{ version }}"
 changelog_include = [
     "nextcloud-sdk-core",
     "nextcloud-auth",
