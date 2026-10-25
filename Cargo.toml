@@ -3,41 +3,41 @@ resolver = "3"
 members = ["crates/*/*"]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Luxuride/nextcloud-rust-sdk"
 authors = ["Luxuride"]
 
 [workspace.dependencies]
-nextcloud-sdk-core = { path = "crates/core/nextcloud-sdk-core", version = "0.1.2" }
-nextcloud-auth = { path = "crates/nextcloud/nextcloud-auth", version = "0.1.2" }
-nextcloud-transport = { path = "crates/nextcloud/nextcloud-transport", version = "0.1.2" }
-nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.1.2" }
-nextcloud-dav = { path = "crates/nextcloud/nextcloud-dav", version = "0.1.2" }
-nextcloud-notifications = { path = "crates/nextcloud/nextcloud-notifications", version = "0.1.2" }
-nextcloud-shares = { path = "crates/nextcloud/nextcloud-shares", version = "0.1.2" }
-nextcloud-users = { path = "crates/nextcloud/nextcloud-users", version = "0.1.2" }
-nextcloud-activity = { path = "crates/nextcloud/nextcloud-activity", version = "0.1.2" }
-nextcloud-trashbin = { path = "crates/nextcloud/nextcloud-trashbin", version = "0.1.2" }
-nextcloud-preview = { path = "crates/nextcloud/nextcloud-preview", version = "0.1.2" }
-nextcloud-goa = { path = "crates/nextcloud/nextcloud-goa", version = "0.1.2" }
-nextcloud-versions = { path = "crates/nextcloud/nextcloud-versions", version = "0.1.2" }
-nextcloud-uploads = { path = "crates/nextcloud/nextcloud-uploads", version = "0.1.2" }
-nextcloud-deck = { path = "crates/nextcloud/nextcloud-deck", version = "0.1.2" }
-nextcloud-talk = { path = "crates/nextcloud/nextcloud-talk", version = "0.1.2" }
-nextcloud-client-config = { path = "crates/nextcloud/nextcloud-client-config", version = "0.1.2" }
-nextcloud-kaccounts = { path = "crates/nextcloud/nextcloud-kaccounts", version = "0.1.2" }
-nextcloud-sdk-session = { path = "crates/core/nextcloud-sdk-session", version = "0.1.2" }
-nextcloud-sdk-request = { path = "crates/core/nextcloud-sdk-request", version = "0.1.2" }
-nextcloud-sdk-storage = { path = "crates/core/nextcloud-sdk-storage", version = "0.1.2" }
-nextcloud-sdk-keyring = { path = "crates/core/nextcloud-sdk-keyring", version = "0.1.2" }
-nextcloud-sdk-ratelimit = { path = "crates/core/nextcloud-sdk-ratelimit", version = "0.1.2" }
-nextcloud-sdk-vfs = { path = "crates/core/nextcloud-sdk-vfs", version = "0.1.2" }
-nextcloud-sdk-fuse = { path = "crates/core/nextcloud-sdk-fuse", version = "0.1.2" }
-nextcloud-theming = { path = "crates/nextcloud/nextcloud-theming", version = "0.1.2" }
-nextcloud-sync = { path = "crates/nextcloud/nextcloud-sync", version = "0.1.2" }
-nextcloud-sdk-orchestrator = { path = "crates/core/nextcloud-sdk-orchestrator", version = "0.1.2" }
+nextcloud-sdk-core = { path = "crates/core/nextcloud-sdk-core", version = "0.1.3" }
+nextcloud-auth = { path = "crates/nextcloud/nextcloud-auth", version = "0.1.3" }
+nextcloud-transport = { path = "crates/nextcloud/nextcloud-transport", version = "0.1.3" }
+nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.1.3" }
+nextcloud-dav = { path = "crates/nextcloud/nextcloud-dav", version = "0.1.3" }
+nextcloud-notifications = { path = "crates/nextcloud/nextcloud-notifications", version = "0.1.3" }
+nextcloud-shares = { path = "crates/nextcloud/nextcloud-shares", version = "0.1.3" }
+nextcloud-users = { path = "crates/nextcloud/nextcloud-users", version = "0.1.3" }
+nextcloud-activity = { path = "crates/nextcloud/nextcloud-activity", version = "0.1.3" }
+nextcloud-trashbin = { path = "crates/nextcloud/nextcloud-trashbin", version = "0.1.3" }
+nextcloud-preview = { path = "crates/nextcloud/nextcloud-preview", version = "0.1.3" }
+nextcloud-goa = { path = "crates/nextcloud/nextcloud-goa", version = "0.1.3" }
+nextcloud-versions = { path = "crates/nextcloud/nextcloud-versions", version = "0.1.3" }
+nextcloud-uploads = { path = "crates/nextcloud/nextcloud-uploads", version = "0.1.3" }
+nextcloud-deck = { path = "crates/nextcloud/nextcloud-deck", version = "0.1.3" }
+nextcloud-talk = { path = "crates/nextcloud/nextcloud-talk", version = "0.1.3" }
+nextcloud-client-config = { path = "crates/nextcloud/nextcloud-client-config", version = "0.1.3" }
+nextcloud-kaccounts = { path = "crates/nextcloud/nextcloud-kaccounts", version = "0.1.3" }
+nextcloud-sdk-session = { path = "crates/core/nextcloud-sdk-session", version = "0.1.3" }
+nextcloud-sdk-request = { path = "crates/core/nextcloud-sdk-request", version = "0.1.3" }
+nextcloud-sdk-storage = { path = "crates/core/nextcloud-sdk-storage", version = "0.1.3" }
+nextcloud-sdk-keyring = { path = "crates/core/nextcloud-sdk-keyring", version = "0.1.3" }
+nextcloud-sdk-ratelimit = { path = "crates/core/nextcloud-sdk-ratelimit", version = "0.1.3" }
+nextcloud-sdk-vfs = { path = "crates/core/nextcloud-sdk-vfs", version = "0.1.3" }
+nextcloud-sdk-fuse = { path = "crates/core/nextcloud-sdk-fuse", version = "0.1.3" }
+nextcloud-theming = { path = "crates/nextcloud/nextcloud-theming", version = "0.1.3" }
+nextcloud-sync = { path = "crates/nextcloud/nextcloud-sync", version = "0.1.3" }
+nextcloud-sdk-orchestrator = { path = "crates/core/nextcloud-sdk-orchestrator", version = "0.1.3" }
 
 base64 = "0.23"
 getrandom = { version = "0.3", features = ["std"] }
