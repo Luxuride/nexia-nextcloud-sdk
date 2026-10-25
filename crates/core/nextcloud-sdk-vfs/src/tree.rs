@@ -748,6 +748,24 @@ impl VirtualTree {
 
         if let Some(target) = target_dir {
             self.set_directory_populated(&target, true);
+
+            // Prune any children of `target` that were moved or deleted on the remote server
+            let returned_children: std::collections::HashSet<String> = resources
+                .iter()
+                .map(|r| extract_clean_dav_path(&r.href, base_dav_prefix))
+                .filter(|p| p != &target)
+                .collect();
+
+            let current_children = self.children(&target);
+            let stale_children: Vec<String> = current_children
+                .into_iter()
+                .map(|c| c.path().to_string())
+                .filter(|p| !returned_children.contains(p))
+                .collect();
+
+            for stale in stale_children {
+                self.remove(&stale);
+            }
         }
 
         inserted
@@ -1160,6 +1178,41 @@ mod tests {
         assert!(tree.is_directory_populated("/Documents"));
         assert!(!tree.is_directory_populated("/Photos"));
         assert_eq!(tree.unpopulated_directories(), vec!["/Photos"]);
+    }
+
+    #[test]
+    fn populate_from_resources_prunes_moved_or_deleted_items() {
+        let mut tree = VirtualTree::new("root");
+        let prefix = "/remote.php/dav/files/user";
+
+        // Initial state: /Documents has fileA and fileB
+        let initial = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Documents/", true),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Documents/fileA.txt",
+                false,
+            ),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Documents/fileB.txt",
+                false,
+            ),
+        ];
+        tree.populate_from_resources(prefix, &initial);
+        assert!(tree.contains("/Documents/fileA.txt"));
+        assert!(tree.contains("/Documents/fileB.txt"));
+
+        // Server move: fileA is moved away, only fileB remains in /Documents
+        let updated = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Documents/", true),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Documents/fileB.txt",
+                false,
+            ),
+        ];
+        tree.populate_from_resources(prefix, &updated);
+
+        assert!(!tree.contains("/Documents/fileA.txt"));
+        assert!(tree.contains("/Documents/fileB.txt"));
     }
 
     #[test]
