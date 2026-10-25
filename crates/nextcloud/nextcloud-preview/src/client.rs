@@ -87,12 +87,33 @@ impl<'a, T: Transport, A: AuthProvider> PreviewClient<'a, T, A> {
     }
 
     async fn fetch_preview(&self, query: &str) -> Result<Vec<u8>, Error> {
-        let api_path = ApiPath::public(format!("{PREVIEW_ENDPOINT}{query}"))?;
+        let primary_path = ApiPath::public(format!("{PREVIEW_ENDPOINT}{query}"))?;
         let headers = self.authenticated_headers();
-        let request = Request::get(api_path.clone()).with_headers(headers);
+        let request = Request::get(primary_path.clone()).with_headers(headers.clone());
 
         let response = self.transport.execute(request).await?;
-        ensure_success(HttpMethod::Get, api_path, response)
+        if response.status().is_success() {
+            return Ok(response.into_body());
+        }
+
+        // If /core/preview.png returns 404 (commonly intercepted by Nginx static file rules),
+        // fall back to /core/preview without extension (the Nextcloud App Framework core route).
+        if response.status().as_u16() == 404 {
+            let alt_endpoint = if PREVIEW_ENDPOINT.ends_with(".png") {
+                PREVIEW_ENDPOINT.trim_end_matches(".png")
+            } else {
+                "core/preview.png"
+            };
+            let alt_path = ApiPath::public(format!("{alt_endpoint}{query}"))?;
+            let alt_request = Request::get(alt_path.clone()).with_headers(headers);
+            if let Ok(alt_resp) = self.transport.execute(alt_request).await
+                && alt_resp.status().is_success()
+            {
+                return Ok(alt_resp.into_body());
+            }
+        }
+
+        ensure_success(HttpMethod::Get, primary_path, response)
     }
 
     fn authenticated_headers(&self) -> Headers {

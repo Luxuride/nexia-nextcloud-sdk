@@ -245,3 +245,41 @@ fn client_accessors() {
     assert_eq!(client.auth().token, "token");
     assert!(client.transport().request().is_none());
 }
+
+#[test]
+fn falls_back_to_core_preview_when_png_endpoint_returns_404() {
+    #[derive(Clone, Debug)]
+    struct FallbackTransport;
+
+    impl Transport for FallbackTransport {
+        async fn execute(&self, request: Request) -> Result<Response, Error> {
+            if request.path().as_str().contains("core/preview.png") {
+                Ok(Response::new(
+                    StatusCode::new(404),
+                    Headers::new(),
+                    b"Not Found".to_vec(),
+                ))
+            } else if request.path().as_str().contains("core/preview") {
+                Ok(Response::new(
+                    StatusCode::new(200),
+                    Headers::new(),
+                    FAKE_PNG_BYTES.to_vec(),
+                ))
+            } else {
+                Ok(Response::new(
+                    StatusCode::new(404),
+                    Headers::new(),
+                    Vec::new(),
+                ))
+            }
+        }
+    }
+
+    let transport = FallbackTransport;
+    let auth = FakeAuth::new("token");
+    let client = PreviewClient::new(&transport, &auth);
+
+    let result = block_on(client.get_by_file_id(42, &PreviewOptions::new()));
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), FAKE_PNG_BYTES);
+}
