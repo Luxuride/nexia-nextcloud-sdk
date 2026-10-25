@@ -8,6 +8,15 @@ All notable changes to the Nextcloud Rust SDK workspace.
 
 - Zero-cost structured logging with `tracing` across all workspace crates and the facade client (`trace!`, `debug!`, `info!`, `warn!`, `error!`), with zero credential leakage.
 
+### Fixed
+
+- The structured-logging assertion no longer flakes under parallel test
+  execution. `tracing` caches each callsite's interest process-wide, and a
+  thread without a subscriber resolves that cache to `Interest::never`, so the
+  assertion now lives in its own integration-test binary
+  (`tests/structured_logging.rs`) where no sibling test can poison the callsites
+  it observes.
+
 ## 0.1.1
 
 First release covering the whole workspace.
