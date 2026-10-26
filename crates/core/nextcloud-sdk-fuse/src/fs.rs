@@ -51,23 +51,32 @@ fn to_errno(code: i32) -> Errno {
     }
 }
 
-fn is_thumbnailer(pid: u32) -> bool {
+fn is_file_manager_or_thumbnailer(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        // Check /proc/{pid}/comm
-        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
-            let name = comm.trim();
-            if name.contains("thumbnail") || name.contains("tumbler") || name.contains("glycin") {
-                return true;
-            }
+        let check_str = |s: &str| -> bool {
+            let lower = s.to_ascii_lowercase();
+            lower.contains("thumbnail")
+                || lower.contains("tumbler")
+                || lower.contains("glycin")
+                || lower.contains("tracker")
+                || lower.contains("localsearch")
+                || lower.contains("nautilus")
+                || lower.contains("dolphin")
+                || lower.contains("thunar")
+                || lower.contains("nemo")
+                || lower.contains("caja")
+                || lower.contains("pcmanfm")
+        };
+
+        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            && check_str(&comm)
+        {
+            return true;
         }
-        // Check /proc/{pid}/cmdline
         if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
             let cmd_str = String::from_utf8_lossy(&cmdline);
-            if cmd_str.contains("thumbnail")
-                || cmd_str.contains("tumbler")
-                || cmd_str.contains("glycin")
-            {
+            if check_str(&cmd_str) {
                 return true;
             }
         }
@@ -78,21 +87,14 @@ fn is_thumbnailer(pid: u32) -> bool {
                     && let Ok(ppid) = ppid_str.trim().parse::<u32>()
                     && ppid > 1
                 {
-                    if let Ok(pcomm) = std::fs::read_to_string(format!("/proc/{ppid}/comm")) {
-                        let pname = pcomm.trim();
-                        if pname.contains("thumbnail")
-                            || pname.contains("tumbler")
-                            || pname.contains("glycin")
-                        {
-                            return true;
-                        }
+                    if let Ok(pcomm) = std::fs::read_to_string(format!("/proc/{ppid}/comm"))
+                        && check_str(&pcomm)
+                    {
+                        return true;
                     }
                     if let Ok(pcmdline) = std::fs::read(format!("/proc/{ppid}/cmdline")) {
                         let pcmd_str = String::from_utf8_lossy(&pcmdline);
-                        if pcmd_str.contains("thumbnail")
-                            || pcmd_str.contains("tumbler")
-                            || pcmd_str.contains("glycin")
-                        {
+                        if check_str(&pcmd_str) {
                             return true;
                         }
                     }
@@ -197,14 +199,19 @@ impl Filesystem for FuseDriver {
     ) {
         trace!(ino = ino.0, offset, size, "fuser::read");
 
-        if is_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
-            debug!(
-                pid = req.pid(),
-                ino = ino.0,
-                "Declined thumbnailer read on unhydrated placeholder to prevent mass hydration"
-            );
-            reply.error(Errno::ENODATA);
-            return;
+        if is_file_manager_or_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
+            // Allow reading header probes up to 128 KB so file managers can detect MIME/EXIF,
+            // but decline deep reads (> 128 KB) to prevent mass background downloads.
+            if offset >= 128 * 1024 {
+                debug!(
+                    pid = req.pid(),
+                    ino = ino.0,
+                    offset,
+                    "Declined deep file manager/thumbnailer read on unhydrated placeholder"
+                );
+                reply.error(Errno::ENODATA);
+                return;
+            }
         }
         let result = if let Some(rt) = self.runtime_handle() {
             Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size))
