@@ -5,9 +5,9 @@ use std::path::Path;
 use std::time::Duration;
 
 use fuser::{
-    BackgroundSession, Config, Errno, FileHandle, Filesystem, FopenFlags, Generation, INodeNo,
-    LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen,
-    ReplyXattr, Request,
+    AccessFlags, BackgroundSession, Config, Errno, FileHandle, Filesystem, FopenFlags, Generation,
+    INodeNo, LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty,
+    ReplyEntry, ReplyOpen, ReplyStatfs, ReplyXattr, Request,
 };
 use tracing::{debug, error, trace};
 
@@ -106,6 +106,14 @@ fn is_thumbnailer(pid: u32) -> bool {
 }
 
 impl Filesystem for FuseDriver {
+    fn access(&self, _req: &Request, _ino: INodeNo, _mask: AccessFlags, reply: ReplyEmpty) {
+        reply.ok();
+    }
+
+    fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
+        reply.statfs(1_000_000, 500_000, 500_000, 1_000_000, 500_000, 512, 255, 0);
+    }
+
     fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
         let name_str = match name.to_str() {
             Some(s) => s,
