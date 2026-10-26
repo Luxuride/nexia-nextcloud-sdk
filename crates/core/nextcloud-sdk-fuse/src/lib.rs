@@ -23,7 +23,7 @@ pub use attr::{FileAttr, FileType};
 pub use driver::FuseDriver;
 pub use entry::DirEntry;
 #[cfg(target_os = "linux")]
-pub use fs::mount_virtual_fs;
+pub use fs::{mount_virtual_fs, mount_virtual_fs_with_options};
 #[cfg(target_os = "linux")]
 pub use fuser::{BackgroundSession, MountOption};
 pub use hydrator::{AsyncHydrator, NoopHydrator};
@@ -46,6 +46,21 @@ pub enum MountOption {}
 pub fn mount_virtual_fs<P: AsRef<std::path::Path>>(
     _driver: driver::FuseDriver,
     _mountpoint: P,
+) -> std::io::Result<BackgroundSession> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "Native FUSE mounting is only supported on Linux",
+    ))
+}
+
+#[cfg(not(target_os = "linux"))]
+/// Mounts a virtual filesystem with FUSE and custom options.
+///
+/// On non-Linux platforms where native FUSE is unavailable, this returns `std::io::ErrorKind::Unsupported`.
+pub fn mount_virtual_fs_with_options<P: AsRef<std::path::Path>>(
+    _driver: driver::FuseDriver,
+    _mountpoint: P,
+    _options: Vec<MountOption>,
 ) -> std::io::Result<BackgroundSession> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,

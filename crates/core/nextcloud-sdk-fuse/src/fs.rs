@@ -54,10 +54,47 @@ fn to_errno(code: i32) -> Errno {
 fn is_thumbnailer(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
+        // Check /proc/{pid}/comm
         if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
             let name = comm.trim();
-            if name.contains("thumbnail") || name == "bwrap" || name == "tumblerd" {
+            if name.contains("thumbnail") || name == "tumblerd" {
                 return true;
+            }
+        }
+        // Check /proc/{pid}/cmdline
+        if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
+            let cmd_str = String::from_utf8_lossy(&cmdline);
+            if cmd_str.contains("thumbnail")
+                || cmd_str.contains("tumblerd")
+                || cmd_str.contains("glycin-thumbnailer")
+            {
+                return true;
+            }
+        }
+        // Check parent process (e.g. if sandboxed inside bwrap)
+        if let Ok(status) = std::fs::read_to_string(format!("/proc/{pid}/status")) {
+            for line in status.lines() {
+                if let Some(ppid_str) = line.strip_prefix("PPid:")
+                    && let Ok(ppid) = ppid_str.trim().parse::<u32>()
+                    && ppid > 1
+                {
+                    if let Ok(pcomm) = std::fs::read_to_string(format!("/proc/{ppid}/comm")) {
+                        let pname = pcomm.trim();
+                        if pname.contains("thumbnail") || pname == "tumblerd" {
+                            return true;
+                        }
+                    }
+                    if let Ok(pcmdline) = std::fs::read(format!("/proc/{ppid}/cmdline")) {
+                        let pcmd_str = String::from_utf8_lossy(&pcmdline);
+                        if pcmd_str.contains("thumbnail")
+                            || pcmd_str.contains("tumblerd")
+                            || pcmd_str.contains("glycin-thumbnailer")
+                        {
+                            return true;
+                        }
+                    }
+                    break;
+                }
             }
         }
     }
@@ -148,12 +185,10 @@ impl Filesystem for FuseDriver {
             return;
         }
         let result = if let Some(rt) = self.runtime_handle() {
-            tokio::task::block_in_place(|| rt.block_on(self.read(ino.0, offset as i64, size)))
+            Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size))
         } else {
             match tokio::runtime::Handle::try_current() {
-                Ok(rt) => tokio::task::block_in_place(|| {
-                    rt.block_on(self.read(ino.0, offset as i64, size))
-                }),
+                Ok(rt) => Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size)),
                 Err(_) => Err(5), // EIO
             }
         };
@@ -219,10 +254,11 @@ impl Filesystem for FuseDriver {
     }
 }
 
-/// Mounts the [`FuseDriver`] at `mountpoint` in the background, returning a running session handle.
-pub fn mount_virtual_fs(
+/// Mounts the [`FuseDriver`] at `mountpoint` in the background with customizable mount options.
+pub fn mount_virtual_fs_with_options(
     driver: FuseDriver,
     mountpoint: impl AsRef<Path>,
+    options: Vec<MountOption>,
 ) -> Result<BackgroundSession, std::io::Error> {
     let mp = mountpoint.as_ref();
     if !mp.exists() {
@@ -230,16 +266,26 @@ pub fn mount_virtual_fs(
     }
 
     let mut config = Config::default();
-    config.mount_options = vec![
-        MountOption::FSName("Nextcloud".to_string()),
-        MountOption::Subtype("nextcloud-vfs".to_string()),
-        MountOption::RO,
-    ];
+    config.mount_options = options;
     config.acl = SessionACL::All;
     config.n_threads = Some(2);
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");
     fuser::spawn_mount(driver, mp, &config)
+}
+
+/// Mounts the [`FuseDriver`] at `mountpoint` in the background, returning a running session handle.
+pub fn mount_virtual_fs(
+    driver: FuseDriver,
+    mountpoint: impl AsRef<Path>,
+) -> Result<BackgroundSession, std::io::Error> {
+    let options = vec![
+        MountOption::FSName("Nextcloud".to_string()),
+        MountOption::Subtype("nextcloud-vfs".to_string()),
+        MountOption::AutoUnmount,
+        MountOption::RO,
+    ];
+    mount_virtual_fs_with_options(driver, mountpoint, options)
 }
 
 #[cfg(test)]

@@ -18,6 +18,14 @@ pub trait AsyncHydrator: Send + Sync {
 
     /// Optional notification when a directory path is being read in FUSE, allowing on-demand crawl.
     fn on_directory_read(&self, _path: &str) {}
+
+    /// Synchronously or cooperatively fetches and populates remote directory children if unpopulated.
+    fn hydrate_directory(
+        &self,
+        _canonical_path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), VfsError>> + Send + '_>> {
+        Box::pin(async move { Ok(()) })
+    }
 }
 
 /// A no-op hydrator that always returns [`VfsError::NotFound`].

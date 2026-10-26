@@ -23,6 +23,7 @@ pub struct FuseDriver {
     inodes: Arc<RwLock<InodeTable>>,
     hydrator: Arc<dyn AsyncHydrator>,
     runtime: Option<tokio::runtime::Handle>,
+    root_prefix: String,
 }
 
 impl FuseDriver {
@@ -33,13 +34,39 @@ impl FuseDriver {
 
     /// Constructs a new [`FuseDriver`] with an explicit payload hydrator.
     pub fn with_hydrator(tree: Arc<RwLock<VirtualTree>>, hydrator: Arc<dyn AsyncHydrator>) -> Self {
+        Self::with_hydrator_and_root(tree, hydrator, "")
+    }
+
+    /// Constructs a new [`FuseDriver`] with an explicit payload hydrator and subtree `root_prefix`.
+    ///
+    /// When `root_prefix` is set (e.g. `"/InstantUpload"`), the FUSE root inode maps to
+    /// this subtree in the [`VirtualTree`], allowing seamless subfolder mounting.
+    pub fn with_hydrator_and_root(
+        tree: Arc<RwLock<VirtualTree>>,
+        hydrator: Arc<dyn AsyncHydrator>,
+        root_prefix: impl AsRef<str>,
+    ) -> Self {
+        let raw = root_prefix.as_ref().trim();
+        let normalized_root = if raw.is_empty() || raw == "/" {
+            String::new()
+        } else {
+            let trimmed = raw.trim_end_matches('/');
+            if trimmed.starts_with('/') {
+                trimmed.to_string()
+            } else {
+                format!("/{trimmed}")
+            }
+        };
+
         let mut inodes = InodeTable::new();
 
-        // Pre-populate inodes for existing nodes in the tree
+        // Pre-populate inodes for existing nodes in the subtree
         if let Ok(tree_guard) = tree.read() {
             for path in tree_guard.paths() {
-                if path != "/" {
-                    inodes.get_or_insert(path);
+                if let Some(mount_path) = Self::to_mount_path_internal(path, &normalized_root)
+                    && mount_path != "/"
+                {
+                    inodes.get_or_insert(&mount_path);
                 }
             }
         }
@@ -49,7 +76,50 @@ impl FuseDriver {
             inodes: Arc::new(RwLock::new(inodes)),
             hydrator,
             runtime: tokio::runtime::Handle::try_current().ok(),
+            root_prefix: normalized_root,
         }
+    }
+
+    /// Translates a mount-relative path (e.g. `"/Camera"`) to canonical VFS path (e.g. `"/InstantUpload/Camera"`).
+    pub fn to_vfs_path(&self, mount_path: &str) -> String {
+        Self::to_vfs_path_internal(mount_path, &self.root_prefix)
+    }
+
+    fn to_vfs_path_internal(mount_path: &str, root_prefix: &str) -> String {
+        if root_prefix.is_empty() {
+            return mount_path.to_string();
+        }
+        if mount_path == "/" {
+            return root_prefix.to_string();
+        }
+        let cleaned = if mount_path.starts_with('/') {
+            mount_path
+        } else {
+            return format!("{root_prefix}/{mount_path}");
+        };
+        format!("{root_prefix}{cleaned}")
+    }
+
+    /// Translates a canonical VFS path (e.g. `"/InstantUpload/Camera"`) to mount-relative path (e.g. `"/Camera"`).
+    ///
+    /// Returns `None` if the path falls outside this driver's configured `root_prefix`.
+    pub fn to_mount_path(&self, vfs_path: &str) -> Option<String> {
+        Self::to_mount_path_internal(vfs_path, &self.root_prefix)
+    }
+
+    fn to_mount_path_internal(vfs_path: &str, root_prefix: &str) -> Option<String> {
+        if root_prefix.is_empty() {
+            return Some(vfs_path.to_string());
+        }
+        if vfs_path == root_prefix {
+            return Some("/".to_string());
+        }
+        if let Some(rest) = vfs_path.strip_prefix(root_prefix)
+            && rest.starts_with('/')
+        {
+            return Some(rest.to_string());
+        }
+        None
     }
 
     /// Configures the tokio runtime handle for executing async hydration during FUSE operations.
@@ -63,45 +133,102 @@ impl FuseDriver {
         self.runtime.clone()
     }
 
+    pub(crate) fn execute_blocking<F>(rt: &tokio::runtime::Handle, fut: F) -> F::Output
+    where
+        F: std::future::Future + Send,
+        F::Output: Send,
+    {
+        match tokio::runtime::Handle::try_current() {
+            Ok(cur) if cur.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| rt.block_on(fut))
+            }
+            Ok(_) => std::thread::scope(|s| {
+                s.spawn(|| rt.block_on(fut))
+                    .join()
+                    .expect("hydration thread panicked")
+            }),
+            Err(_) => rt.block_on(fut),
+        }
+    }
+
+    fn ensure_directory_hydrated(&self, vfs_path: &str) {
+        let needs_hydrate = {
+            if let Ok(tree) = self.tree.read() {
+                if let Some(node) = tree.get(vfs_path) {
+                    node.is_directory() && !node.is_populated
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        if needs_hydrate {
+            tracing::debug!(vfs_path, "FUSE triggering directory hydration");
+            let fut = self.hydrator.hydrate_directory(vfs_path);
+            if let Some(rt) = self.runtime_handle() {
+                let _ = Self::execute_blocking(&rt, fut);
+            } else if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                let _ = Self::execute_blocking(&rt, fut);
+            }
+        }
+    }
+
     /// Looks up a child node by `name` inside the parent directory identified by `parent_ino`.
     pub fn lookup(&self, parent_ino: u64, name: &str) -> Result<FileAttr, i32> {
         tracing::trace!(parent_ino, name, "FUSE lookup");
-        let parent_path = {
+        let parent_mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(parent_ino).ok_or(ENOENT)?.to_string()
         };
 
-        let child_path = if parent_path == "/" {
+        let child_mount_path = if parent_mount_path == "/" {
             format!("/{name}")
         } else {
-            format!("{parent_path}/{name}")
+            format!("{parent_mount_path}/{name}")
         };
 
+        let parent_vfs_path = self.to_vfs_path(&parent_mount_path);
+        let child_vfs_path = self.to_vfs_path(&child_mount_path);
+
+        // If child is not in tree, ensure parent directory is populated
+        {
+            let needs_parent_hydrated = {
+                let tree = self.tree.read().map_err(|_| EINVAL)?;
+                tree.get(&child_vfs_path).is_none()
+            };
+            if needs_parent_hydrated {
+                self.ensure_directory_hydrated(&parent_vfs_path);
+            }
+        }
+
         let tree = self.tree.read().map_err(|_| EINVAL)?;
-        let node = tree.get(&child_path).ok_or(ENOENT)?;
+        let node = tree.get(&child_vfs_path).ok_or(ENOENT)?;
 
         let mut inodes = self.inodes.write().map_err(|_| EINVAL)?;
-        let ino = inodes.get_or_insert(&child_path);
+        let ino = inodes.get_or_insert(&child_mount_path);
 
         Ok(Self::node_to_attr(ino, node))
     }
 
     /// Retrieves attributes for the node identified by `ino`.
     pub fn getattr(&self, ino: u64) -> Result<FileAttr, i32> {
-        let path = {
+        let mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(ino).ok_or(ENOENT)?.to_string()
         };
 
+        let vfs_path = self.to_vfs_path(&mount_path);
         let tree = self.tree.read().map_err(|_| EINVAL)?;
-        let node = tree.get(&path).ok_or(ENOENT)?;
+        let node = tree.get(&vfs_path).ok_or(ENOENT)?;
 
         Ok(Self::node_to_attr(ino, node))
     }
 
     /// Checks whether the file node for `ino` is an unhydrated placeholder.
     pub fn is_placeholder(&self, ino: u64) -> bool {
-        let path = {
+        let mount_path = {
             let inodes = match self.inodes.read() {
                 Ok(guard) => guard,
                 Err(_) => return false,
@@ -112,23 +239,29 @@ impl FuseDriver {
             }
         };
 
+        let vfs_path = self.to_vfs_path(&mount_path);
         let tree = match self.tree.read() {
             Ok(guard) => guard,
             Err(_) => return false,
         };
 
-        tree.get(&path).map(|n| n.is_placeholder()).unwrap_or(false)
+        tree.get(&vfs_path)
+            .map(|n| n.is_placeholder())
+            .unwrap_or(false)
     }
 
     /// Reads directory child entries for directory `ino` starting from `offset`.
     pub fn readdir(&self, ino: u64, offset: i64) -> Result<Vec<DirEntry>, i32> {
-        let path = {
+        let mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(ino).ok_or(ENOENT)?.to_string()
         };
 
+        let vfs_path = self.to_vfs_path(&mount_path);
+        self.ensure_directory_hydrated(&vfs_path);
+
         let tree = self.tree.read().map_err(|_| EINVAL)?;
-        let node = tree.get(&path).ok_or(ENOENT)?;
+        let node = tree.get(&vfs_path).ok_or(ENOENT)?;
 
         if !node.is_directory() {
             return Err(ENOTDIR);
@@ -143,21 +276,26 @@ impl FuseDriver {
         let parent_ino = if ino == FUSE_ROOT_INODE {
             FUSE_ROOT_INODE
         } else {
-            let parent_path =
-                nextcloud_sdk_vfs::parent_path(&path).unwrap_or_else(|| "/".to_string());
+            let parent_mount_path =
+                nextcloud_sdk_vfs::parent_path(&mount_path).unwrap_or_else(|| "/".to_string());
             let mut inodes = self.inodes.write().map_err(|_| EINVAL)?;
-            inodes.get_or_insert(&parent_path)
+            inodes.get_or_insert(&parent_mount_path)
         };
         entries.push(DirEntry::new(parent_ino, 2, FileType::Directory, ".."));
 
         // 3. Children
-        self.hydrator.on_directory_read(&path);
-        let children = tree.children(&path);
+        self.hydrator.on_directory_read(&vfs_path);
+        let children = tree.children(&vfs_path);
 
         let mut inodes_guard = self.inodes.write().map_err(|_| EINVAL)?;
         let mut preview_candidates = Vec::new();
-        for (cur_offset, child) in (3..).zip(children) {
-            let child_ino = inodes_guard.get_or_insert(child.path());
+        let mut cur_offset = 3;
+        for child in children {
+            let child_mount_path = match self.to_mount_path(child.path()) {
+                Some(p) => p,
+                None => continue,
+            };
+            let child_ino = inodes_guard.get_or_insert(&child_mount_path);
             let kind = if child.is_directory() {
                 FileType::Directory
             } else {
@@ -167,6 +305,7 @@ impl FuseDriver {
                 FileType::RegularFile
             };
             entries.push(DirEntry::new(child_ino, cur_offset, kind, child.name()));
+            cur_offset += 1;
         }
         drop(inodes_guard);
 
@@ -182,28 +321,29 @@ impl FuseDriver {
     ///
     /// If the file is an unhydrated placeholder, transparently triggers the hydrator.
     pub async fn read(&self, ino: u64, offset: i64, size: u32) -> Result<Vec<u8>, i32> {
-        let path = {
+        let mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(ino).ok_or(ENOENT)?.to_string()
         };
-        tracing::trace!(ino, path = %path, offset, size, "FUSE read request");
+        let vfs_path = self.to_vfs_path(&mount_path);
+        tracing::trace!(ino, mount_path = %mount_path, vfs_path = %vfs_path, offset, size, "FUSE read request");
 
         // Check if placeholder
         let is_placeholder = {
             let tree = self.tree.read().map_err(|_| EINVAL)?;
-            let node = tree.get(&path).ok_or(ENOENT)?;
+            let node = tree.get(&vfs_path).ok_or(ENOENT)?;
             node.is_placeholder()
         };
 
         if is_placeholder {
-            tracing::info!(ino, path = %path, "FUSE triggering on-demand file hydration");
-            let bytes = self.hydrator.hydrate(&path).await.map_err(|_| ENOENT)?;
+            tracing::info!(ino, vfs_path = %vfs_path, "FUSE triggering on-demand file hydration");
+            let bytes = self.hydrator.hydrate(&vfs_path).await.map_err(|_| ENOENT)?;
             let mut tree = self.tree.write().map_err(|_| EINVAL)?;
-            tree.hydrate(&path, bytes).map_err(|_| EINVAL)?;
+            tree.hydrate(&vfs_path, bytes).map_err(|_| EINVAL)?;
         }
 
         let tree = self.tree.read().map_err(|_| EINVAL)?;
-        let node = tree.get(&path).ok_or(ENOENT)?;
+        let node = tree.get(&vfs_path).ok_or(ENOENT)?;
 
         if let HydrationState::Hydrated(content) = node.hydration()
             && let Some(bytes) = content.as_bytes()
@@ -218,17 +358,18 @@ impl FuseDriver {
 
     /// Retrieves extended attributes such as thumbnails (`user.thumb.{width}x{height}`).
     pub fn getxattr(&self, ino: u64, name: &str) -> Result<Vec<u8>, i32> {
-        let path = {
+        let mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(ino).ok_or(ENOENT)?.to_string()
         };
+        let vfs_path = self.to_vfs_path(&mount_path);
 
         if let Some(dim_str) = name.strip_prefix("user.thumb.")
             && let Some((w_str, h_str)) = dim_str.split_once('x')
             && let (Ok(w), Ok(h)) = (w_str.parse::<u32>(), h_str.parse::<u32>())
         {
             let tree = self.tree.read().map_err(|_| EINVAL)?;
-            if let Some(bytes) = tree.get_thumbnail(&path, w, h) {
+            if let Some(bytes) = tree.get_thumbnail(&vfs_path, w, h) {
                 return Ok(bytes.to_vec());
             }
         }
@@ -238,13 +379,14 @@ impl FuseDriver {
 
     /// Lists supported extended attribute names for `ino`.
     pub fn listxattr(&self, ino: u64) -> Result<Vec<String>, i32> {
-        let path = {
+        let mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
             inodes.path_by_inode(ino).ok_or(ENOENT)?.to_string()
         };
+        let vfs_path = self.to_vfs_path(&mount_path);
 
         let tree = self.tree.read().map_err(|_| EINVAL)?;
-        let node = tree.get(&path).ok_or(ENOENT)?;
+        let node = tree.get(&vfs_path).ok_or(ENOENT)?;
 
         let mut attrs = Vec::new();
         for ((w, h), _) in node.thumbnails().iter() {
@@ -478,5 +620,108 @@ mod tests {
         let raw_time = parse_node_mtime(Some("1600000000"));
         let dur3 = raw_time.duration_since(SystemTime::UNIX_EPOCH).unwrap();
         assert_eq!(dur3.as_secs(), 1600000000);
+    }
+
+    #[test]
+    fn subtree_prefix_mapping() {
+        let mut tree = VirtualTree::new("root");
+        let dir_meta = NodeMetadata::directory("/InstantUpload");
+        tree.insert(VirtualNode::new_directory(dir_meta));
+
+        let camera_meta = NodeMetadata::directory("/InstantUpload/Camera");
+        tree.insert(VirtualNode::new_directory(camera_meta));
+
+        let file_meta = NodeMetadata::file("/InstantUpload/Camera/photo.jpg").with_size(100);
+        tree.insert(VirtualNode::new_file(file_meta));
+
+        let other_meta = NodeMetadata::file("/Other/doc.txt").with_size(50);
+        tree.insert(VirtualNode::new_file(other_meta));
+
+        let driver = FuseDriver::with_hydrator_and_root(
+            Arc::new(RwLock::new(tree)),
+            Arc::new(TestHydrator),
+            "/InstantUpload",
+        );
+
+        assert_eq!(driver.to_vfs_path("/"), "/InstantUpload");
+        assert_eq!(driver.to_vfs_path("/Camera"), "/InstantUpload/Camera");
+        assert_eq!(
+            driver.to_vfs_path("/Camera/photo.jpg"),
+            "/InstantUpload/Camera/photo.jpg"
+        );
+
+        assert_eq!(
+            driver.to_mount_path("/InstantUpload"),
+            Some("/".to_string())
+        );
+        assert_eq!(
+            driver.to_mount_path("/InstantUpload/Camera"),
+            Some("/Camera".to_string())
+        );
+        assert_eq!(driver.to_mount_path("/Other/doc.txt"), None);
+
+        let root_attr = driver.getattr(FUSE_ROOT_INODE).unwrap();
+        assert!(root_attr.is_dir());
+
+        let camera_attr = driver.lookup(FUSE_ROOT_INODE, "Camera").unwrap();
+        assert!(camera_attr.is_dir());
+
+        let photo_attr = driver.lookup(camera_attr.ino, "photo.jpg").unwrap();
+        assert!(photo_attr.is_file());
+        assert_eq!(photo_attr.size, 100);
+    }
+
+    struct PopulatingHydrator {
+        tree: Arc<RwLock<VirtualTree>>,
+    }
+
+    impl AsyncHydrator for PopulatingHydrator {
+        fn hydrate(
+            &self,
+            _canonical_path: &str,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            Box::pin(async { Ok(b"data".to_vec()) })
+        }
+
+        fn hydrate_directory(
+            &self,
+            canonical_path: &str,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<(), VfsError>> + Send + '_>> {
+            let tree = Arc::clone(&self.tree);
+            let path = canonical_path.to_string();
+            Box::pin(async move {
+                let mut guard = tree
+                    .write()
+                    .map_err(|_| VfsError::InvalidPath("lock poisoned".to_string()))?;
+                if let Some(node) = guard.get_mut(&path) {
+                    node.is_populated = true;
+                }
+                guard.insert(VirtualNode::new_file(
+                    NodeMetadata::file(format!("{path}/fetched.txt")).with_size(10),
+                ));
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn directory_hydration_on_readdir_and_lookup() {
+        let tree = Arc::new(RwLock::new(VirtualTree::new("root")));
+        let hydrator = Arc::new(PopulatingHydrator {
+            tree: Arc::clone(&tree),
+        });
+
+        let driver = FuseDriver::with_hydrator(Arc::clone(&tree), hydrator);
+
+        // Before readdir, root is unpopulated and has no fetched.txt
+        let entries = driver.readdir(FUSE_ROOT_INODE, 0).unwrap();
+        assert_eq!(entries.len(), 3); // ., .., fetched.txt
+        assert_eq!(entries[2].name, "fetched.txt");
+
+        // Now lookup should find fetched.txt
+        let attr = driver.lookup(FUSE_ROOT_INODE, "fetched.txt").unwrap();
+        assert!(attr.is_file());
+        assert_eq!(attr.size, 10);
     }
 }
