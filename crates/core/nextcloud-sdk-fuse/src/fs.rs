@@ -7,7 +7,7 @@ use std::time::Duration;
 use fuser::{
     BackgroundSession, Config, Errno, FileHandle, Filesystem, FopenFlags, Generation, INodeNo,
     LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen,
-    ReplyXattr, Request, SessionACL,
+    ReplyXattr, Request,
 };
 use tracing::{debug, error, trace};
 
@@ -267,7 +267,6 @@ pub fn mount_virtual_fs_with_options(
 
     let mut config = Config::default();
     config.mount_options = options;
-    config.acl = SessionACL::All;
     config.n_threads = Some(2);
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");
