@@ -238,7 +238,8 @@ impl FolderSyncRunner {
                     continue;
                 };
 
-                let is_col = res.is_collection;
+                let is_col =
+                    res.is_collection || res.href.ends_with('/') || relative_path.ends_with('/');
                 let size = res.content_length.unwrap_or(0);
                 let etag = res.etag.clone();
 
@@ -321,6 +322,28 @@ impl FolderSyncRunner {
             // Safeguard 3: In VirtualVfs mode, do not delete local files or placeholders automatically
             if is_vfs {
                 actions.retain(|a| !matches!(a, SyncAction::DeleteLocal { .. }));
+                for action in &mut actions {
+                    if let SyncAction::DeleteRemote {
+                        relative_path,
+                        is_directory,
+                    } = action
+                    {
+                        if *is_directory {
+                            *action = SyncAction::CreateLocalDirectory {
+                                relative_path: relative_path.clone(),
+                            };
+                        } else if let Some(rem) = remote_entries
+                            .iter()
+                            .find(|r| &r.relative_path == relative_path)
+                        {
+                            *action = SyncAction::Download {
+                                relative_path: relative_path.clone(),
+                                size: rem.size,
+                                etag: rem.etag.clone(),
+                            };
+                        }
+                    }
+                }
             }
         }
 
@@ -331,6 +354,7 @@ impl FolderSyncRunner {
                     && let Some(rem) = remote_entries
                         .iter()
                         .find(|r| &r.relative_path == relative_path)
+                    && !rem.is_directory
                 {
                     let local_p = self.local_dir.join(relative_path.trim_start_matches('/'));
                     let local_len = fs::metadata(&local_p).map(|m| m.len()).unwrap_or(0);
@@ -357,6 +381,17 @@ impl FolderSyncRunner {
         journal: &mut SyncJournal,
     ) -> OrchestratorResult<PathBuf> {
         let dest = self.local_dir.join(relative_path.trim_start_matches('/'));
+        if dest.is_dir() {
+            return Err(OrchestratorError::Io {
+                path: dest.clone(),
+                context: "cannot create virtual placeholder: target path is a directory"
+                    .to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::IsADirectory,
+                    "target path is a directory",
+                ),
+            });
+        }
         if let Some(parent) = dest.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -441,15 +476,34 @@ impl FolderSyncRunner {
             match &action {
                 SyncAction::CreateLocalDirectory { relative_path } => {
                     let dest = self.local_dir.join(relative_path.trim_start_matches('/'));
+                    if dest.is_file() {
+                        let len = fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+                        if len == 0 {
+                            let _ = fs::remove_file(&dest);
+                        } else {
+                            let conflict_path = dest.with_extension(format!(
+                                "file-conflict-{}.part",
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs())
+                                    .unwrap_or(0)
+                            ));
+                            let _ = fs::rename(&dest, &conflict_path);
+                        }
+                    }
                     if let Err(e) = fs::create_dir_all(&dest) {
                         tracing::error!(path = %dest.display(), error = %e, "failed to create local sync directory");
                     } else {
-                        journal.record(JournalEntry::new(
-                            relative_path,
-                            0,
-                            std::time::SystemTime::now(),
-                            true,
-                        ));
+                        let rem_etag = remote_files
+                            .iter()
+                            .find(|r| &r.relative_path == relative_path)
+                            .and_then(|r| r.etag.clone());
+                        let mut entry =
+                            JournalEntry::new(relative_path, 0, std::time::SystemTime::now(), true);
+                        if let Some(e) = rem_etag {
+                            entry = entry.with_remote_etag(e);
+                        }
+                        journal.record(entry);
                         outcome.created_local_dirs += 1;
                     }
                 }
@@ -483,6 +537,28 @@ impl FolderSyncRunner {
                     etag,
                 } => {
                     let dest = self.local_dir.join(relative_path.trim_start_matches('/'));
+                    let is_rem_dir = remote_files
+                        .iter()
+                        .find(|r| &r.relative_path == relative_path)
+                        .is_some_and(|r| r.is_directory);
+
+                    if is_rem_dir {
+                        if dest.is_file() {
+                            let _ = fs::remove_file(&dest);
+                        }
+                        let _ = fs::create_dir_all(&dest);
+                        let mut entry =
+                            JournalEntry::new(relative_path, 0, std::time::SystemTime::now(), true);
+                        if let Some(e) = etag.clone() {
+                            entry = entry.with_remote_etag(e);
+                        }
+                        journal.record(entry);
+                        outcome.created_local_dirs += 1;
+                        processed += 1;
+                        on_progress(processed, total_actions, rel_path);
+                        continue;
+                    }
+
                     let full_remote = if self.remote_dir == "/" {
                         relative_path.clone()
                     } else {
@@ -606,6 +682,47 @@ impl FolderSyncRunner {
                 }
                 SyncAction::Conflict { relative_path, .. } => {
                     let orig = self.local_dir.join(relative_path.trim_start_matches('/'));
+                    let rem = remote_files
+                        .iter()
+                        .find(|r| &r.relative_path == relative_path);
+                    let is_rem_dir = rem.map(|r| r.is_directory).unwrap_or(false);
+
+                    if is_rem_dir {
+                        if orig.is_file() {
+                            let len = fs::metadata(&orig).map(|m| m.len()).unwrap_or(0);
+                            if len == 0 {
+                                let _ = fs::remove_file(&orig);
+                            } else {
+                                let conflict_path = orig.with_extension(format!(
+                                    "conflict-{}.part",
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|d| d.as_secs())
+                                        .unwrap_or(0)
+                                ));
+                                let _ = fs::rename(&orig, &conflict_path);
+                            }
+                        }
+                        if let Err(e) = fs::create_dir_all(&orig) {
+                            tracing::error!(path = %orig.display(), error = %e, "failed to create local sync directory during conflict resolution");
+                        } else {
+                            let mut entry = JournalEntry::new(
+                                relative_path,
+                                0,
+                                std::time::SystemTime::now(),
+                                true,
+                            );
+                            if let Some(e) = rem.and_then(|r| r.etag.clone()) {
+                                entry = entry.with_remote_etag(e);
+                            }
+                            journal.record(entry);
+                            outcome.created_local_dirs += 1;
+                        }
+                        processed += 1;
+                        on_progress(processed, total_actions, rel_path);
+                        continue;
+                    }
+
                     if orig.exists() {
                         let conflict_path = orig.with_extension(format!(
                             "conflict-{}.part",
@@ -616,16 +733,26 @@ impl FolderSyncRunner {
                         ));
                         let _ = fs::rename(&orig, &conflict_path);
                     }
-                    let rem = remote_files
-                        .iter()
-                        .find(|r| &r.relative_path == relative_path);
                     let rem_size = rem.map(|r| r.size).unwrap_or(0);
                     let rem_etag = rem.and_then(|r| r.etag.clone());
 
                     let _ = self.apply_placeholder(relative_path, rem_size, rem_etag, &mut journal);
                     outcome.conflicts += 1;
                 }
-                SyncAction::InSync { .. } => {}
+                SyncAction::InSync { relative_path } => {
+                    if let Some(rem) = remote_files
+                        .iter()
+                        .find(|r| &r.relative_path == relative_path)
+                        && rem.is_directory
+                    {
+                        let mut entry =
+                            JournalEntry::new(relative_path, 0, std::time::SystemTime::now(), true);
+                        if let Some(ref e) = rem.etag {
+                            entry = entry.with_remote_etag(e.clone());
+                        }
+                        journal.record(entry);
+                    }
+                }
             }
 
             processed += 1;
@@ -644,6 +771,17 @@ impl FolderSyncRunner {
         dest_path: &Path,
         journal_path: Option<&Path>,
     ) -> OrchestratorResult<u64> {
+        if dest_path.is_dir() {
+            return Err(OrchestratorError::Io {
+                path: dest_path.to_path_buf(),
+                context: "cannot hydrate a directory as a file".to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::IsADirectory,
+                    "target path is a directory",
+                ),
+            });
+        }
+
         let dav_path = make_dav_path(user, remote_path)?;
         let bytes = dav_client
             .get(&dav_path)
@@ -691,6 +829,17 @@ impl FolderSyncRunner {
         remote_path: &str,
         journal_path: Option<&Path>,
     ) -> OrchestratorResult<()> {
+        if dest_path.is_dir() {
+            return Err(OrchestratorError::Io {
+                path: dest_path.to_path_buf(),
+                context: "cannot dehydrate a directory as a file".to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::IsADirectory,
+                    "target path is a directory",
+                ),
+            });
+        }
+
         let (size, etag) = if let Some(jpath) = journal_path
             && let Ok(journal) = SyncJournal::load_from_file(jpath)
             && let Some(entry) = journal.get(remote_path)

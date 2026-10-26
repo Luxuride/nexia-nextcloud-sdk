@@ -59,11 +59,17 @@ impl DavResource {
                 .find_map(|prop| text_of(prop.inner(), property.qualified_name()))
         };
 
+        let is_collection = href.ends_with('/')
+            || props.iter().any(|prop| {
+                has_element(prop.inner(), "d:collection")
+                    || has_element(prop.inner(), "D:collection")
+                    || has_element(prop.inner(), "collection")
+                    || prop.inner().contains("collection")
+            });
+
         Ok(Self {
             href,
-            is_collection: props
-                .iter()
-                .any(|prop| has_element(prop.inner(), "d:collection")),
+            is_collection,
             etag: find(DavProperty::Etag),
             content_length: find(DavProperty::ContentLength)
                 .or_else(|| find(DavProperty::Size))
@@ -164,6 +170,27 @@ mod tests {
         assert!(resource.is_collection);
         assert_eq!(resource.has_preview, Some(true));
         assert_eq!(resource.content_length, None);
+    }
+
+    #[test]
+    fn collection_with_trailing_slash_or_capital_namespace() {
+        let xml_trailing = r#"<d:response>
+            <d:href>/remote.php/dav/files/alice/Camera/</d:href>
+            <d:propstat>
+                <d:prop><d:resourcetype/></d:prop>
+                <d:status>HTTP/1.1 200 OK</d:status>
+            </d:propstat>
+        </d:response>"#;
+        assert!(single(xml_trailing).is_collection);
+
+        let xml_cap = r#"<d:response>
+            <d:href>/remote.php/dav/files/alice/Camera</d:href>
+            <d:propstat>
+                <d:prop><D:resourcetype><D:collection/></D:resourcetype></d:prop>
+                <d:status>HTTP/1.1 200 OK</d:status>
+            </d:propstat>
+        </d:response>"#;
+        assert!(single(xml_cap).is_collection);
     }
 
     #[test]

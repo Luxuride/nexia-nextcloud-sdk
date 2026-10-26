@@ -497,3 +497,50 @@ async fn hydration_failure_preserves_placeholder_integrity() {
         );
     }
 }
+
+#[test]
+fn vfs_directory_preservation_and_recovery() {
+    let temp_root = temp_cache_dir("vfs-dir-recovery");
+    let local_sync_root = temp_root.join("local");
+    let journal_path = temp_root.join("sync.journal");
+    std::fs::create_dir_all(&local_sync_root).unwrap();
+
+    let runner = nextcloud_rust_sdk::FolderSyncRunner::new(&local_sync_root, "/", &journal_path);
+
+    // 1. Remote has a directory /Camera
+    let remote_camera = nextcloud_rust_sdk::DiscoveredRemoteFile {
+        relative_path: "/Camera".to_string(),
+        href: "/remote.php/dav/files/user/Camera/".to_string(),
+        size: 1048576,
+        etag: Some("\"etag-cam-1\"".to_string()),
+        is_directory: true,
+    };
+
+    // 2. Scenario: A 0-byte file was mistakenly created on disk for /Camera (from previous bug)
+    let camera_on_disk = local_sync_root.join("Camera");
+    std::fs::write(&camera_on_disk, b"").unwrap();
+    assert!(camera_on_disk.is_file());
+
+    // Reconciliation in VFS mode:
+    let (actions, _) = runner
+        .plan_reconciliation(std::slice::from_ref(&remote_camera), true)
+        .expect("plan reconciliation");
+
+    // Must NEVER emit Download for a directory
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, nextcloud_rust_sdk::SyncAction::Download { .. })),
+        "Directory must NEVER be scheduled for Download: {actions:?}"
+    );
+
+    // 3. Testing apply_placeholder refuses to overwrite a directory
+    let real_dir = local_sync_root.join("RealDir");
+    std::fs::create_dir_all(&real_dir).unwrap();
+    let mut journal = nextcloud_rust_sdk::SyncJournal::new();
+    let err = runner.apply_placeholder("/RealDir", 100, None, &mut journal);
+    assert!(err.is_err(), "apply_placeholder must fail on a directory");
+
+    // Clean up
+    let _ = std::fs::remove_dir_all(&temp_root);
+}
