@@ -222,18 +222,23 @@ pub fn make_png_text_chunk(keyword: &str, text: &str) -> Vec<u8> {
     chunk
 }
 
-/// Converts raw image bytes (such as JPEG returned by Nextcloud previews) to standard PNG format if needed.
+/// Converts raw image bytes (such as JPEG returned by Nextcloud previews) to standard PNG format if needed,
+/// resizing to a maximum thumbnail boundary of 512x512 if larger.
 #[must_use]
 pub fn ensure_png_bytes(bytes: &[u8]) -> Vec<u8> {
     const PNG_SIG: &[u8] = b"\x89PNG\r\n\x1a\n";
-    if bytes.starts_with(PNG_SIG) {
-        return bytes.to_vec();
-    }
-
     if let Ok(img) = image::load_from_memory(bytes) {
-        let mut out = std::io::Cursor::new(Vec::with_capacity(bytes.len() + 1024));
-        if img.write_to(&mut out, image::ImageFormat::Png).is_ok() {
-            return out.into_inner();
+        if img.width() > 512 || img.height() > 512 {
+            let resized = img.thumbnail(512, 512);
+            let mut out = std::io::Cursor::new(Vec::with_capacity(64 * 1024));
+            if resized.write_to(&mut out, image::ImageFormat::Png).is_ok() {
+                return out.into_inner();
+            }
+        } else if !bytes.starts_with(PNG_SIG) {
+            let mut out = std::io::Cursor::new(Vec::with_capacity(bytes.len() + 1024));
+            if img.write_to(&mut out, image::ImageFormat::Png).is_ok() {
+                return out.into_inner();
+            }
         }
     }
 
