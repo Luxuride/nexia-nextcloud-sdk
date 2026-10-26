@@ -67,40 +67,40 @@ fn is_file_manager_or_thumbnailer(pid: u32) -> bool {
                 || lower.contains("nemo")
                 || lower.contains("caja")
                 || lower.contains("pcmanfm")
+                || lower.contains("gvfs")
         };
 
-        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm"))
-            && check_str(&comm)
-        {
-            return true;
-        }
-        if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
-            let cmd_str = String::from_utf8_lossy(&cmdline);
-            if check_str(&cmd_str) {
+        let mut cur_pid = pid;
+        for _ in 0..8 {
+            if cur_pid <= 1 {
+                break;
+            }
+            if let Ok(comm) = std::fs::read_to_string(format!("/proc/{cur_pid}/comm"))
+                && check_str(&comm)
+            {
                 return true;
             }
-        }
-        // Check parent process (e.g. if sandboxed inside bwrap)
-        if let Ok(status) = std::fs::read_to_string(format!("/proc/{pid}/status")) {
-            for line in status.lines() {
-                if let Some(ppid_str) = line.strip_prefix("PPid:")
-                    && let Ok(ppid) = ppid_str.trim().parse::<u32>()
-                    && ppid > 1
-                {
-                    if let Ok(pcomm) = std::fs::read_to_string(format!("/proc/{ppid}/comm"))
-                        && check_str(&pcomm)
-                    {
-                        return true;
-                    }
-                    if let Ok(pcmdline) = std::fs::read(format!("/proc/{ppid}/cmdline")) {
-                        let pcmd_str = String::from_utf8_lossy(&pcmdline);
-                        if check_str(&pcmd_str) {
-                            return true;
-                        }
-                    }
-                    break;
+            if let Ok(cmdline) = std::fs::read(format!("/proc/{cur_pid}/cmdline")) {
+                let cmd_str = String::from_utf8_lossy(&cmdline);
+                if check_str(&cmd_str) {
+                    return true;
                 }
             }
+            let mut next_ppid = 0;
+            if let Ok(status) = std::fs::read_to_string(format!("/proc/{cur_pid}/status")) {
+                for line in status.lines() {
+                    if let Some(ppid_str) = line.strip_prefix("PPid:")
+                        && let Ok(ppid) = ppid_str.trim().parse::<u32>()
+                    {
+                        next_ppid = ppid;
+                        break;
+                    }
+                }
+            }
+            if next_ppid == 0 || next_ppid == cur_pid {
+                break;
+            }
+            cur_pid = next_ppid;
         }
     }
     #[cfg(not(target_os = "linux"))]
