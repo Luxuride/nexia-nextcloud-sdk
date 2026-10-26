@@ -20,7 +20,7 @@ pub mod hydrator;
 pub mod inode;
 
 pub use attr::{FileAttr, FileType};
-pub use driver::FuseDriver;
+pub use driver::{FuseDriver, parse_date_to_unix_secs};
 pub use entry::DirEntry;
 #[cfg(target_os = "linux")]
 pub use fs::{mount_virtual_fs, mount_virtual_fs_with_options};

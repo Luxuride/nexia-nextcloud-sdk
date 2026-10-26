@@ -91,7 +91,7 @@ pub use nextcloud_sdk_core::{
 };
 pub use nextcloud_sdk_fuse::{
     AsyncHydrator, BackgroundSession, DirEntry, FileAttr, FileType, FuseDriver, InodeTable,
-    MountOption, mount_virtual_fs,
+    MountOption, mount_virtual_fs, parse_date_to_unix_secs,
 };
 pub use nextcloud_sdk_keyring::{
     KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring,

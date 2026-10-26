@@ -438,23 +438,22 @@ fn is_preview_name(name: &str) -> bool {
         || lower.ends_with(".pdf")
 }
 
-fn parse_node_mtime(s: Option<&str>) -> SystemTime {
-    let Some(raw) = s else {
-        return SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
-    };
-
+/// Parses a date string (HTTP-date RFC 1123, ISO 8601, or raw UNIX seconds) into UNIX epoch seconds.
+#[must_use]
+pub fn parse_date_to_unix_secs(raw: &str) -> Option<u64> {
     let trimmed = raw.trim();
     if let Ok(secs) = trimmed.parse::<u64>() {
-        return SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+        return Some(secs);
     }
     if let Some(secs) = parse_http_date(trimmed) {
-        return SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+        return Some(secs);
     }
-    if let Some(secs) = parse_iso_date(trimmed) {
-        return SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs);
-    }
+    parse_iso_date(trimmed)
+}
 
-    SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)
+fn parse_node_mtime(s: Option<&str>) -> SystemTime {
+    let secs = s.and_then(parse_date_to_unix_secs).unwrap_or(1_700_000_000);
+    SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs)
 }
 
 fn parse_month(m: &str) -> Option<u64> {
