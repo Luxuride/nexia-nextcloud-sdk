@@ -110,6 +110,17 @@ impl Filesystem for FuseDriver {
         reply.ok();
     }
 
+    fn flush(
+        &self,
+        _req: &Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _lock_owner: LockOwner,
+        reply: ReplyEmpty,
+    ) {
+        reply.ok();
+    }
+
     fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
         reply.statfs(1_000_000, 500_000, 500_000, 1_000_000, 500_000, 512, 255, 0);
     }
