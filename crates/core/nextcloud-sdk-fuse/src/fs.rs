@@ -281,7 +281,6 @@ pub fn mount_virtual_fs(
     let options = vec![
         MountOption::FSName("Nextcloud".to_string()),
         MountOption::Subtype("nextcloud-vfs".to_string()),
-        MountOption::AutoUnmount,
         MountOption::RO,
     ];
     mount_virtual_fs_with_options(driver, mountpoint, options)
