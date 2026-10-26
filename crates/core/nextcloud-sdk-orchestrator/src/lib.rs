@@ -28,6 +28,9 @@ pub use mount::{
     MountDescriptor, MountId, MountMode, MountProgressSnapshot, MountState, MountStatus,
     MountStorageUsage, SyncFileStatus,
 };
-pub use sync::FolderSyncRunner;
+pub use sync::{
+    FileSystemWatcher, FolderSyncOutcome, FolderSyncRunner, HydrationCallback, SyncCallback,
+    make_dav_path,
+};
 pub use vfs::VfsManager;
 pub use worker::NextcloudOrchestrator;

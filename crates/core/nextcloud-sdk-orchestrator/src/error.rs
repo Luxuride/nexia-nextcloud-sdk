@@ -58,12 +58,28 @@ pub enum OrchestratorError {
         source: nextcloud_sync::SyncError,
     },
 
+    /// A filesystem watcher error occurred.
+    Watcher {
+        /// Contextual description of the watcher failure.
+        context: String,
+        /// Underlying error message.
+        message: String,
+    },
+
     /// An invalid remote or local path was provided.
     InvalidPath {
         /// Path that was rejected.
         path: String,
         /// Explanation why the path was invalid.
         reason: String,
+    },
+
+    /// A remote Nextcloud API or transport error occurred.
+    Api {
+        /// Context or name of the operation.
+        operation: String,
+        /// Underlying SDK core error.
+        source: nextcloud_sdk_core::Error,
     },
 
     /// Serialization or deserialization failed.
@@ -105,8 +121,14 @@ impl fmt::Display for OrchestratorError {
             Self::Sync { operation, source } => {
                 write!(f, "synchronization error during '{operation}': {source}")
             }
+            Self::Watcher { context, message } => {
+                write!(f, "filesystem watcher error during '{context}': {message}")
+            }
             Self::InvalidPath { path, reason } => {
                 write!(f, "invalid path '{path}': {reason}")
+            }
+            Self::Api { operation, source } => {
+                write!(f, "Nextcloud API error during '{operation}': {source}")
             }
             Self::Json { source } => {
                 write!(f, "JSON serialization error: {source}")
@@ -121,12 +143,23 @@ impl std::error::Error for OrchestratorError {
             Self::Io { source, .. } => Some(source),
             Self::Vfs { source, .. } => Some(source),
             Self::Sync { source, .. } => Some(source),
+            Self::Api { source, .. } => Some(source),
             Self::Json { source } => Some(source),
             Self::WorkerShutdown(_)
             | Self::MountNotFound { .. }
             | Self::MountAlreadyExists { .. }
             | Self::AccountNotFound { .. }
+            | Self::Watcher { .. }
             | Self::InvalidPath { .. } => None,
+        }
+    }
+}
+
+impl From<nextcloud_sdk_core::Error> for OrchestratorError {
+    fn from(source: nextcloud_sdk_core::Error) -> Self {
+        Self::Api {
+            operation: "transport execution".to_string(),
+            source,
         }
     }
 }

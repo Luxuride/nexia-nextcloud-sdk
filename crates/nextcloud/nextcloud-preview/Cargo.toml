@@ -11,4 +11,5 @@ description = "Nextcloud preview and thumbnail generation client"
 [dependencies]
 nextcloud-sdk-core.workspace = true
 nextcloud-auth.workspace = true
+image.workspace = true
 tracing.workspace = true

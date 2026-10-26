@@ -27,6 +27,8 @@ pub enum SyncError {
     InvalidPath(String),
     /// A requested item was not found.
     NotFound(String),
+    /// Safety safeguard or reconciliation discrepancy.
+    Reconciliation(String),
 }
 
 impl fmt::Display for SyncError {
@@ -51,6 +53,7 @@ impl fmt::Display for SyncError {
             }
             Self::InvalidPath(msg) => write!(f, "invalid sync path: {msg}"),
             Self::NotFound(path) => write!(f, "sync target not found: `{path}`"),
+            Self::Reconciliation(msg) => write!(f, "sync reconciliation safeguard: {msg}"),
         }
     }
 }
@@ -60,7 +63,7 @@ impl Error for SyncError {
         match self {
             Self::LocalIo { source, .. } => Some(source),
             Self::Serialization { source, .. } => Some(source),
-            Self::InvalidPath(_) | Self::NotFound(_) => None,
+            Self::InvalidPath(_) | Self::NotFound(_) | Self::Reconciliation(_) => None,
         }
     }
 }

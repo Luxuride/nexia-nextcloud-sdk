@@ -78,7 +78,11 @@ pub use nextcloud_kaccounts::{
 };
 pub use nextcloud_notifications::{Notification, NotificationAction, NotificationClient};
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
-pub use nextcloud_preview::{PreviewClient, PreviewMode, PreviewOptions};
+pub use nextcloud_preview::{
+    PreviewClient, PreviewMode, PreviewOptions, crc32, embed_freedesktop_metadata,
+    ensure_png_bytes, freedesktop_thumbnail_dirs, install_freedesktop_thumbnail,
+    install_freedesktop_thumbnail_with_mtime, make_png_text_chunk, md5_hex, path_to_file_uri,
+};
 pub use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
     ServerUrl, StatusCode, StatusError, Transport, UrlError,
@@ -91,10 +95,11 @@ pub use nextcloud_sdk_keyring::{
     KeyringBackend, KeyringEntry, KeyringError, MemoryKeyring, PlatformKeyring,
 };
 pub use nextcloud_sdk_orchestrator::{
-    DownloadQueueCoordinator, FolderSyncRunner, MountDescriptor, MountId, MountMode,
-    MountProgressSnapshot, MountState, MountStatus, MountStorageUsage, MountsHandle,
-    NextcloudOrchestrator, OrchestratorConfig, OrchestratorError, OrchestratorEvent,
-    OrchestratorHandle, OrchestratorResult, SyncFileStatus, VfsHandle, VfsManager,
+    DownloadQueueCoordinator, FileSystemWatcher, FolderSyncOutcome, FolderSyncRunner,
+    HydrationCallback, MountDescriptor, MountId, MountMode, MountProgressSnapshot, MountState,
+    MountStatus, MountStorageUsage, MountsHandle, NextcloudOrchestrator, OrchestratorConfig,
+    OrchestratorError, OrchestratorEvent, OrchestratorHandle, OrchestratorResult, SyncCallback,
+    SyncFileStatus, VfsHandle, VfsManager, make_dav_path,
 };
 pub use nextcloud_sdk_request::{Effect, Failure, RequestMachine, RequestState, RetryPolicy};
 pub use nextcloud_sdk_session::{

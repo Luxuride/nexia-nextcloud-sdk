@@ -14,10 +14,16 @@
 #![forbid(unsafe_code)]
 
 mod client;
+pub mod freedesktop;
 mod mode;
 mod options;
 mod query;
 
 pub use client::{PREVIEW_ENDPOINT, PreviewClient};
+pub use freedesktop::{
+    crc32, embed_freedesktop_metadata, ensure_png_bytes, freedesktop_thumbnail_dirs,
+    install_freedesktop_thumbnail, install_freedesktop_thumbnail_with_mtime, make_png_text_chunk,
+    md5_hex, path_to_file_uri,
+};
 pub use mode::PreviewMode;
 pub use options::PreviewOptions;
