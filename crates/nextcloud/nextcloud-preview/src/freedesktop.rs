@@ -9,8 +9,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tracing::{debug, warn};
-
 /// Computes the `file://` URI for a local path according to RFC 3986 without resolving symlinks.
 pub fn path_to_file_uri(path: &Path) -> String {
     let path_str = path.to_string_lossy();
@@ -245,12 +243,12 @@ pub fn ensure_png_bytes(bytes: &[u8]) -> Vec<u8> {
     bytes.to_vec()
 }
 
-/// Injects FreeDesktop `Thumb::URI` and `Thumb::MTime` chunks into PNG image bytes.
-pub fn embed_freedesktop_metadata(raw_bytes: &[u8], uri: &str, mtime_sec: u64) -> Vec<u8> {
-    let png_bytes = ensure_png_bytes(raw_bytes);
+/// Injects FreeDesktop `Thumb::URI` and `Thumb::MTime` chunks directly into raw PNG bytes without re-encoding.
+#[must_use]
+pub fn embed_freedesktop_metadata_raw(png_bytes: &[u8], uri: &str, mtime_sec: u64) -> Vec<u8> {
     const PNG_SIG: &[u8] = b"\x89PNG\r\n\x1a\n";
     if !png_bytes.starts_with(PNG_SIG) || png_bytes.len() < 33 {
-        return png_bytes;
+        return png_bytes.to_vec();
     }
 
     let chunk_uri = make_png_text_chunk("Thumb::URI", uri);
@@ -271,6 +269,31 @@ pub fn embed_freedesktop_metadata(raw_bytes: &[u8], uri: &str, mtime_sec: u64) -
     // Append remainder of original PNG
     result.extend_from_slice(&png_bytes[33..]);
     result
+}
+
+/// Resizes `img` to fit within `(max_dim, max_dim)` and encodes to PNG tagged with FreeDesktop metadata.
+#[must_use]
+pub fn create_freedesktop_png(
+    img: &image::DynamicImage,
+    max_dim: u32,
+    uri: &str,
+    mtime_sec: u64,
+) -> Option<Vec<u8>> {
+    let resized = if img.width() > max_dim || img.height() > max_dim {
+        img.thumbnail(max_dim, max_dim)
+    } else {
+        img.clone()
+    };
+    let mut out = std::io::Cursor::new(Vec::with_capacity(32 * 1024));
+    resized.write_to(&mut out, image::ImageFormat::Png).ok()?;
+    let png_bytes = out.into_inner();
+    Some(embed_freedesktop_metadata_raw(&png_bytes, uri, mtime_sec))
+}
+
+/// Injects FreeDesktop `Thumb::URI` and `Thumb::MTime` chunks into PNG image bytes.
+pub fn embed_freedesktop_metadata(raw_bytes: &[u8], uri: &str, mtime_sec: u64) -> Vec<u8> {
+    let png_bytes = ensure_png_bytes(raw_bytes);
+    embed_freedesktop_metadata_raw(&png_bytes, uri, mtime_sec)
 }
 
 /// Locates standard FreeDesktop thumbnail directories (`$XDG_CACHE_HOME/thumbnails/{normal,large}`).
@@ -323,31 +346,42 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         .unwrap_or_else(|| large_dir.clone());
     let _ = fs::create_dir_all(&xxlarge_dir);
 
+    let parsed_img = image::load_from_memory(png_bytes).ok();
+
     let uris = file_uris_for_path(target_file);
     for uri in &uris {
         let hash = md5_hex(uri.as_bytes());
         let filename = format!("{hash}.png");
 
-        let large_dest = large_dir.join(&filename);
         let normal_dest = normal_dir.join(&filename);
+        let large_dest = large_dir.join(&filename);
         let xlarge_dest = xlarge_dir.join(&filename);
         let xxlarge_dest = xxlarge_dir.join(&filename);
 
-        if large_dest.exists() && normal_dest.exists() && xlarge_dest.exists() {
+        if normal_dest.exists() && large_dest.exists() && xlarge_dest.exists() {
             continue;
         }
 
-        let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec);
-
-        if let Err(e) = fs::write(&large_dest, &tagged_bytes) {
-            warn!(target = %large_dest.display(), error = %e, "Failed to write FreeDesktop large thumbnail");
+        if let Some(ref img) = parsed_img {
+            if let Some(normal_png) = create_freedesktop_png(img, 128, uri, mtime_sec) {
+                let _ = fs::write(&normal_dest, normal_png);
+            }
+            if let Some(large_png) = create_freedesktop_png(img, 256, uri, mtime_sec) {
+                let _ = fs::write(&large_dest, large_png);
+            }
+            if let Some(xlarge_png) = create_freedesktop_png(img, 512, uri, mtime_sec) {
+                let _ = fs::write(&xlarge_dest, xlarge_png);
+            }
+            if let Some(xxlarge_png) = create_freedesktop_png(img, 1024, uri, mtime_sec) {
+                let _ = fs::write(&xxlarge_dest, xxlarge_png);
+            }
         } else {
-            debug!(target = %large_dest.display(), uri = %uri, "Installed FreeDesktop large thumbnail");
+            let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec);
+            let _ = fs::write(&normal_dest, &tagged_bytes);
+            let _ = fs::write(&large_dest, &tagged_bytes);
+            let _ = fs::write(&xlarge_dest, &tagged_bytes);
+            let _ = fs::write(&xxlarge_dest, &tagged_bytes);
         }
-
-        let _ = fs::write(&normal_dest, &tagged_bytes);
-        let _ = fs::write(&xlarge_dest, &tagged_bytes);
-        let _ = fs::write(&xxlarge_dest, &tagged_bytes);
 
         if let Some(parent) = normal_dir.parent() {
             let fail_file = parent

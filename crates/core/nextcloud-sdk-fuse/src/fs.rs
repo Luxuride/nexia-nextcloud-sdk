@@ -200,18 +200,14 @@ impl Filesystem for FuseDriver {
         trace!(ino = ino.0, offset, size, "fuser::read");
 
         if is_file_manager_or_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
-            // Allow reading header probes up to 128 KB so file managers can detect MIME/EXIF,
-            // but decline deep reads (> 128 KB) to prevent mass background downloads.
-            if offset >= 128 * 1024 {
-                debug!(
-                    pid = req.pid(),
-                    ino = ino.0,
-                    offset,
-                    "Declined deep file manager/thumbnailer read on unhydrated placeholder"
-                );
-                reply.error(Errno::ENODATA);
-                return;
-            }
+            debug!(
+                pid = req.pid(),
+                ino = ino.0,
+                offset,
+                "Declined file manager/thumbnailer read on unhydrated placeholder"
+            );
+            reply.error(Errno::ENODATA);
+            return;
         }
         let result = if let Some(rt) = self.runtime_handle() {
             Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size))
