@@ -99,6 +99,27 @@ impl FuseDriver {
         Ok(Self::node_to_attr(ino, node))
     }
 
+    /// Checks whether the file node for `ino` is an unhydrated placeholder.
+    pub fn is_placeholder(&self, ino: u64) -> bool {
+        let path = {
+            let inodes = match self.inodes.read() {
+                Ok(guard) => guard,
+                Err(_) => return false,
+            };
+            match inodes.path_by_inode(ino) {
+                Some(p) => p.to_string(),
+                None => return false,
+            }
+        };
+
+        let tree = match self.tree.read() {
+            Ok(guard) => guard,
+            Err(_) => return false,
+        };
+
+        tree.get(&path).map(|n| n.is_placeholder()).unwrap_or(false)
+    }
+
     /// Reads directory child entries for directory `ino` starting from `offset`.
     pub fn readdir(&self, ino: u64, offset: i64) -> Result<Vec<DirEntry>, i32> {
         let path = {

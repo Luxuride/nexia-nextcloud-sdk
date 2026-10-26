@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::error::{OrchestratorError, OrchestratorResult};
 
@@ -72,29 +72,7 @@ impl FileSystemWatcher {
 
         let event_handler = move |res: Result<Event, notify::Error>| match res {
             Ok(event) => {
-                if matches!(event.kind, EventKind::Access(_)) {
-                    for path in event.paths {
-                        if path.is_file() {
-                            #[cfg(unix)]
-                            {
-                                use std::os::unix::fs::MetadataExt;
-                                if let Ok(meta) = std::fs::metadata(&path)
-                                    && (meta.len() == 0 || meta.blocks() == 0)
-                                {
-                                    let _ = tx.blocking_send((event.kind, path));
-                                }
-                            }
-                            #[cfg(not(unix))]
-                            {
-                                if let Ok(meta) = std::fs::metadata(&path)
-                                    && meta.len() == 0
-                                {
-                                    let _ = tx.blocking_send((event.kind, path));
-                                }
-                            }
-                        }
-                    }
-                } else if matches!(
+                if matches!(
                     event.kind,
                     EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
                 ) {
@@ -138,35 +116,15 @@ impl FileSystemWatcher {
         self.watcher = Some(watcher);
 
         let map_for_worker = self.watched_paths.clone();
-        let hydrate_cb = self.on_hydrate.clone();
+        let _hydrate_cb = self.on_hydrate.clone();
         let sync_cb = self.on_sync.clone();
 
         tokio::spawn(async move {
             let mut pending_mounts: HashSet<String> = HashSet::new();
-            let hydrating_paths: Arc<tokio::sync::Mutex<HashSet<PathBuf>>> =
-                Arc::new(tokio::sync::Mutex::new(HashSet::new()));
 
             loop {
                 tokio::select! {
-                    Some((kind, changed_path)) = rx.recv() => {
-                        if matches!(kind, EventKind::Access(_)) {
-                            let mut guard = hydrating_paths.lock().await;
-                            if guard.insert(changed_path.clone()) {
-                                let p = changed_path.clone();
-                                let set = hydrating_paths.clone();
-                                let cb = hydrate_cb.clone();
-                                tokio::spawn(async move {
-                                    info!(path = %p.display(), "Hydrating virtual placeholder on open/access");
-                                    if let Some(ref handler) = cb {
-                                        handler(p.clone());
-                                    }
-                                    let mut g = set.lock().await;
-                                    g.remove(&p);
-                                });
-                            }
-                            continue;
-                        }
-
+                    Some((_kind, changed_path)) = rx.recv() => {
                         if let Ok(guard) = map_for_worker.lock() {
                             for (root, mount_id) in guard.iter() {
                                 if changed_path.starts_with(root) {

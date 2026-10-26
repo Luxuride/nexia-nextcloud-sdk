@@ -80,8 +80,9 @@ pub use nextcloud_notifications::{Notification, NotificationAction, Notification
 pub use nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsStatus, Query};
 pub use nextcloud_preview::{
     PreviewClient, PreviewMode, PreviewOptions, crc32, embed_freedesktop_metadata,
-    ensure_png_bytes, freedesktop_thumbnail_dirs, install_freedesktop_thumbnail,
-    install_freedesktop_thumbnail_with_mtime, make_png_text_chunk, md5_hex, path_to_file_uri,
+    ensure_png_bytes, freedesktop_thumbnail_dirs, install_freedesktop_fail_marker,
+    install_freedesktop_thumbnail, install_freedesktop_thumbnail_with_mtime, make_png_text_chunk,
+    md5_hex, path_to_file_uri, remove_freedesktop_fail_marker,
 };
 pub use nextcloud_sdk_core::{
     ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,

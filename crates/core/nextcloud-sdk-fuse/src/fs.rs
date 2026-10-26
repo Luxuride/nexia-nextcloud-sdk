@@ -51,6 +51,23 @@ fn to_errno(code: i32) -> Errno {
     }
 }
 
+fn is_thumbnailer(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
+            let name = comm.trim();
+            if name.contains("thumbnail") || name == "bwrap" || name == "tumblerd" {
+                return true;
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+    }
+    false
+}
+
 impl Filesystem for FuseDriver {
     fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
         let name_str = match name.to_str() {
@@ -110,7 +127,7 @@ impl Filesystem for FuseDriver {
 
     fn read(
         &self,
-        _req: &Request,
+        req: &Request,
         ino: INodeNo,
         _fh: FileHandle,
         offset: u64,
@@ -120,6 +137,16 @@ impl Filesystem for FuseDriver {
         reply: ReplyData,
     ) {
         trace!(ino = ino.0, offset, size, "fuser::read");
+
+        if is_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
+            debug!(
+                pid = req.pid(),
+                ino = ino.0,
+                "Declined thumbnailer read on unhydrated placeholder to prevent mass hydration"
+            );
+            reply.error(Errno::ENODATA);
+            return;
+        }
         let result = if let Some(rt) = self.runtime_handle() {
             tokio::task::block_in_place(|| rt.block_on(self.read(ino.0, offset as i64, size)))
         } else {

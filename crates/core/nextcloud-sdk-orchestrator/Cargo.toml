@@ -14,6 +14,7 @@ nextcloud-sdk-vfs.workspace = true
 nextcloud-sync.workspace = true
 nextcloud-dav.workspace = true
 nextcloud-shares.workspace = true
+nextcloud-preview.workspace = true
 nextcloud-theming.workspace = true
 notify.workspace = true
 serde.workspace = true

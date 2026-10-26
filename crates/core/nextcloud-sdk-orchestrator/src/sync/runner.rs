@@ -385,6 +385,13 @@ impl FolderSyncRunner {
             entry = entry.with_remote_etag(e);
         }
         journal.record(entry);
+
+        let mtime_sec = mtime
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        nextcloud_preview::install_freedesktop_fail_marker(&dest, mtime_sec);
+
         Ok(dest)
     }
 
@@ -674,6 +681,7 @@ impl FolderSyncRunner {
             let _ = journal.save_to_file(jpath);
         }
 
+        nextcloud_preview::remove_freedesktop_fail_marker(dest_path);
         Ok(bytes.len() as u64)
     }
 
@@ -723,6 +731,14 @@ impl FolderSyncRunner {
             journal.record(entry);
             let _ = journal.save_to_file(jpath);
         }
+
+        let mtime_sec = fs::metadata(dest_path)
+            .and_then(|m| m.modified())
+            .unwrap_or_else(|_| std::time::SystemTime::now())
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        nextcloud_preview::install_freedesktop_fail_marker(dest_path, mtime_sec);
 
         Ok(())
     }

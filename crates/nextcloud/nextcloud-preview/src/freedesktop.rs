@@ -322,6 +322,66 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         if fail_file.exists() {
             let _ = fs::remove_file(fail_file);
         }
+        let fail_generic = parent.join("fail").join(&filename);
+        if fail_generic.exists() {
+            let _ = fs::remove_file(fail_generic);
+        }
+    }
+}
+
+/// Installs a FreeDesktop "fail" marker thumbnail for `target_file`.
+///
+/// When desktop file managers (like GNOME Files / Nautilus) check the thumbnail cache,
+/// the presence of this fail marker in `$XDG_CACHE_HOME/thumbnails/fail/gnome-thumbnail-factory/`
+/// informs them that thumbnail generation has failed or should not be retried locally.
+/// This prevents Nautilus from launching thumbnailers that open and read unhydrated virtual files.
+pub fn install_freedesktop_fail_marker(target_file: &Path, mtime_sec: u64) {
+    let uri = path_to_file_uri(target_file);
+    let minimal_png = [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG magic
+        0x00, 0x00, 0x00, 0x0D, // IHDR length (13)
+        0x49, 0x48, 0x44, 0x52, // IHDR type
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+        0x00, // 1x1 RGBA
+        0x1F, 0x15, 0xC4, 0x89, // CRC
+        0x00, 0x00, 0x00, 0x0A, // IDAT length (10)
+        0x49, 0x44, 0x41, 0x54, // IDAT
+        0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+        0x00, 0x00, 0x00, // IEND length (0)
+        0x49, 0x45, 0x4E, 0x44, // IEND
+        0xAE, 0x42, 0x60, 0x82, // CRC
+    ];
+
+    let tagged_bytes = embed_freedesktop_metadata(&minimal_png, &uri, mtime_sec);
+    let hash = md5_hex(uri.as_bytes());
+    let filename = format!("{hash}.png");
+
+    let (normal_dir, _) = freedesktop_thumbnail_dirs();
+    if let Some(parent) = normal_dir.parent() {
+        let fail_factory_dir = parent.join("fail").join("gnome-thumbnail-factory");
+        let fail_generic_dir = parent.join("fail");
+        let _ = fs::create_dir_all(&fail_factory_dir);
+        let _ = fs::create_dir_all(&fail_generic_dir);
+        let _ = fs::write(fail_factory_dir.join(&filename), &tagged_bytes);
+        let _ = fs::write(fail_generic_dir.join(&filename), &tagged_bytes);
+    }
+}
+
+/// Removes any FreeDesktop fail marker associated with `target_file`.
+pub fn remove_freedesktop_fail_marker(target_file: &Path) {
+    let uri = path_to_file_uri(target_file);
+    let hash = md5_hex(uri.as_bytes());
+    let filename = format!("{hash}.png");
+
+    let (normal_dir, _) = freedesktop_thumbnail_dirs();
+    if let Some(parent) = normal_dir.parent() {
+        let _ = fs::remove_file(
+            parent
+                .join("fail")
+                .join("gnome-thumbnail-factory")
+                .join(&filename),
+        );
+        let _ = fs::remove_file(parent.join("fail").join(&filename));
     }
 }
 
