@@ -13,6 +13,24 @@ pub trait AsyncHydrator: Send + Sync {
         canonical_path: &str,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>;
 
+    /// On-demand partial byte range hydration for placeholder reads.
+    ///
+    /// By default, falls back to full hydration.
+    fn hydrate_range(
+        &self,
+        canonical_path: &str,
+        offset: u64,
+        size: u32,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>> {
+        let path = canonical_path.to_string();
+        Box::pin(async move {
+            let full = self.hydrate(&path).await?;
+            let start = (offset as usize).min(full.len());
+            let end = (start + size as usize).min(full.len());
+            Ok(full[start..end].to_vec())
+        })
+    }
+
     /// Optional notification when directory entries are read in FUSE, allowing prefetching previews.
     fn on_readdir(&self, _paths: &[String]) {}
 

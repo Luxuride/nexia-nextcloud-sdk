@@ -57,7 +57,7 @@ fn is_thumbnailer(pid: u32) -> bool {
         // Check /proc/{pid}/comm
         if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
             let name = comm.trim();
-            if name.contains("thumbnail") || name == "tumblerd" {
+            if name.contains("thumbnail") || name.contains("tumbler") || name.contains("glycin") {
                 return true;
             }
         }
@@ -65,8 +65,8 @@ fn is_thumbnailer(pid: u32) -> bool {
         if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
             let cmd_str = String::from_utf8_lossy(&cmdline);
             if cmd_str.contains("thumbnail")
-                || cmd_str.contains("tumblerd")
-                || cmd_str.contains("glycin-thumbnailer")
+                || cmd_str.contains("tumbler")
+                || cmd_str.contains("glycin")
             {
                 return true;
             }
@@ -80,15 +80,18 @@ fn is_thumbnailer(pid: u32) -> bool {
                 {
                     if let Ok(pcomm) = std::fs::read_to_string(format!("/proc/{ppid}/comm")) {
                         let pname = pcomm.trim();
-                        if pname.contains("thumbnail") || pname == "tumblerd" {
+                        if pname.contains("thumbnail")
+                            || pname.contains("tumbler")
+                            || pname.contains("glycin")
+                        {
                             return true;
                         }
                     }
                     if let Ok(pcmdline) = std::fs::read(format!("/proc/{ppid}/cmdline")) {
                         let pcmd_str = String::from_utf8_lossy(&pcmdline);
                         if pcmd_str.contains("thumbnail")
-                            || pcmd_str.contains("tumblerd")
-                            || pcmd_str.contains("glycin-thumbnailer")
+                            || pcmd_str.contains("tumbler")
+                            || pcmd_str.contains("glycin")
                         {
                             return true;
                         }

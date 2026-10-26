@@ -333,7 +333,7 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         let xlarge_dest = xlarge_dir.join(&filename);
         let xxlarge_dest = xxlarge_dir.join(&filename);
 
-        if large_dest.exists() && normal_dest.exists() {
+        if large_dest.exists() && normal_dest.exists() && xlarge_dest.exists() {
             continue;
         }
 
