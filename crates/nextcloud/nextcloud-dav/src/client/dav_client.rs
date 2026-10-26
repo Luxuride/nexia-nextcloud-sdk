@@ -88,6 +88,21 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
         Ok(response.into_body())
     }
 
+    /// Fetches a byte range from `path` using the HTTP `Range` header.
+    ///
+    /// Any non-`2xx` status returns [`Error::Status`] with the response body
+    /// retained for diagnosis.
+    pub async fn get_range(&self, path: &DavPath, start: u64, end: u64) -> Result<Vec<u8>, Error> {
+        tracing::debug!(path = %path.as_str(), start, end, "Executing WebDAV GET with Range");
+        let mut headers = self.authenticated_headers();
+        headers.set("Range", format!("bytes={start}-{end}"));
+        let request = Request::new(HttpMethod::Get, path.to_api_path()).with_headers(headers);
+        let response = self.transport.execute(request).await?;
+
+        ensure_success(HttpMethod::Get, path, &response)?;
+        Ok(response.into_body())
+    }
+
     /// Uploads `body` to `path`, optionally specifying the `Content-Type` header.
     ///
     /// Any non-`2xx` status returns [`Error::Status`] with the response body
@@ -665,5 +680,20 @@ mod tests {
             status.path().as_str(),
             "/remote.php/dav/files/alice/src.txt"
         );
+    }
+
+    #[test]
+    fn get_range_sets_range_header_and_returns_bytes() {
+        let transport = FakeTransport::new(206, "partial content bytes");
+        let auth = FakeAuth;
+        let client = DavClient::new(&transport, &auth);
+        let path = DavPath::new("alice", "photo.jpg").expect("path is valid");
+
+        let bytes = run(client.get_range(&path, 0, 1024)).expect("range request succeeds");
+        assert_eq!(bytes, b"partial content bytes");
+
+        let request = transport.last_request();
+        assert_eq!(request.method(), HttpMethod::Get);
+        assert_eq!(request.headers().get("Range"), Some("bytes=0-1024"));
     }
 }
