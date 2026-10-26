@@ -11,10 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::{debug, warn};
 
-/// Computes the canonical `file://` URI for a local path according to RFC 3986.
+/// Computes the `file://` URI for a local path according to RFC 3986 without resolving symlinks.
 pub fn path_to_file_uri(path: &Path) -> String {
-    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let path_str = canonical.to_string_lossy();
+    let path_str = path.to_string_lossy();
     let mut uri = String::from("file://");
     for b in path_str.bytes() {
         match b {
@@ -27,6 +26,21 @@ pub fn path_to_file_uri(path: &Path) -> String {
         }
     }
     uri
+}
+
+/// Collects distinct `file://` URIs for `target_file`, including both raw and canonical paths.
+pub fn file_uris_for_path(path: &Path) -> Vec<String> {
+    let mut uris = Vec::new();
+    let raw_uri = path_to_file_uri(path);
+    uris.push(raw_uri.clone());
+
+    if let Ok(canonical) = path.canonicalize() {
+        let can_uri = path_to_file_uri(&canonical);
+        if can_uri != raw_uri {
+            uris.push(can_uri);
+        }
+    }
+    uris
 }
 
 /// Standard IEEE 802.3 CRC32 calculation over a byte slice.
@@ -288,11 +302,6 @@ pub fn install_freedesktop_thumbnail_with_mtime(
     png_bytes: &[u8],
     mtime_sec: u64,
 ) {
-    let uri = path_to_file_uri(target_file);
-    let tagged_bytes = embed_freedesktop_metadata(png_bytes, &uri, mtime_sec);
-    let hash = md5_hex(uri.as_bytes());
-    let filename = format!("{hash}.png");
-
     let (normal_dir, large_dir) = freedesktop_thumbnail_dirs();
     let _ = fs::create_dir_all(&normal_dir);
     let _ = fs::create_dir_all(&large_dir);
@@ -303,30 +312,45 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         .unwrap_or_else(|| large_dir.clone());
     let _ = fs::create_dir_all(&xlarge_dir);
 
-    let large_dest = large_dir.join(&filename);
-    let normal_dest = normal_dir.join(&filename);
-    let xlarge_dest = xlarge_dir.join(&filename);
+    let xxlarge_dir = normal_dir
+        .parent()
+        .map(|p| p.join("xx-large"))
+        .unwrap_or_else(|| large_dir.clone());
+    let _ = fs::create_dir_all(&xxlarge_dir);
 
-    if let Err(e) = fs::write(&large_dest, &tagged_bytes) {
-        warn!(target = %large_dest.display(), error = %e, "Failed to write FreeDesktop large thumbnail");
-    } else {
-        debug!(target = %large_dest.display(), uri = %uri, "Installed FreeDesktop large thumbnail");
-    }
+    let uris = file_uris_for_path(target_file);
+    for uri in &uris {
+        let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec);
+        let hash = md5_hex(uri.as_bytes());
+        let filename = format!("{hash}.png");
 
-    let _ = fs::write(&normal_dest, &tagged_bytes);
-    let _ = fs::write(&xlarge_dest, &tagged_bytes);
+        let large_dest = large_dir.join(&filename);
+        let normal_dest = normal_dir.join(&filename);
+        let xlarge_dest = xlarge_dir.join(&filename);
+        let xxlarge_dest = xxlarge_dir.join(&filename);
 
-    if let Some(parent) = normal_dir.parent() {
-        let fail_file = parent
-            .join("fail")
-            .join("gnome-thumbnail-factory")
-            .join(&filename);
-        if fail_file.exists() {
-            let _ = fs::remove_file(fail_file);
+        if let Err(e) = fs::write(&large_dest, &tagged_bytes) {
+            warn!(target = %large_dest.display(), error = %e, "Failed to write FreeDesktop large thumbnail");
+        } else {
+            debug!(target = %large_dest.display(), uri = %uri, "Installed FreeDesktop large thumbnail");
         }
-        let fail_generic = parent.join("fail").join(&filename);
-        if fail_generic.exists() {
-            let _ = fs::remove_file(fail_generic);
+
+        let _ = fs::write(&normal_dest, &tagged_bytes);
+        let _ = fs::write(&xlarge_dest, &tagged_bytes);
+        let _ = fs::write(&xxlarge_dest, &tagged_bytes);
+
+        if let Some(parent) = normal_dir.parent() {
+            let fail_file = parent
+                .join("fail")
+                .join("gnome-thumbnail-factory")
+                .join(&filename);
+            if fail_file.exists() {
+                let _ = fs::remove_file(fail_file);
+            }
+            let fail_generic = parent.join("fail").join(&filename);
+            if fail_generic.exists() {
+                let _ = fs::remove_file(fail_generic);
+            }
         }
     }
 }
@@ -338,7 +362,6 @@ pub fn install_freedesktop_thumbnail_with_mtime(
 /// informs them that thumbnail generation has failed or should not be retried locally.
 /// This prevents Nautilus from launching thumbnailers that open and read unhydrated virtual files.
 pub fn install_freedesktop_fail_marker(target_file: &Path, mtime_sec: u64) {
-    let uri = path_to_file_uri(target_file);
     let minimal_png = [
         0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG magic
         0x00, 0x00, 0x00, 0x0D, // IHDR length (13)
@@ -354,36 +377,41 @@ pub fn install_freedesktop_fail_marker(target_file: &Path, mtime_sec: u64) {
         0xAE, 0x42, 0x60, 0x82, // CRC
     ];
 
-    let tagged_bytes = embed_freedesktop_metadata(&minimal_png, &uri, mtime_sec);
-    let hash = md5_hex(uri.as_bytes());
-    let filename = format!("{hash}.png");
-
     let (normal_dir, _) = freedesktop_thumbnail_dirs();
-    if let Some(parent) = normal_dir.parent() {
-        let fail_factory_dir = parent.join("fail").join("gnome-thumbnail-factory");
-        let fail_generic_dir = parent.join("fail");
+    let parent = normal_dir.parent();
+    if let Some(parent_dir) = parent {
+        let fail_factory_dir = parent_dir.join("fail").join("gnome-thumbnail-factory");
+        let fail_generic_dir = parent_dir.join("fail");
         let _ = fs::create_dir_all(&fail_factory_dir);
         let _ = fs::create_dir_all(&fail_generic_dir);
-        let _ = fs::write(fail_factory_dir.join(&filename), &tagged_bytes);
-        let _ = fs::write(fail_generic_dir.join(&filename), &tagged_bytes);
+
+        let uris = file_uris_for_path(target_file);
+        for uri in uris {
+            let tagged_bytes = embed_freedesktop_metadata(&minimal_png, &uri, mtime_sec);
+            let hash = md5_hex(uri.as_bytes());
+            let filename = format!("{hash}.png");
+            let _ = fs::write(fail_factory_dir.join(&filename), &tagged_bytes);
+            let _ = fs::write(fail_generic_dir.join(&filename), &tagged_bytes);
+        }
     }
 }
 
 /// Removes any FreeDesktop fail marker associated with `target_file`.
 pub fn remove_freedesktop_fail_marker(target_file: &Path) {
-    let uri = path_to_file_uri(target_file);
-    let hash = md5_hex(uri.as_bytes());
-    let filename = format!("{hash}.png");
-
     let (normal_dir, _) = freedesktop_thumbnail_dirs();
     if let Some(parent) = normal_dir.parent() {
-        let _ = fs::remove_file(
-            parent
-                .join("fail")
-                .join("gnome-thumbnail-factory")
-                .join(&filename),
-        );
-        let _ = fs::remove_file(parent.join("fail").join(&filename));
+        let uris = file_uris_for_path(target_file);
+        for uri in uris {
+            let hash = md5_hex(uri.as_bytes());
+            let filename = format!("{hash}.png");
+            let _ = fs::remove_file(
+                parent
+                    .join("fail")
+                    .join("gnome-thumbnail-factory")
+                    .join(&filename),
+            );
+            let _ = fs::remove_file(parent.join("fail").join(&filename));
+        }
     }
 }
 

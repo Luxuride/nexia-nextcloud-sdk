@@ -34,6 +34,8 @@ pub struct DiscoveredRemoteFile {
     pub etag: Option<String>,
     /// Whether this entry is a collection/directory.
     pub is_directory: bool,
+    /// Nextcloud internal numeric file ID if reported by WebDAV (`oc:fileid`).
+    pub file_id: Option<u64>,
 }
 
 /// Scans a local directory recursively, collecting all files and folders.

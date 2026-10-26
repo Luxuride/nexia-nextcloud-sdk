@@ -242,6 +242,10 @@ impl FolderSyncRunner {
                     res.is_collection || res.href.ends_with('/') || relative_path.ends_with('/');
                 let size = res.content_length.unwrap_or(0);
                 let etag = res.etag.clone();
+                let file_id = res
+                    .file_id
+                    .as_deref()
+                    .and_then(|id| id.trim().parse::<u64>().ok());
 
                 collected.push(DiscoveredRemoteFile {
                     relative_path: relative_path.clone(),
@@ -249,6 +253,7 @@ impl FolderSyncRunner {
                     size,
                     etag,
                     is_directory: is_col,
+                    file_id,
                 });
 
                 if is_col && !visited.contains(&clean_path) {

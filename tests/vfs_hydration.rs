@@ -514,6 +514,7 @@ fn vfs_directory_preservation_and_recovery() {
         size: 1048576,
         etag: Some("\"etag-cam-1\"".to_string()),
         is_directory: true,
+        file_id: None,
     };
 
     // 2. Scenario: A 0-byte file was mistakenly created on disk for /Camera (from previous bug)

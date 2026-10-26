@@ -195,6 +195,7 @@ mod tests {
             size: 100,
             etag: Some("\"etag0\"".to_string()),
             is_directory: false,
+            file_id: None,
         }];
 
         let actions = reconcile(&local_files, &remote_files, &journal);
@@ -224,6 +225,7 @@ mod tests {
             size: 200,
             etag: Some("\"etag1\"".to_string()),
             is_directory: false,
+            file_id: None,
         }];
         let actions = reconcile(&local_files, &remote_mod, &journal);
         assert!(matches!(actions[0], SyncAction::Download { .. }));
@@ -259,6 +261,7 @@ mod tests {
             size: 1048576,
             etag: Some("\"etag-new-from-remote\"".to_string()),
             is_directory: true,
+            file_id: None,
         }];
 
         let actions = reconcile(&local_files, &remote_files, &journal);
@@ -298,6 +301,7 @@ mod tests {
             size: 0,
             etag: Some("\"etag\"".to_string()),
             is_directory: true,
+            file_id: None,
         }];
 
         let actions = reconcile(&local_files, &remote_files, &journal);

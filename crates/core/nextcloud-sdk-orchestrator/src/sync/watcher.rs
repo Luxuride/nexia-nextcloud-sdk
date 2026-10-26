@@ -74,7 +74,10 @@ impl FileSystemWatcher {
             Ok(event) => {
                 if matches!(
                     event.kind,
-                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+                    EventKind::Create(_)
+                        | EventKind::Modify(_)
+                        | EventKind::Remove(_)
+                        | EventKind::Access(_)
                 ) {
                     for path in event.paths {
                         if path.components().any(|c| {
@@ -116,16 +119,40 @@ impl FileSystemWatcher {
         self.watcher = Some(watcher);
 
         let map_for_worker = self.watched_paths.clone();
-        let _hydrate_cb = self.on_hydrate.clone();
+        let hydrate_cb = self.on_hydrate.clone();
         let sync_cb = self.on_sync.clone();
+        let hydrating_paths = Arc::new(Mutex::new(HashSet::<PathBuf>::new()));
 
         tokio::spawn(async move {
             let mut pending_mounts: HashSet<String> = HashSet::new();
 
             loop {
                 tokio::select! {
-                    Some((_kind, changed_path)) = rx.recv() => {
-                        if let Ok(guard) = map_for_worker.lock() {
+                    Some((kind, changed_path)) = rx.recv() => {
+                        let is_placeholder = is_unhydrated_placeholder(&changed_path);
+                        if is_placeholder {
+                            if let Some(ref handler) = hydrate_cb {
+                                let should_hydrate = if let Ok(mut set) = hydrating_paths.lock() {
+                                    set.insert(changed_path.clone())
+                                } else {
+                                    false
+                                };
+                                if should_hydrate {
+                                    let cb = handler.clone();
+                                    let path_clone = changed_path.clone();
+                                    let set_clone = hydrating_paths.clone();
+                                    tokio::spawn(async move {
+                                        cb(path_clone.clone());
+                                        tokio::time::sleep(Duration::from_secs(5)).await;
+                                        if let Ok(mut set) = set_clone.lock() {
+                                            set.remove(&path_clone);
+                                        }
+                                    });
+                                }
+                            }
+                        } else if !matches!(kind, EventKind::Access(_))
+                            && let Ok(guard) = map_for_worker.lock()
+                        {
                             for (root, mount_id) in guard.iter() {
                                 if changed_path.starts_with(root) {
                                     pending_mounts.insert(mount_id.clone());
@@ -179,4 +206,21 @@ impl FileSystemWatcher {
             let _ = watcher.unwatch(local_path);
         }
     }
+}
+
+#[cfg(unix)]
+fn is_unhydrated_placeholder(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    if let Ok(meta) = std::fs::symlink_metadata(path)
+        && meta.is_file()
+        && meta.len() > 0
+    {
+        return meta.blocks() == 0;
+    }
+    false
+}
+
+#[cfg(not(unix))]
+fn is_unhydrated_placeholder(_path: &Path) -> bool {
+    false
 }

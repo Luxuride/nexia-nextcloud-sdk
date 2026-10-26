@@ -13,7 +13,12 @@ pub(crate) fn build_file_id_query(file_id: u64, options: &PreviewOptions) -> Str
 /// Encodes query parameters for a preview request by file path.
 pub(crate) fn build_path_query(path: &str, options: &PreviewOptions) -> String {
     let mut parts = Vec::new();
-    parts.push(format!("file={}", encode_component(path)));
+    let normalized = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    parts.push(format!("file={}", encode_path_component(&normalized)));
     append_options(&mut parts, options);
     format!("?{}", parts.join("&"))
 }
@@ -34,12 +39,12 @@ fn append_options(parts: &mut Vec<String>, options: &PreviewOptions) {
     }
 }
 
-/// Percent-encodes a URI query value following RFC 3986.
-fn encode_component(value: &str) -> String {
+/// Percent-encodes a URI path query value following RFC 3986, preserving `/` path delimiters.
+fn encode_path_component(value: &str) -> String {
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
                 encoded.push(char::from(byte));
             }
             other => {
@@ -89,7 +94,7 @@ mod tests {
         let options = PreviewOptions::new();
         assert_eq!(
             build_path_query("Documents/test.png", &options),
-            "?file=Documents%2Ftest.png"
+            "?file=/Documents/test.png"
         );
     }
 
@@ -103,14 +108,17 @@ mod tests {
 
         assert_eq!(
             build_path_query("/Photos/photo 1.jpg", &options),
-            "?file=%2FPhotos%2Fphoto%201.jpg&x=200&y=200&a=0&mode=fill"
+            "?file=/Photos/photo%201.jpg&x=200&y=200&a=0&mode=fill"
         );
     }
 
     #[test]
-    fn encode_component_escapes_special_characters() {
-        assert_eq!(encode_component("a b&c=d"), "a%20b%26c%3Dd");
-        assert_eq!(encode_component("hello/world"), "hello%2Fworld");
-        assert_eq!(encode_component("simple-name_1.txt~"), "simple-name_1.txt~");
+    fn encode_path_component_escapes_special_characters() {
+        assert_eq!(encode_path_component("a b&c=d"), "a%20b%26c%3Dd");
+        assert_eq!(encode_path_component("hello/world"), "hello/world");
+        assert_eq!(
+            encode_path_component("simple-name_1.txt~"),
+            "simple-name_1.txt~"
+        );
     }
 }

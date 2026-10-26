@@ -170,7 +170,7 @@ fn get_by_path_sends_encoded_path_and_options() {
     assert_eq!(req.method(), HttpMethod::Get);
     assert_eq!(
         req.path().as_str(),
-        "/index.php/core/preview.png?file=Photos%2Fsummer%20vacation.jpg&x=64&y=64"
+        "/index.php/core/preview.png?file=/Photos/summer%20vacation.jpg&x=64&y=64"
     );
 
     assert_eq!(req.headers().get("authorization"), Some("Bearer token-abc"));
@@ -189,7 +189,7 @@ fn get_by_path_with_leading_slash_and_unicode() {
     let req = transport.request().expect("request recorded");
     assert_eq!(
         req.path().as_str(),
-        "/index.php/core/preview.png?file=%2FBilder%2Fm%C3%BCnchen.png&mode=cover"
+        "/index.php/core/preview.png?file=/Bilder/m%C3%BCnchen.png&mode=cover"
     );
 }
 
