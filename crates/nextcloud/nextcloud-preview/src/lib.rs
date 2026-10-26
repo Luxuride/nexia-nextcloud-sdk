@@ -14,12 +14,14 @@
 #![forbid(unsafe_code)]
 
 mod client;
+pub mod exif;
 pub mod freedesktop;
 mod mode;
 mod options;
 mod query;
 
 pub use client::{PREVIEW_ENDPOINT, PreviewClient};
+pub use exif::extract_embedded_jpeg_thumbnail;
 pub use freedesktop::{
     crc32, embed_freedesktop_metadata, ensure_png_bytes, freedesktop_thumbnail_dirs,
     install_freedesktop_fail_marker, install_freedesktop_thumbnail,
