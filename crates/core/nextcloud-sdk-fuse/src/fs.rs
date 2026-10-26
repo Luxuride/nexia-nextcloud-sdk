@@ -58,16 +58,8 @@ fn is_file_manager_or_thumbnailer(pid: u32) -> bool {
             let lower = s.to_ascii_lowercase();
             lower.contains("thumbnail")
                 || lower.contains("tumbler")
-                || lower.contains("glycin")
                 || lower.contains("tracker")
                 || lower.contains("localsearch")
-                || lower.contains("nautilus")
-                || lower.contains("dolphin")
-                || lower.contains("thunar")
-                || lower.contains("nemo")
-                || lower.contains("caja")
-                || lower.contains("pcmanfm")
-                || lower.contains("gvfs")
         };
 
         let mut cur_pid = pid;

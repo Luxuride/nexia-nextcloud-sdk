@@ -336,21 +336,6 @@ impl FuseDriver {
         };
 
         if is_placeholder {
-            let file_size = {
-                let tree = self.tree.read().map_err(|_| EINVAL)?;
-                tree.get(&vfs_path).map(|n| n.size()).unwrap_or(0)
-            };
-            // For large files where only a partial header/probe is requested, fetch only the
-            // range to prevent mass hydration and UI freezes in desktop file managers.
-            if file_size > 256 * 1024 && (offset as u64 + size as u64) < file_size {
-                tracing::debug!(ino, vfs_path = %vfs_path, offset, size, "FUSE serving range read for placeholder");
-                return self
-                    .hydrator
-                    .hydrate_range(&vfs_path, offset as u64, size)
-                    .await
-                    .map_err(|_| ENOENT);
-            }
-
             tracing::info!(ino, vfs_path = %vfs_path, "FUSE triggering on-demand file hydration");
             let bytes = self.hydrator.hydrate(&vfs_path).await.map_err(|_| ENOENT)?;
             let mut tree = self.tree.write().map_err(|_| EINVAL)?;
