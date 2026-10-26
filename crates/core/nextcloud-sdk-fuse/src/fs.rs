@@ -54,7 +54,7 @@ fn to_errno(code: i32) -> Errno {
 fn is_file_manager_or_thumbnailer(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        let check_str = |s: &str| -> bool {
+        let is_thumbnailer_or_indexer = |s: &str| -> bool {
             let lower = s.to_ascii_lowercase();
             lower.contains("thumbnail")
                 || lower.contains("tumbler")
@@ -62,19 +62,44 @@ fn is_file_manager_or_thumbnailer(pid: u32) -> bool {
                 || lower.contains("localsearch")
         };
 
+        let is_file_manager = |s: &str| -> bool {
+            let lower = s.to_ascii_lowercase();
+            lower.contains("nautilus")
+                || lower.contains("dolphin")
+                || lower.contains("thunar")
+                || lower.contains("nemo")
+                || lower.contains("caja")
+                || lower.contains("pcmanfm")
+                || lower.contains("gvfsd")
+        };
+
+        // 1. Direct process check: if the direct process is a file manager or thumbnailer, decline!
+        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            && (is_file_manager(&comm) || is_thumbnailer_or_indexer(&comm))
+        {
+            return true;
+        }
+        if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
+            let cmd_str = String::from_utf8_lossy(&cmdline);
+            if is_file_manager(&cmd_str) || is_thumbnailer_or_indexer(&cmd_str) {
+                return true;
+            }
+        }
+
+        // 2. Ancestor check: if any ancestor is a background thumbnailer or indexer worker, decline!
         let mut cur_pid = pid;
         for _ in 0..8 {
             if cur_pid <= 1 {
                 break;
             }
             if let Ok(comm) = std::fs::read_to_string(format!("/proc/{cur_pid}/comm"))
-                && check_str(&comm)
+                && is_thumbnailer_or_indexer(&comm)
             {
                 return true;
             }
             if let Ok(cmdline) = std::fs::read(format!("/proc/{cur_pid}/cmdline")) {
                 let cmd_str = String::from_utf8_lossy(&cmdline);
-                if check_str(&cmd_str) {
+                if is_thumbnailer_or_indexer(&cmd_str) {
                     return true;
                 }
             }
