@@ -9,11 +9,13 @@ readme = "README.md"
 description = "Transient VFS FUSE driver for desktop filesystem mounting"
 
 [dependencies]
-fuser = "0.18.0"
 nextcloud-sdk-core.workspace = true
 nextcloud-sdk-vfs.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros"] }
 tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser = "0.18.0"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

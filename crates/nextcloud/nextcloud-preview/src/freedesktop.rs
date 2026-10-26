@@ -260,8 +260,10 @@ pub fn freedesktop_thumbnail_dirs() -> (PathBuf, PathBuf) {
         PathBuf::from(xdg)
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home).join(".cache")
+    } else if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        PathBuf::from(userprofile).join(".cache")
     } else {
-        PathBuf::from("/tmp")
+        std::env::temp_dir()
     };
 
     let thumbs = base_cache.join("thumbnails");
