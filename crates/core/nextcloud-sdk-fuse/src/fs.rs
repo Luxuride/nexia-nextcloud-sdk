@@ -305,7 +305,7 @@ pub fn mount_virtual_fs(
 ) -> Result<BackgroundSession, std::io::Error> {
     let options = vec![
         MountOption::FSName("Nextcloud".to_string()),
-        MountOption::Subtype("sshfs".to_string()),
+        MountOption::Subtype("nextcloud".to_string()),
         MountOption::RO,
     ];
     mount_virtual_fs_with_options(driver, mountpoint, options)
