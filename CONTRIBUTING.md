@@ -6,23 +6,27 @@ This codebase is structured as a high-integrity Cargo workspace of small, focuse
 
 Both **human** and **LLM / AI-assisted contributions** are welcome!
 
+**This SDK is generic.** It must not acknowledge a particular application — no
+consumer's name, config format, UI state or workaround belongs in this workspace.
+Protocol behaviour, runtime, VFS and journaling belong here because they are hard
+and shared; presentation and product concerns belong to consumers. A contribution
+shaped around one downstream client will be asked to become a general capability
+or to move out. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
+
 ---
 
 ## 1. Toolchain & Quality Gates
 
 All development, testing, formatting, and linting must be executed in stable Rust (Edition 2024), inside the project devcontainer (`mcr.microsoft.com/devcontainers/rust:1`).
 
-Before submitting any Pull Request, all four commands must pass with zero errors and zero warnings:
+Before submitting any Pull Request, all five commands must pass with zero errors
+and zero warnings:
 
 ```sh
 cargo build
 cargo test --workspace
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-```
-
-Additionally, documentation coverage is denied:
-```sh
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
@@ -37,6 +41,12 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 5. **Typed, causal errors**: Errors must name the operation that failed and preserve the source error via `#[source]` / `Error::source`. Never stringify away causes.
 6. **Workspace crate boundaries**: Separate concerns do not share a crate. Transport, auth, storage, wire types, and distinct API areas each have their own focused crate.
 7. **No single-file monoliths**: Split files by type or concern. `lib.rs` / `mod.rs` only handles re-exports and wiring.
+8. **No consumer coupling**: The SDK is a general Nextcloud client. It never names
+   an application, exposes a flag that exists for one client, or depends on a
+   downstream product's config format or UI state.
+9. **Docs move with the code**: A change to a public signature, handle command,
+   `OrchestratorEvent` variant, crate layout, storage path or keyring schema
+   updates the matching file in `docs/` in the same PR.
 
 ---
 
@@ -57,7 +67,7 @@ Autonomous AI agents and contributors using LLMs (Claude, Gemini, GPT, etc.) are
    - Flatpak sandbox or container isolation constraints.
 4. **Tests & stability verification**:
    - List of unit and integration tests added or executed.
-   - Confirmation that all 4 repo gate commands passed cleanly in the devcontainer.
+   - Confirmation that all 5 repo gate commands (§1) passed cleanly in the devcontainer.
 5. **Security & credential checklist**:
    - Explicit confirmation that no credentials are logged or exposed in `Debug`.
    - Confirmation of `#![forbid(unsafe_code)]`.

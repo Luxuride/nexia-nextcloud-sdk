@@ -1,12 +1,23 @@
 # Nextcloud Rust SDK — API Reference & Endpoint Matrix
 
-This document provides a comprehensive mapping between Nextcloud server HTTP endpoints, the implementing Rust SDK crates, their strongly typed client methods, input parameters, and response structures.
+A mapping between Nextcloud server HTTP endpoints, the implementing Rust crates,
+their typed client methods, and the structures they return.
+
+Every client in this table is **stateless**: it borrows a `Transport` and an
+`AuthProvider`, performs one operation and returns owned data. None of them keep
+a mount, an ETag cache or a retry timer — that state lives in
+`nextcloud-sdk-orchestrator`. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md#1-layers) for the layering rule.
+
+Reference implementation: `nextcloud-rust-sdk` version `0.1.3`, workspace
+`members = ["crates/*/*"]`.
 
 ---
 
-## 1. Official Nextcloud Developer Documentation
+## 1. Official Nextcloud developer documentation
 
-All client modules in this SDK are built against the official Nextcloud developer specifications:
+All protocol crates are written against the official specifications:
+
 - [Nextcloud Developer Manual (GitHub master)](https://github.com/nextcloud/documentation/tree/master/developer_manual)
 - [Login Flow v2 Specification](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst)
 - [OCS API Overview & Protocol Guidelines](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst)
@@ -18,165 +29,383 @@ All client modules in this SDK are built against the official Nextcloud develope
 
 ---
 
-## 2. API Endpoint Matrix
+## 2. Endpoint matrix
 
-| Endpoint Path | HTTP Method | SDK Crate | Rust Client / Method | Parameters | Return Type | Official Documentation |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Authentication & Login** | | | | | | |
-| `/index.php/login/v2` | `POST` | `nextcloud-nextcloud-sdk-session` / `nextcloud-nextcloud-sdk-core` | `SessionMachine::handle` | `SessionEvent::StartRequested` | `Command::StartLogin` | [Login Flow v2](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst) |
-| `/login/v2/poll` | `POST` | `nextcloud-nextcloud-sdk-session` / `nextcloud-nextcloud-sdk-core` | `SessionMachine::handle` | `SessionEvent::PollPending` | `Command::Poll(PollTarget)` | [Poll Endpoint](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/LoginFlow/index.rst#polling) |
-| **Server Capabilities & Users** | | | | | | |
-| `/ocs/v2.php/cloud/capabilities` | `GET` | `nextcloud-users` | `UserClient::capabilities()` | None (`format=json`) | `Capabilities` | [Capabilities API](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst#capabilities-api) |
-| `/ocs/v2.php/cloud/user` | `GET` | `nextcloud-users` | `UserClient::current_user()` | None (`format=json`) | `User` | [User Metadata](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst#user-metadata) |
-| `/ocs/v2.php/cloud/users/{id}` | `GET` | `nextcloud-users` | `UserClient::get_user()` | `user_id: &str` | `User` | [User Provisioning](https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/user_provisioning_api.html) |
-| **WebDAV File Storage** | | | | | | |
-| `/remote.php/dav/files/{user}/{path}` | `PROPFIND` | `nextcloud-dav` | `DavClient::propfind()` | `path: &DavPath`, `depth: Depth`, `body: &PropfindBody` | `Vec<DavResource>` | [WebDAV Finding Properties](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| `/remote.php/dav/files/{user}/{path}` | `GET` | `nextcloud-dav` | `DavClient::get()` | `path: &DavPath` | `Vec<u8>` | [WebDAV Downloading Files](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| `/remote.php/dav/files/{user}/{path}` | `PUT` | `nextcloud-dav` | `DavClient::put()` | `path: &DavPath`, `body: Vec<u8>`, `content_type: Option<&str>` | `()` | [WebDAV Uploading Files](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| `/remote.php/dav/files/{user}/{path}` | `MKCOL` | `nextcloud-dav` | `DavClient::mkcol()` | `path: &DavPath` | `()` | [WebDAV Creating Folders](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| `/remote.php/dav/files/{user}/{path}` | `DELETE` | `nextcloud-dav` | `DavClient::delete()` | `path: &DavPath` | `()` | [WebDAV Deleting Files/Folders](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| `/remote.php/dav/files/{user}/{path}` | `COPY` | `nextcloud-dav` | `DavClient::copy()` | `src: &DavPath`, `dst: &DavPath`, `overwrite: Overwrite` | `()` | [WebDAV Copying](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| `/remote.php/dav/files/{user}/{path}` | `MOVE` | `nextcloud-dav` | `DavClient::move_()` | `src: &DavPath`, `dst: &DavPath`, `overwrite: Overwrite` | `()` | [WebDAV Moving](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/basic.rst) |
-| **OCS File Sharing** | | | | | | |
-| `/ocs/v2.php/apps/files_sharing/api/v1/shares` | `GET` | `nextcloud-shares` | `ShareClient::list()` | `path: Option<&str>` | `Vec<Share>` | [Get All Shares](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-share-api.rst#get-all-shares) |
-| `/ocs/v2.php/apps/files_sharing/api/v1/shares/{id}` | `GET` | `nextcloud-shares` | `ShareClient::get()` | `share_id: &str` | `Share` | [Get Known Share](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-share-api.rst#get-information-about-a-known-share) |
-| `/ocs/v2.php/apps/files_sharing/api/v1/shares` | `POST` | `nextcloud-shares` | `ShareClient::create()` | `request: &CreateShare` | `Share` | [Create a New Share](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-share-api.rst#create-a-new-share) |
-| `/ocs/v2.php/apps/files_sharing/api/v1/shares/{id}` | `DELETE` | `nextcloud-shares` | `ShareClient::delete()` | `share_id: &str` | `()` | [Delete Share](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-share-api.rst#delete-share) |
-| **Notifications API v2** | | | | | | |
-| `/ocs/v2.php/apps/notifications/api/v2/notifications` | `GET` | `nextcloud-notifications` | `NotificationClient::list()` | None | `Vec<Notification>` | [List Notifications](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#getting-the-notifications-of-a-user) |
-| `/ocs/v2.php/apps/notifications/api/v2/notifications/{id}` | `GET` | `nextcloud-notifications` | `NotificationClient::get()` | `id: u64` | `Notification` | [Get Notification](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#get-a-single-notification-for-a-user) |
-| `/ocs/v2.php/apps/notifications/api/v2/notifications/{id}` | `DELETE` | `nextcloud-notifications` | `NotificationClient::delete()` | `id: u64` | `()` | [Delete Notification](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#deleting-a-notification-for-a-user) |
-| `/ocs/v2.php/apps/notifications/api/v2/notifications` | `DELETE` | `nextcloud-notifications` | `NotificationClient::delete_all()` | None | `()` | [Delete All Notifications](https://github.com/nextcloud/notifications/blob/master/docs/ocs-endpoint-v2.md#deleting-all-notifications-for-a-user) |
-| **Activity Feed API v2** | | | | | | |
-| `/ocs/v2.php/apps/activity/api/v2/activity` | `GET` | `nextcloud-activity` | `ActivityClient::list()` | `filter: &ActivityFilter` | `Vec<Activity>` | [List Activities](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/activity-api.rst#endpoints) |
-| `/ocs/v2.php/apps/activity/api/v2/activity` | `GET` | `nextcloud-activity` | `ActivityClient::list_for_object()` | `object_type: &str`, `object_id: u64` | `Vec<Activity>` | [Object Activities](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/activity-api.rst#parameters) |
-| **Chunked Uploads v2** | | | | | | |
-| `/remote.php/dav/uploads/{user}/{session_id}` | `MKCOL` | `nextcloud-uploads` | `UploadClient::start()` | `session_id: &str` | `UploadSession` | [Chunked Uploads v2](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
-| `/remote.php/dav/uploads/{user}/{session_id}/{offset}` | `PUT` | `nextcloud-uploads` | `UploadClient::put_chunk()` | `chunk: &[u8]`, `offset: u64` | `()` | [Chunk Transfer](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
-| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nextcloud-uploads` | `UploadClient::finish()` | `destination: &DavPath` | `()` | [Assemble Chunks](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
-| `/remote.php/dav/uploads/{user}/{session_id}` | `DELETE` | `nextcloud-uploads` | `UploadClient::abort()` | None | `()` | [Abort Session](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/chunking.rst) |
-| **Nextcloud Deck (Kanban)** | | | | | | |
-| `/index.php/apps/deck/api/v1.0/boards` | `GET` | `nextcloud-deck` | `DeckClient::list_boards()` | None | `Vec<Board>` | [Deck API](https://deck.readthedocs.io/en/latest/API/) |
-| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks` | `GET` | `nextcloud-deck` | `DeckClient::list_stacks()` | `board_id: u64` | `Vec<Stack>` | [Deck Stacks](https://deck.readthedocs.io/en/latest/API/) |
-| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks/{sid}/cards` | `POST` | `nextcloud-deck` | `DeckClient::create_card()` | `title: &str`, `type_: &str` | `Card` | [Deck Cards](https://deck.readthedocs.io/en/latest/API/) |
-| **Nextcloud Talk (Spreed)** | | | | | | |
-| `/ocs/v2.php/apps/spreed/api/v4/room` | `GET` | `nextcloud-talk` | `TalkClient::list_rooms()` | None | `Vec<Room>` | [Talk API](https://nextcloud-talk.readthedocs.io/en/latest/chat/) |
-| `/ocs/v2.php/apps/spreed/api/v1/chat/{token}` | `GET` | `nextcloud-talk` | `TalkClient::list_messages()` | `token: &str` | `Vec<ChatMessage>` | [Talk Chat](https://nextcloud-talk.readthedocs.io/en/latest/chat/) |
-| `/ocs/v2.php/apps/spreed/api/v1/chat/{token}` | `POST` | `nextcloud-talk` | `TalkClient::send_message()` | `token: &str`, `message: &str` | `ChatMessage` | [Send Message](https://nextcloud-talk.readthedocs.io/en/latest/chat/) |
-| **Previews & Thumbnails** | | | | | | |
-| `/core/preview.png` | `GET` | `nextcloud-preview` | `PreviewClient::get()` | `file_id: u64`, `options: &PreviewOptions` | `Vec<u8>` | [Previews](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/OCS/ocs-api-overview.rst) |
-| **Trashbin & Versions** | | | | | | |
-| `/remote.php/dav/trashbin/{user}/trash` | `PROPFIND` | `nextcloud-trashbin` | `TrashClient::list()` | None | `Vec<TrashItem>` | [Trashbin](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/trashbin.rst) |
-| `/remote.php/dav/versions/{user}/versions/{id}` | `PROPFIND` | `nextcloud-versions` | `VersionsClient::list()` | `file_id: u64` | `Vec<FileVersion>` | [Versions](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/WebDAV/versions.rst) |
-| **Desktop SSO Integration** | | | | | | |
-| `org.gnome.OnlineAccounts` (D-Bus) | `GetManagedObjects` | `nextcloud-goa` | `GnomeOnlineAccounts::list_accounts()` | None | `Vec<GoaAccount>` | [GOA](https://developer.gnome.org/goa/) |
-| `~/.local/share/accounts/accounts.db` | `SELECT` | `nextcloud-kaccounts` | `KAccountsDatabase::list_accounts()` | None | `Vec<KAccount>` | [KAccounts](https://invent.kde.org/frameworks/kaccounts-integration) |
-| `nextcloud.cfg` (Linux/macOS/Windows) | INI parser | `nextcloud-client-config` | `ClientConfigParser::parse_file()` | None | `Vec<DesktopClientAccount>` | [Client Config](https://docs.nextcloud.com/desktop/latest/configuration.html) |
-| Aggregated Desktop SSO | Discovery | `nextcloud-rust-sdk` | `DesktopSso::discover_accounts()` | None | `Vec<DiscoveredAccount>` | Nextcloud Rust SDK |
+### Authentication & login
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/index.php/login/v2` | `POST` | `nextcloud-sdk-session` | `SessionMachine::handle(SessionEvent::StartRequested)` → `Command::StartLogin` | — | `LoginFlow` |
+| `/login/v2/poll` | `POST` | `nextcloud-sdk-session` | `SessionMachine::handle(SessionEvent::PollPending)` → `Command::Poll(PollTarget)` | `PollTarget { endpoint, token }` | `SessionState` |
+
+At the facade level these are `Client::start_login() -> LoginStart` and
+`Client::poll_login() -> SessionState`; the worker owns the HTTP call, the state
+machine only decides what to do next.
+
+### Server capabilities & users
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/ocs/v2.php/cloud/capabilities` | `GET` | `nextcloud-users` | `UserClient::capabilities()` | — (`format=json`) | `Capabilities` |
+| `/ocs/v2.php/cloud/user` | `GET` | `nextcloud-users` | `UserClient::current_user()` | — | `User` |
+| `/ocs/v2.php/cloud/users/{id}` | `GET` | `nextcloud-users` | `UserClient::get_user(user_id)` | `user_id: &str` | `User` |
+| `/status.php` | `GET` | `nextcloud-theming` | `ThemingClient::server_status()` | — (unauthenticated) | `ServerStatusInfo` |
+
+`Capabilities` accessors: `server_version()`, `version()`, `status()`, `theming()`,
+`core()` → `webdav_root()`, `files()` → `chunked_upload()`, `max_chunk_size()`.
+
+### WebDAV file storage
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/remote.php/dav/files/{user}/{path}` | `PROPFIND` | `nextcloud-dav` | `DavClient::propfind(path, depth, body)` | `&DavPath`, `Depth`, `&PropfindBody` | `Vec<DavResource>` |
+| `/remote.php/dav/files/{user}/{path}` | `GET` | `nextcloud-dav` | `DavClient::get(path)` | `&DavPath` | `Vec<u8>` |
+| `/remote.php/dav/files/{user}/{path}` | `GET` (+`Range`) | `nextcloud-dav` | `DavClient::get_range(path, start, end)` | `&DavPath`, `u64`, `u64` | `Vec<u8>` |
+| `/remote.php/dav/files/{user}/{path}` | `PUT` | `nextcloud-dav` | `DavClient::put(path, body, content_type)` | `&DavPath`, `Vec<u8>`, `Option<&str>` | `()` |
+| `/remote.php/dav/files/{user}/{path}` | `MKCOL` | `nextcloud-dav` | `DavClient::mkcol(path)` | `&DavPath` | `()` |
+| `/remote.php/dav/files/{user}/{path}` | `DELETE` | `nextcloud-dav` | `DavClient::delete(path)` | `&DavPath` | `()` |
+| `/remote.php/dav/files/{user}/{path}` | `COPY` | `nextcloud-dav` | `DavClient::copy(src, dst, overwrite)` | `&DavPath`, `&DavPath`, `Overwrite` | `()` |
+| `/remote.php/dav/files/{user}/{path}` | `MOVE` | `nextcloud-dav` | `DavClient::move_(src, dst, overwrite)` | `&DavPath`, `&DavPath`, `Overwrite` | `()` |
+
+### OCS file sharing
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/ocs/v2.php/apps/files_sharing/api/v1/shares` | `GET` | `nextcloud-shares` | `ShareClient::list(path)` | `Option<&str>` | `Vec<Share>` |
+| `/ocs/v2.php/apps/files_sharing/api/v1/shares/{id}` | `GET` | `nextcloud-shares` | `ShareClient::get(share_id)` | `&str` | `Share` |
+| `/ocs/v2.php/apps/files_sharing/api/v1/shares` | `POST` | `nextcloud-shares` | `ShareClient::create(request)` | `&CreateShare` | `Share` |
+| `/ocs/v2.php/apps/files_sharing/api/v1/shares/{id}` | `DELETE` | `nextcloud-shares` | `ShareClient::delete(share_id)` | `&str` | `()` |
+
+### Notifications v2
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/ocs/v2.php/apps/notifications/api/v2/notifications` | `GET` | `nextcloud-notifications` | `NotificationClient::list()` | — | `Vec<Notification>` |
+| `/ocs/v2.php/apps/notifications/api/v2/notifications/{id}` | `GET` | `nextcloud-notifications` | `NotificationClient::get(id)` | `u64` | `Notification` |
+| `/ocs/v2.php/apps/notifications/api/v2/notifications/{id}` | `DELETE` | `nextcloud-notifications` | `NotificationClient::delete(id)` | `u64` | `()` |
+| `/ocs/v2.php/apps/notifications/api/v2/notifications` | `DELETE` | `nextcloud-notifications` | `NotificationClient::delete_all()` | — | `()` |
+
+### Activity v2
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/ocs/v2.php/apps/activity/api/v2/activity` | `GET` | `nextcloud-activity` | `ActivityClient::list(filter)` | `&ActivityFilter` | `Vec<Activity>` |
+| `/ocs/v2.php/apps/activity/api/v2/activity` | `GET` | `nextcloud-activity` | `ActivityClient::list_for_object(object_type, object_id)` | `&str`, `u64` | `Vec<Activity>` |
+
+### Chunked uploads v2
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/remote.php/dav/uploads/{user}/{session_id}` | `MKCOL` | `nextcloud-uploads` | `UploadClient::start(user_id, destination_path, total_size)` / `start_with_id(user_id, destination_path, total_size, upload_id)` | `&str`, `&str`, `u64`, `&str` | `UploadSession` |
+| `/remote.php/dav/uploads/{user}/{session_id}/{chunk}` | `PUT` | `nextcloud-uploads` | `UploadClient::upload_chunk(&session, chunk_index, chunk_data)` | `&UploadSession`, `u32`, `Vec<u8>` | `()` |
+| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nextcloud-uploads` | `UploadClient::finish(&session, mtime)` | `&UploadSession`, `Option<u64>` | `()` |
+| `/remote.php/dav/uploads/{user}/{session_id}` | `DELETE` | `nextcloud-uploads` | `UploadClient::abort(&session)` | `&UploadSession` | `()` |
+
+`UploadSession` carries `user_id`, `upload_id`, `destination_path`, `total_size`
+and the set of already-uploaded chunk indexes; `upload_chunk` marks a chunk
+uploaded in the session on success.
+
+Helpers: `chunk_boundaries(total, chunk_size)` → `Vec<ChunkBoundary>`,
+`expected_chunk_count()`, `is_chunk_uploaded(offset)`, `chunk_path(offset)`,
+`assembly_path()`, `abort_path()`.
+
+### Previews & thumbnails
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/index.php/core/preview.png` | `GET` | `nextcloud-preview` | `PreviewClient::get_by_file_id(file_id, options)` | `u64`, `&PreviewOptions` | `Vec<u8>` |
+| `/index.php/core/preview.png` | `GET` | `nextcloud-preview` | `PreviewClient::get_by_path(path, options)` | `&str`, `&PreviewOptions` | `Vec<u8>` |
+
+Paths are built as `ApiPath::public("core/preview.png?…")` — i.e. `/index.php`-rooted,
+not `/core/preview.png`. On a `400`/`404` the client retries once against the same
+endpoint with the `.png` extension flipped, for servers whose front-end proxies
+intercept static-looking paths.
+
+The crate also owns the FreeDesktop thumbnail protocol:
+`freedesktop_thumbnail_dirs()`, `install_freedesktop_thumbnail[_with_mtime]()`,
+`install_freedesktop_fail_marker()` / `remove_freedesktop_fail_marker()`,
+`path_to_file_uri()`, `crc32()`, `md5_hex()`, `ensure_png_bytes()`,
+`embed_freedesktop_metadata()`, `extract_embedded_jpeg_thumbnail()`.
+
+### Trashbin & versions
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/remote.php/dav/trashbin/{user}/trash` | `PROPFIND` | `nextcloud-trashbin` | `TrashClient::list(user_id)` | `&str` | `Vec<TrashItem>` |
+| `/remote.php/dav/trashbin/{user}/trash/{id}` | `MOVE` | `nextcloud-trashbin` | `TrashClient::restore(user_id, item_id, restore_path)` | `&str`, `&str`, `&str` | `()` |
+| `/remote.php/dav/trashbin/{user}/trash/{id}` | `DELETE` | `nextcloud-trashbin` | `TrashClient::delete(user_id, item_id)` | `&str`, `&str` | `()` |
+| `/remote.php/dav/trashbin/{user}/trash` | `DELETE` | `nextcloud-trashbin` | `TrashClient::empty(user_id)` | `&str` | `()` |
+| `/remote.php/dav/versions/{user}/versions/{id}` | `PROPFIND` | `nextcloud-versions` | `VersionsClient::list(user_id, file_id)` | `&str`, `u64` | `Vec<FileVersion>` |
+| `/remote.php/dav/versions/{user}/versions/{id}/{rev}` | `GET` | `nextcloud-versions` | `VersionsClient::get(user_id, file_id, revision_id)` | `&str`, `u64`, `&str` | `Vec<u8>` |
+| `/remote.php/dav/versions/{user}/versions/{id}/{rev}` | `MOVE` | `nextcloud-versions` | `VersionsClient::restore(user_id, file_id, revision_id)` | `&str`, `u64`, `&str` | `()` |
+
+Every trashbin and versions call takes the target `user_id` as its first argument —
+the client does not read it from the session.
+
+### Deck (Kanban)
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/index.php/apps/deck/api/v1.0/boards` | `GET` | `nextcloud-deck` | `DeckClient::list_boards()` | — | `Vec<Board>` |
+| `/index.php/apps/deck/api/v1.0/boards/{id}` | `GET` / `POST` / `PUT` / `DELETE` | `nextcloud-deck` | `get_board` / `create_board` / update / `delete_board` | `u64`, title, … | `Board` |
+| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks` | `GET` / `POST` / `DELETE` | `nextcloud-deck` | `list_stacks` / `create_stack` / `delete_stack` | `board_id: u64` | `Vec<Stack>` |
+| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks/{sid}/cards` | `GET` / `POST` | `nextcloud-deck` | `list_cards` / `create_card` | `u64`, `u64`, `&str` | `Vec<Card>` / `Card` |
+| `/index.php/apps/deck/api/v1.0/boards/{id}/stacks/{sid}/cards/{cid}` | `DELETE` | `nextcloud-deck` | `delete_card(...)` | ids | `()` |
+
+### Talk (Spreed)
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/ocs/v2.php/apps/spreed/api/v4/room` | `GET` | `nextcloud-talk` | `TalkClient::list_rooms()` | — | `Vec<Room>` |
+| `/ocs/v2.php/apps/spreed/api/v4/room` | `POST` | `nextcloud-talk` | `TalkClient::create_room(...)` | room type, name | `Room` |
+| `/ocs/v2.php/apps/spreed/api/v4/room/{token}` | `GET` / `DELETE` | `nextcloud-talk` | `get_room` / `delete_room` | `&str` | `Room` |
+| `/ocs/v2.php/apps/spreed/api/v1/chat/{token}` | `GET` / `POST` | `nextcloud-talk` | `list_messages` / `send_message` | `&str`, `&str` | `Vec<ChatMessage>` / `ChatMessage` |
+
+### Unified search
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/ocs/v2.php/search/providers` | `GET` | `nextcloud-search` | `SearchClient::list_providers()` | — | `Vec<SearchProvider>` |
+| `/ocs/v2.php/search/providers/{id}/search` | `GET` | `nextcloud-search` | `SearchClient::search(provider_id, term)` / `search_with_options(provider_id, term, limit, cursor)` | `&str`, `&str`, `Option<u32>`, `Option<i64>` | `SearchResultSet` |
+
+Search is always scoped to one provider — there is no global query method. Call
+`list_providers()` first, then `search(&provider.id, term)`.
+
+### Theming & branding
+
+| Endpoint | Method | Crate | Client / method | Parameters | Returns |
+| --- | --- | --- | --- | --- | --- |
+| `/apps/theming/api/v1/theme` | `GET` | `nextcloud-theming` | `ThemingClient::get_theme()` | — | `ThemeInfo` |
+| theme `logo_header`/`logo`/`favicon` URL | `GET` | `nextcloud-theming` | `ThemingClient::fetch_logo_bytes()` | — (resolves the path from the theme) | `Vec<u8>` |
+| `/status.php` + theme | `GET` | `nextcloud-theming` | `ThemingClient::effective_branding(custom)` | `Option<&CustomBranding>` | `EffectiveBranding` |
+
+`EffectiveBranding` merges server theming with local `CustomBranding` overrides
+(`app_name`, `instance_name`, `color`, `color_text`, `color_element`, `logo`,
+`background`, `background_url`, `favicon`, `build_user_agent`).
+
+### OS account sources (SSO & migration)
+
+These read local system state instead of HTTP endpoints, so their "endpoint" is a
+D-Bus bus name, a SQLite file or an INI file.
+
+| Source | Access | Crate | Client / method | Returns |
+| --- | --- | --- | --- | --- |
+| `org.gnome.OnlineAccounts` | D-Bus (`zbus`) | `nextcloud-goa` | `GnomeOnlineAccounts::connect()` → `list_accounts()` | `Vec<GoaAccount>` |
+| `~/.local/share/accounts/accounts.db` | SQLite | `nextcloud-kaccounts` | `KAccountsDatabase::open_default()` → `list_accounts()`; free function `find_kaccount_credentials()` | `Vec<KAccount>` |
+| `nextcloud.cfg` (Linux/macOS/Windows) | INI | `nextcloud-client-config` | `ClientConfigParser::parse_file(path)` / `parse_str(&str)`; `discover_config_paths()`, `find_active_config_path()` | `Vec<DesktopClientAccount>` |
+| All of the above | Discovery | `nextcloud-rust-sdk` (`sso`) | `DesktopSso::discover_accounts()` → `Vec<DiscoveredAccount>`; `resolve_credentials()` | `Vec<DiscoveredAccount>` |
 
 ---
 
-## 3. Crate Architecture Reference
+## 3. Crate-by-crate reference
 
-### 3.1 `nextcloud-nextcloud-sdk-core`
-- **Purpose**: Foundational HTTP semantics, type-safe path abstractions, and seam traits.
-- **Key Types**:
-  - `ServerUrl`: Validated base URL (`https://...`).
-  - `ApiPath`: Relative endpoint path appended to `ServerUrl`.
-  - `Transport`: Trait for asynchronous HTTP execution (`execute(&self, req) -> Result<Response, Error>`).
-  - `AuthProvider`: Trait for credential injection into outbound `Headers`.
-  - `Header` / `Headers`: Case-insensitive HTTP header map with automatic credential redaction.
-  - `Error`: Unified error enum classifying URL parsing, network transport failures, non-2xx status codes, and JSON/XML decode errors.
+### 3.1 `nextcloud-sdk-core` (core)
 
-### 3.2 `nextcloud-nextcloud-sdk-session`
-- **Purpose**: Pure transition state machine governing account lifecycles and Login Flow v2.
-- **States**:
-  - `SessionState::Idle`: No account or active flow.
-  - `SessionState::AwaitingLogin(LoginFlow)`: Flow initialized; awaiting browser confirmation.
-  - `SessionState::AwaitingGrant(LoginFlow)`: Actively polling token endpoint (handling 404 responses).
-  - `SessionState::Authenticated(Account)`: Active authenticated session with server URL and app password.
-  - `SessionState::ReauthRequired(Account)`: Credentials were rejected (401); re-authentication necessary.
+Foundational HTTP semantics, type-safe paths, and the two seam traits.
 
-### 3.3 `nextcloud-nextcloud-sdk-request`
-- **Purpose**: Pure transition state machine for per-request retry scheduling and exponential backoff.
-- **Key Types**:
-  - `RequestMachine`: Tracks attempt count and current state (`Idle`, `InFlight`, `RetryScheduled`, `Succeeded`, `Failed`, `Cancelled`).
-  - `RetryPolicy`: Configurable maximum attempt counts, base delays, and retryable HTTP status codes.
-  - `Effect`: Instruction to the caller (`Send`, `Wait`, `Finish`, `GiveUp`).
+- `ServerUrl` — validated base URL.
+- `ApiPath` — relative endpoint appended to `ServerUrl`.
+- `Transport` — `async fn execute(&self, req: Request) -> Result<Response, Error>`.
+- `AuthProvider` — injects credentials into outbound `Headers`.
+- `Header` / `Headers` — case-insensitive map with credential redaction.
+- `Error` — unified error covering URL parsing, transport failures, non-2xx
+  status (`StatusError`), and JSON/XML decode (`DecodeError`).
 
-### 3.4 `nextcloud-nextcloud-sdk-storage`
-- **Purpose**: Persistent encrypted storage using SQLCipher.
-- **Key Types**:
-  - `StoragePaths`: Configures disk locations for `auth.db` and `cache.db` (defaults to `$XDG_DATA_HOME/nextcloud-rust-sdk/`).
-  - `StoreKey`: 256-bit cryptographic key generated via `getrandom`.
-  - `KeychainKeyStore`: Platform keychain backend; uses `oo7` to communicate with the FreeDesktop Secret Service on Linux.
-  - `EncryptedDatabase`: SQLCipher database wrapper with automatic migration and schema verification.
-  - `CredentialSchema` / `CacheSchema`: Schema DDL definitions and versioning.
+### 3.2 `nextcloud-sdk-session` (core)
 
-### 3.5 `nextcloud-nextcloud-sdk-ratelimit`
-- **Purpose**: Dynamic bandwidth rate limiting, token-bucket traffic shaping, and transfer progress tracking.
-- **Key Types**:
-  - `BandwidthLimit`: Rate constraint (`Unlimited`, `BytesPerSecond`, `from_kib`, `from_mib`).
-  - `TokenBucket`: Thread-safe, non-blocking token bucket algorithm with asynchronous token acquisition and runtime rate adjustment.
-  - `BandwidthLimiter`: High-level traffic shaper coordinating independent upload and download limits on active connections.
-  - `TransferProgress`: Progress snapshot (`transferred_bytes`, `total_bytes`, `fraction`, `percentage`, `is_complete`).
-  - `ProgressCallback`: Thread-safe closure callback invoked with incremental progress events.
+Pure Login Flow v2 state machine; performs no I/O.
 
-### 3.6 `nextcloud-auth`
-- **Purpose**: Authentication schemes implementing `AuthProvider`.
-- **Key Types**:
-  - `BasicAuth`: HTTP Basic authentication (`Authorization: Basic base64(user:password)`).
-  - `BearerAuth`: OAuth2 bearer tokens (`Authorization: Bearer token`).
-  - `Anonymous`: Anonymous access; injects the mandatory `OCS-APIRequest: true` header.
-  - `SecretString`: Secure string wrapper redacting values in `Debug` and preventing accidental printing.
+- `SessionState::{ Idle, AwaitingLogin(LoginFlow), AwaitingGrant(LoginFlow), Authenticated(Account), ReauthRequired(Account) }`
+- `LoginStart { login_url, poll_endpoint, token }` with accessors of the same names.
+- `LoginSuccess { server, login_name, app_password }`.
+- `SessionEvent` in, `Command` out — the caller performs the described effect.
 
-### 3.7 `nextcloud-transport`
-- **Purpose**: Production HTTP transport implementation backed by `reqwest` with dynamic rate limiting and progress reporting.
-- **Key Types**:
-  - `ReqwestTransport`: Implements `nextcloud_sdk_core::Transport`, supports dynamic upload/download rate limits (`set_upload_limit`, `set_download_limit`) and progress reporting (`set_download_progress`, `execute_with_progress`).
-  - `TransportBuilder`: Fluent builder for configuring server URL, timeouts, rate limits, and progress callbacks.
-  - `TimeoutConfig`: Connect, read, and global timeout settings.
+### 3.3 `nextcloud-sdk-request` (core)
 
-### 3.7 `nextcloud-ocs`
-- **Purpose**: OCS v1/v2 envelope parser and request executor.
-- **Key Types**:
-  - `OcsEnvelope<T>`: Deserializes the standard Nextcloud `{ ocs: { meta: ..., data: ... } }` wrapper.
-  - `OcsClient<T, A>`: Client providing typed `get()`, `post()`, `put()`, and `delete()` operations with mandatory OCS headers (`OCS-APIRequest: true`, `Accept: application/json`).
+Pure per-request retry/backoff state machine.
 
-### 3.8 `nextcloud-dav`
-- **Purpose**: WebDAV file system operations and PROPFIND XML generation/parsing.
-- **Key Types**:
-  - `DavClient<'a, T, A>`: Client for PROPFIND, GET, PUT, MKCOL, DELETE, COPY, MOVE.
-  - `DavPath`: Validated WebDAV path rooted in a user namespace (`DavPath::new("alice", "Photos/trip.jpg")`).
-  - `DavResource`: Parsed multi-status entry detailing href, collection status, content length, content type, etag, and last modified timestamp.
-  - `PropfindBody`: Construct properties query (`all()`, `names()`, or explicit `prop(...)`).
+- `RequestMachine` with `RequestState::{ Idle, InFlight, RetryScheduled, Succeeded, Failed, Cancelled }`.
+- `RetryPolicy` — attempt count, base delay, retryable status codes.
+- `Effect::{ Send, Wait, Finish, GiveUp }` and `Failure` classification.
 
-### 3.9 `nextcloud-users`
-- **Purpose**: User provisioning and server capabilities discovery.
-- **Key Types**:
-  - `UserClient<'a, T, A>`: Queries capabilities, current user, and individual users.
-  - `Capabilities`: Server features (WebDAV root, big file chunking, core status, theming).
-  - `User`: User profile with quota metrics, group memberships, and display name.
+### 3.4 `nextcloud-sdk-storage` (core)
 
-### 3.10 `nextcloud-shares`
-- **Purpose**: File sharing management via Nextcloud's OCS Share API.
-- **Key Types**:
-  - `ShareClient<'a, T, A>`: Lists, retrieves, creates, and deletes shares.
-  - `CreateShare`: Builder for public link shares, user shares, and group shares.
-  - `Share`: Information about an existing share (id, token, URL, permissions).
-  - `SharePermissions`: Bitflags configuring read, update, create, delete, and share permissions.
-  - `ShareType`: User (0), Group (1), Public Link (3), Email (4), etc.
+SQLCipher SQLite persistence for three databases.
 
-### 3.11 `nextcloud-notifications`
-- **Purpose**: User notification fetching and dismissal.
-- **Key Types**:
-  - `NotificationClient<'a, T, A>`: Fetches lists, single notifications, dismisses, or clears all notifications.
-  - `Notification`: Parsed notification object with app name, subject, message, link, and available interactive actions.
-  - `NotificationAction`: Primary and secondary action buttons associated with notifications.
+- `StoragePaths` — `auth.db`, `cache.db`, `config.db` locations
+  (`default_xdg()`, `ensure_directories()`).
+- `StoreKey` — 256-bit key from OS entropy.
+- `EncryptedDatabase` — schema verification and migrations.
+- `KeyStore` trait with `KeychainKeyStore` and the platform keyring backends.
 
-### 3.12 `nextcloud-activity`
-- **Purpose**: Audit logging and user activity streams.
-- **Key Types**:
-  - `ActivityClient<'a, T, A>`: Queries activity streams and object histories.
-  - `ActivityFilter`: Filter builder supporting `limit`, `since`, `object_type`, `object_id`, and `sort`.
-  - `Activity`: Activity entry with id, subject, message, timestamp, affected files, and originating user.
+Details, including the schema per database, are in
+[`SECURITY_AND_STORAGE.md`](SECURITY_AND_STORAGE.md).
+
+### 3.5 `nextcloud-sdk-keyring` (core)
+
+- `KeyringBackend` — trait for storing/retrieving the `StoreKey`.
+- `PlatformKeyring` — FreeDesktop Secret Service / Flatpak portal (`oo7`) on Linux,
+  Keychain on macOS, Credential Manager on Windows.
+- `MemoryKeyring` — tests and ephemeral sessions.
+- `KeyringEntry`, `KeyringError`.
+
+### 3.6 `nextcloud-sdk-ratelimit` (core)
+
+- `BandwidthLimit::{ Unlimited, BytesPerSecond, from_kib, from_mib }`.
+- `TokenBucket` — thread-safe, async token acquisition, runtime rate changes.
+- `BandwidthLimiter` — separate upload and download shaping.
+- `TransferProgress { transferred_bytes, total_bytes, fraction(), percentage(), is_complete() }`.
+- `ProgressCallback` — closure invoked per transfer; a mount-wide aggregate is
+  `MountProgressSnapshot`, not this.
+
+### 3.7 `nextcloud-sdk-vfs` (core)
+
+The data a file browser renders, with no UI toolkit dependency.
+
+- `VirtualTree` (hierarchy, thumbnails, navigation), `VirtualNode`, `NodeMetadata`.
+- `HydrationState` / `HydratedContent` — `Placeholder` vs hydrated bytes/path.
+- `NextcloudPermissions` (decoded bitfield), `ResourceIconCategory`.
+- `VirtualEntrySummary`, `DirectorySizeSummary`.
+- `FileSortField`, `FileSortOrder`, `FileSortCriteria`.
+- `NavigationHistory`, `BreadcrumbSegment`, `breadcrumb_segments()`, `normalize_path()`.
+- `ThumbnailCache` — multi-resolution storage.
+- `HierarchySeeder` / `StandardNextcloudSeeder`, `DavResourceSummary`.
+
+### 3.8 `nextcloud-sdk-fuse` (core)
+
+- `mount_virtual_fs(driver, mountpoint)` and
+  `mount_virtual_fs_with_options(driver, mountpoint, options)` → `BackgroundSession`.
+  Driver comes first; the plain form is read-only.
+- `FuseDriver::{ new, with_hydrator, with_hydrator_and_root }`.
+- `AsyncHydrator` trait, `InodeTable`, `FileAttr`, `DirEntry`, `FileType`,
+  `MountOption`, `parse_date_to_unix_secs`.
+- Linux only; other targets return `io::ErrorKind::Unsupported`.
+
+### 3.9 `nextcloud-sdk-orchestrator` (core)
+
+The runtime. Owns an OS thread and its own Tokio runtime.
+
+- `NextcloudOrchestrator::start(OrchestratorConfig)` → `.handle()`, `.shutdown()`.
+- `OrchestratorConfig { base_cache_dir, mounts, sync_interval_seconds, worker_threads }`
+  with `new`, `with_mount`, `with_sync_interval_seconds`, `with_worker_threads`.
+- `OrchestratorHandle` — `mounts()`, `vfs(mount_id)`, `subscribe_events()`,
+  `pause_all_sync()`, `resume_all_sync()`, `is_sync_paused()`, `shutdown()`.
+- `MountsHandle` — `add_mount`, `remove_mount`, `list_mounts`, `get_mount`,
+  `sync_mount` *(local reconciliation against the journal — no DAV round-trip)*,
+  `pause_mount`, `resume_mount`, `is_paused`, `storage_usage`, `clear_cache`,
+  `clear_thumbnail_cache`, `progress`, `file_status`, `status_for_local_path`,
+  `set_file_status`.
+- `FolderSyncRunner` — `new(local_dir, remote_dir, journal_path)`,
+  `discover_remote(dav_client, user, remote_root)`,
+  `plan_reconciliation(&[DiscoveredRemoteFile], is_vfs) -> (Vec<SyncAction>, SyncJournal)`,
+  `execute_sync_cycle(dav_client, user, is_vfs, is_cancelled, on_progress) -> FolderSyncOutcome`,
+  `run_local_reconciliation()` (journal vs local dir, no network), plus
+  `hydrate_file_from_dav`, `upload_file_to_dav`, `create_remote_directory`,
+  `move_remote_resource`, `delete_remote_resource`. `execute_sync_cycle` is the
+  real network cycle; nothing in the orchestrator schedules it for you.
+- `VfsHandle` — `list_children`, `snapshot`, `entry`, `populate_from_resources`,
+  `is_directory_populated`, `unpopulated_directories`, `hydrate_local`,
+  `dehydrate_local`, `create_directory`, `rename`, `remove`.
+- `OrchestratorEvent` — the runtime event vocabulary (see `ARCHITECTURE.md`).
+- `FileSystemWatcher`, `DownloadQueueCoordinator`, `VfsManager`, `make_dav_path`,
+  `SyncFileStatus`, `MountStorageUsage`, `MountProgressSnapshot`.
+
+### 3.10 `nextcloud-auth`
+
+- `BasicAuth`, `BearerAuth`, `Anonymous` (adds `OCS-APIRequest: true`).
+- `SecretString` — redacting wrapper used for app passwords.
+
+### 3.11 `nextcloud-transport`
+
+- `ReqwestTransport` implementing `Transport`, with `set_upload_limit`,
+  `set_download_limit`, `set_download_progress`, `set_upload_progress`,
+  `execute_with_progress`.
+- `TransportBuilder` — server URL, timeouts, limits, progress callbacks.
+- `TimeoutConfig`, `TransportBuildError`.
+
+### 3.12 `nextcloud-ocs`
+
+- `OcsEnvelope<T>`, `Ocs<T>`, `Meta`, `OcsStatus`, `OcsFormat`, `Query`.
+- `OcsClient<T, A>` — typed `get`, `post`, `put`, `delete` with the mandatory
+  `OCS-APIRequest: true` and `Accept: application/json` headers.
+
+### 3.13 `nextcloud-dav`
+
+- `DavClient<'a, T, A>` — `propfind`, `get`, `get_range`, `put`, `mkcol`, `delete`,
+  `copy`, `move_`.
+- `DavPath` (`DavPath::new(user, relative)`), `DavProperty`.
+- `DavResource`, `Depth::{Zero, One, Infinity}`, `Overwrite::{Allow, Forbidden}`.
+- `PropfindBody::{ new(properties), all() }` — `new` takes `impl IntoIterator<Item = DavProperty>`; there is no `names`/`prop` constructor.
+
+### 3.14 `nextcloud-users`
+
+- `UserClient<'a, T, A>` — `capabilities`, `current_user`, `get_user`.
+- `Capabilities::server_version()`, `version()`, `status()`, `theming()`, `core()`, `files()`.
+- `CoreCapabilities::webdav_root()`, `FilesCapabilities::{ chunked_upload, max_chunk_size }`.
+- `User`, `Quota`, `ServerVersion`, `ServerStatus`, `ThemingCapabilities`.
+
+### 3.15 `nextcloud-shares`
+
+- `ShareClient<'a, T, A>` — `list`, `get`, `create`, `delete`.
+- `CreateShare` — public link / user / group builders.
+- `Share`, `SharePermissions` (bitflags), `ShareType`.
+
+### 3.16 `nextcloud-notifications`
+
+- `NotificationClient<'a, T, A>` — `list`, `get`, `delete`, `delete_all`.
+- `Notification`, `NotificationAction`.
+
+### 3.17 `nextcloud-activity`
+
+- `ActivityClient<'a, T, A>` — `list`, `list_for_object`.
+- `ActivityFilter` — `limit`, `since`, `object_type`, `object_id`, `sort`.
+
+### 3.18 `nextcloud-sync`
+
+The reconciliation engine *behind* the orchestrator. Applications normally never
+call it directly.
+
+- `reconcile`, `SyncAction`, `SyncJournal`, `JournalEntry`, `scan_local_directory`.
+- `DiscoveredLocalFile`, `DiscoveredRemoteFile`, `SyncError`.
+- `SyncDownloadQueue` + `DownloadTask` / `DownloadTaskId` / `DownloadPriority` /
+  `DownloadStatus` / `DownloadQueueEvent` / `DownloadQueueSnapshot`,
+  `DownloadExecutor`, `DownloadProgress`.
+
+### 3.19 `nextcloud-theming`
+
+- `ThemingClient<'a, T, A>` — `get_theme`, `server_status`, `fetch_logo_bytes`,
+  `effective_branding`.
+- `ThemeInfo`, `CustomBranding`, `EffectiveBranding`, `ServerStatusInfo`, `ThemingError`.
+
+### 3.20 `nextcloud-preview`, `nextcloud-trashbin`, `nextcloud-versions`, `nextcloud-uploads`, `nextcloud-deck`, `nextcloud-talk`, `nextcloud-search`
+
+See the endpoint tables above; each crate exposes exactly the methods listed, plus
+value types named after their row (`PreviewOptions`, `TrashItem`, `FileVersion`,
+`UploadSession`, `Board` / `Stack` / `Card`, `Room` / `ChatMessage`,
+`SearchProvider` / `SearchEntry` / `SearchResultSet`).
+
+### 3.21 `nextcloud-goa`, `nextcloud-kaccounts`, `nextcloud-client-config`
+
+OS-level account discovery for SSO and migration: GNOME Online Accounts and
+KAccounts over their native channels, plus `nextcloud.cfg` parsing so a consumer
+can adopt existing account and folder pairs on first run.
+
+### 3.22 Facade: `nextcloud-rust-sdk`
+
+- `ClientBuilder` — `server_url`, `storage`/`storage_paths`, `store_key`,
+  `key_store`, `keychain(app_id, account)`, `initial_account`,
+  `initial_credentials`, `retry_policy`, `timeout_config`, `upload_limit`,
+  `download_limit`, `on_download_progress`, `on_upload_progress`, `branding`,
+  `build()`.
+- `Client` — session (`start_login`, `poll_login`, `logout`, `clear_cache`,
+  `credentials`, `session_state`, `is_authenticated`, `current_user_id`,
+  `server_status`), client factories (see §2), persistence
+  (`store_sync_mount`, `remove_sync_mount`, `list_sync_mounts`,
+  `store_cached_theme`, `load_cached_theme`, `store_directory_sort`,
+  `load_directory_sort`, `set_setting`, `get_setting`), runtime knobs
+  (`set_upload_limit`, `set_download_limit`, `set_download_progress`,
+  `set_upload_progress`, `subscribe_events`).
+- `ClientEvent::{ SyncMountAdded, SyncMountRemoved, SyncMountUpdated, ThemeUpdated }`
+  — persisted configuration changes, complementary to `OrchestratorEvent`.
+- `StoredSyncMount`, `CachedTheme`, `CachedDavEntry`, `ConfigStore`, `SessionStore`,
+  `CacheStore`, `WorkerActor`, `WorkerTask`, `WorkerStores`.

@@ -10,6 +10,25 @@ A Rust client for the Nextcloud APIs, split into a workspace of small,
 focused crates. Every crate's public surface is treated as an API contract,
 not a scratchpad.
 
+**This SDK is generic, and it does not acknowledge any particular consumer.**
+Applications (GUI shells, daemons, mobile shells) consume it; it does not consume
+them in either direction, including in our own organisation — a sibling
+repository consuming this SDK is still just an unknown consumer from here.
+Nothing here may name an application,
+branch on "is this client X", or carry a field, flag or config key that exists
+only for one downstream product. The dependency runs one way and stays that way:
+
+- Wire formats, state machines, the orchestrator, the VFS, journals and
+  reconciliation belong here, because they are hard to get right and every
+  consumer needs them.
+- Presentation, window management, a product's config schema or branding belong
+  to the consumer, and never appear in this workspace.
+- When a consumer needs something new, the SDK gains a general capability with a
+  protocol-level rationale — not a special case shaped around that consumer's
+  current code.
+- A PR that adds a downstream application's name, config format or workaround is
+  a review rejection, even if it compiles.
+
 ## Structure
 
 - Split the project into multiple libraries wherever a boundary exists.
@@ -36,12 +55,15 @@ not a scratchpad.
 
 ```sh
 cargo build
-cargo test
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
+cargo test --workspace
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
-All four must pass before a change is considered done.
+All five must pass before a change is considered done. These are the same five
+CI runs in `.github/workflows/ci.yml`; a local pass that used `cargo fmt --all`
+(rewriting) or a single-crate `cargo test` is not proof.
 
 ## Code rules
 
@@ -59,6 +81,23 @@ All four must pass before a change is considered done.
 - Credentials (tokens, app passwords, basic-auth headers) must never be
   logged, formatted via `Debug`, or embedded in error messages. Debug impls
   that touch credentials must redact them.
+
+## Documentation
+
+The `docs/` set is part of the deliverable and must describe the code as it is
+today — no aspirational sections, no documenting an API that does not exist.
+
+| File | Covers |
+| --- | --- |
+| `docs/ARCHITECTURE.md` | Layers, repository map, orchestrator, VFS/hydration, FUSE, facade, concurrency model |
+| `docs/GETTING_STARTED.md` | Integrator walkthrough: direct requests, then handles and events |
+| `docs/API_REFERENCE.md` | Endpoint matrix and per-crate public surface |
+| `docs/SECURITY_AND_STORAGE.md` | SQLCipher storage, keyring, redaction rules |
+
+A change that adds/moves a crate, alters a public signature, a handle command, an
+`OrchestratorEvent` variant, a storage path or a keyring schema updates the
+matching doc in the same change. When docs and code disagree, the code is the
+bug report: fix the doc, or fix the code — never leave the contradiction.
 
 ## Dependencies
 

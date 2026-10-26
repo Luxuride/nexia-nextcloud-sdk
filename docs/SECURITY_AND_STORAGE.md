@@ -4,11 +4,24 @@ Security and data confidentiality are foundational tenets of the `nextcloud-rust
 
 ---
 
-## 1. Dual Encrypted SQLCipher Storage Architecture
+## 1. Encrypted SQLCipher Storage Architecture
 
-The SDK separates mutable state into two distinct local SQLite databases, each encrypted with [SQLCipher](https://www.zetetic.net/sqlcipher/) (AES-256 in CBC/GCM mode):
+The SDK separates mutable state into three distinct local SQLite databases, each
+encrypted with [SQLCipher](https://www.zetetic.net/sqlcipher/) (AES-256) and each
+opened through `EncryptedDatabase::open_credential_store(path, &key)`, which runs
+`PRAGMA key` followed by a fail-fast `SELECT count(*) FROM sqlite_master`:
 
-```
+| Store | Contents |
+| --- | --- |
+| `auth.db` | accounts (server URL, login name, user id, app password blob) and login-flow state (poll endpoint, poll token) |
+| `cache.db` | server capabilities JSON per server/user and `dav_entry` WebDAV listings (path, etag, size, content type, mtime) |
+| `config.db` | settings key/value pairs, cached theme, stored sync mounts, per-directory sort order |
+
+`auth.db` and `cache.db` are diagrammed below; `config.db` shares their layout and
+teardown semantics (it can be rebuilt, at the cost of losing user preferences and
+mount records).
+
+```text
                    +---------------------------------------------+
                    |          Application Storage Root           |
                    |      (~/.local/share/nextcloud-rust-sdk)    |
@@ -52,9 +65,9 @@ The SDK separates mutable state into two distinct local SQLite databases, each e
 
 ---
 
-## 2. Multi-Platform Keyring Integration (`nextcloud-nextcloud-sdk-keyring`)
+## 2. Multi-platform keyring integration (`nextcloud-sdk-keyring`)
 
-Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`nextcloud-nextcloud-sdk-keyring`** through [`KeychainKeyStore`] and [`PlatformKeyring`]:
+Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`nextcloud-sdk-keyring`** through `KeychainKeyStore` and `PlatformKeyring`:
 
 ### 2.1 Supported Platform Backends
 1. **Linux & Sandboxed Flatpak**:
@@ -79,7 +92,7 @@ Keys are cataloged under the application's unique reverse-DNS identifier and acc
 
 This design prevents multiple Nextcloud accounts or different client applications from interfering with or overwriting each other's database keys.
 
-### 2.2 Lifecycle of Key Retrieval
+### 2.3 Lifecycle of key retrieval
 
 ```mermaid
 sequenceDiagram
@@ -111,16 +124,21 @@ sequenceDiagram
 
 ---
 
-## 3. Zero Credentials in Debug & Logging
+## 3. Zero credentials in Debug and logging
 
 Accidental leakage of credentials into stdout, stderr, or system logs via formatted debug statements (`{:?}`) or log crates is a major security vulnerability in client applications. The Nextcloud Rust SDK implements strict redaction across every layer:
 
 ### 3.1 `SecretString`
-The `SecretString` type is used for all sensitive passphrases, app passwords, and bearer tokens:
-- **Redacted Formatting**: The `Debug` implementation outputs `SecretString("<redacted>")` unconditionally.
-- **No `Display` Impl**: `SecretString` deliberately omits `std::fmt::Display` to prevent accidental string interpolation (`println!("{password}")` does not compile).
-- **No `Serialize` Impl**: Cannot be inadvertently serialized into public JSON logs.
-- **Explicit Call Site Exposure**: The plaintext value is accessible exclusively via `.expose()`, making every access searchable and auditable across the codebase.
+Used for all sensitive passphrases, app passwords and bearer tokens. There are two:
+
+| Type | Crate | `Debug` | Plaintext access |
+| --- | --- | --- | --- |
+| `nextcloud_auth::SecretString` | `nextcloud-auth` | `SecretString("<redacted>")` | `.expose() -> &str` |
+| `nextcloud_sdk_keyring::SecretString` | `nextcloud-sdk-keyring` | `[REDACTED]` | `.expose_secret() -> &str`, `.into_inner() -> String` |
+
+Both omit `Serialize`, so neither can be pushed into JSON logs. The keyring variant
+also implements `Display` (redacted) and `Drop` — `Drop` zeroes the backing bytes
+before releasing them.
 
 ### 3.2 HTTP Header Redaction
 The `Header` type automatically detects sensitive HTTP header names (case-insensitively):
@@ -130,10 +148,14 @@ The `Header` type automatically detects sensitive HTTP header names (case-insens
 ### 3.3 User Profile Privacy Redaction
 In `nextcloud-users`, the `User` struct contains sensitive personal metadata. Its `Debug` implementation redacts private attributes:
 - `email`: Formatted as `email: Some("<redacted>")`.
-- `storage_location`: Formacted as `storage_location: Some("<redacted>")` (prevents exposing internal server filesystem paths).
+- `storage_location`: Formatted as `storage_location: Some("<redacted>")` (prevents exposing internal server filesystem paths).
+
+The redaction is a hand-written `impl fmt::Debug for User`
+(`crates/nextcloud/nextcloud-users/src/user/profile.rs:149`), independent of the
+`#[derive(Debug)]` on the wire struct it is built from.
 
 ### 3.4 Key & Database Redaction
-- `StoreKey`: Formats as `StoreKey(<redacted>)`. The raw hex is never formatted.
+- `StoreKey`: `Debug` writes `StoreKey(<redacted>)` (`crates/core/nextcloud-sdk-storage/src/key.rs:68`). The raw hex is never formatted.
 - `KeychainKeyStore`: Debug output displays only the application ID and account label, omitting key contents.
 - `EncryptedDatabase`: Formats only the file path, omitting encryption pragmas.
 
@@ -147,9 +169,11 @@ The entire workspace is compiled with `#![forbid(unsafe_code)]` at the crate roo
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 ```
+
 No `unsafe` blocks are permitted in any production code, library seam, or internal helper. All memory safety guarantees are mathematically verified by the Rust compiler.
 
 ### 4.2 Explicit Error Handling & Propagation
 - No `panic!()`, `unwrap()`, or `expect()` on code paths reachable from library APIs.
+  (Test modules and `#[cfg(test)]` code are exempt.)
 - All fallible operations return strongly typed `Result<T, Error>`.
 - Internal cause errors are preserved using standard Rust `#[source]` error chains, ensuring diagnostics can inspect the root cause without stringifying away error contexts.
