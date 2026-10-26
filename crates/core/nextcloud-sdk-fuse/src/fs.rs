@@ -14,7 +14,7 @@ use tracing::{debug, error, trace};
 use crate::attr::FileType;
 use crate::driver::FuseDriver;
 
-const TTL: Duration = Duration::from_secs(1);
+const TTL: Duration = Duration::from_secs(60);
 
 impl From<&crate::attr::FileAttr> for fuser::FileAttr {
     fn from(attr: &crate::attr::FileAttr) -> Self {

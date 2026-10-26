@@ -325,7 +325,6 @@ pub fn install_freedesktop_thumbnail_with_mtime(
 
     let uris = file_uris_for_path(target_file);
     for uri in &uris {
-        let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec);
         let hash = md5_hex(uri.as_bytes());
         let filename = format!("{hash}.png");
 
@@ -333,6 +332,12 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         let normal_dest = normal_dir.join(&filename);
         let xlarge_dest = xlarge_dir.join(&filename);
         let xxlarge_dest = xxlarge_dir.join(&filename);
+
+        if large_dest.exists() && normal_dest.exists() {
+            continue;
+        }
+
+        let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec);
 
         if let Err(e) = fs::write(&large_dest, &tagged_bytes) {
             warn!(target = %large_dest.display(), error = %e, "Failed to write FreeDesktop large thumbnail");
