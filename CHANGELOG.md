@@ -2,6 +2,25 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
+## Unreleased
+
+### Breaking
+
+- `nextcloud-preview`: the FreeDesktop `Software` PNG chunk is no longer
+  hardcoded to a fixed product string. The generating program is caller
+  knowledge under the Thumbnail Managing Standard, so it is now a parameter:
+  `install_freedesktop_thumbnail[_with_mtime]()`, `create_freedesktop_png()` and
+  `embed_freedesktop_metadata()` take `software: &str`;
+  `embed_freedesktop_metadata_raw()` takes `Option<&str>` and omits the chunk
+  when `None`. `install_freedesktop_fail_marker()` is unchanged on the outside
+  and now writes no `Software` chunk, since a fail sentinel is not a generated
+  thumbnail.
+
+### Fixed
+
+- Thumbnail-cache cleanup in consumers no longer has to pattern-match a
+  hardcoded product name to recognise its own cache entries.
+
 ## 0.1.2
 
 ### Added

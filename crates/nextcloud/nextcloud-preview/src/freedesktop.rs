@@ -243,9 +243,20 @@ pub fn ensure_png_bytes(bytes: &[u8]) -> Vec<u8> {
     bytes.to_vec()
 }
 
-/// Injects FreeDesktop `Thumb::URI` and `Thumb::MTime` chunks directly into raw PNG bytes without re-encoding.
+/// Injects FreeDesktop `Thumb::URI`, `Thumb::MTime` and `Software` chunks directly into
+/// raw PNG bytes without re-encoding.
+///
+/// `software` fills the optional `Software` chunk, which the Thumbnail Managing Standard
+/// defines as the name of the program that generated the thumbnail. Only the caller
+/// knows that name, so it is never defaulted here; `None` omits the chunk, which is
+/// correct for sentinel markers that are not generated thumbnails.
 #[must_use]
-pub fn embed_freedesktop_metadata_raw(png_bytes: &[u8], uri: &str, mtime_sec: u64) -> Vec<u8> {
+pub fn embed_freedesktop_metadata_raw(
+    png_bytes: &[u8],
+    uri: &str,
+    mtime_sec: u64,
+    software: Option<&str>,
+) -> Vec<u8> {
     const PNG_SIG: &[u8] = b"\x89PNG\r\n\x1a\n";
     if !png_bytes.starts_with(PNG_SIG) || png_bytes.len() < 33 {
         return png_bytes.to_vec();
@@ -253,9 +264,12 @@ pub fn embed_freedesktop_metadata_raw(png_bytes: &[u8], uri: &str, mtime_sec: u6
 
     let chunk_uri = make_png_text_chunk("Thumb::URI", uri);
     let chunk_mtime = make_png_text_chunk("Thumb::MTime", &mtime_sec.to_string());
-    let chunk_software = make_png_text_chunk("Software", "Nextcloud Desktop");
+    let chunk_software = software.map(|name| make_png_text_chunk("Software", name));
 
-    let total_len = png_bytes.len() + chunk_uri.len() + chunk_mtime.len() + chunk_software.len();
+    let total_len = png_bytes.len()
+        + chunk_uri.len()
+        + chunk_mtime.len()
+        + chunk_software.as_ref().map_or(0, Vec::len);
     let mut result = Vec::with_capacity(total_len);
 
     // PNG signature (8 bytes) + IHDR chunk (25 bytes: 4 len + 4 type + 13 data + 4 crc)
@@ -264,7 +278,9 @@ pub fn embed_freedesktop_metadata_raw(png_bytes: &[u8], uri: &str, mtime_sec: u6
     // Insert metadata chunks immediately after IHDR
     result.extend_from_slice(&chunk_uri);
     result.extend_from_slice(&chunk_mtime);
-    result.extend_from_slice(&chunk_software);
+    if let Some(chunk) = &chunk_software {
+        result.extend_from_slice(chunk);
+    }
 
     // Append remainder of original PNG
     result.extend_from_slice(&png_bytes[33..]);
@@ -278,6 +294,7 @@ pub fn create_freedesktop_png(
     max_dim: u32,
     uri: &str,
     mtime_sec: u64,
+    software: &str,
 ) -> Option<Vec<u8>> {
     let resized = if img.width() > max_dim || img.height() > max_dim {
         img.thumbnail(max_dim, max_dim)
@@ -287,13 +304,26 @@ pub fn create_freedesktop_png(
     let mut out = std::io::Cursor::new(Vec::with_capacity(32 * 1024));
     resized.write_to(&mut out, image::ImageFormat::Png).ok()?;
     let png_bytes = out.into_inner();
-    Some(embed_freedesktop_metadata_raw(&png_bytes, uri, mtime_sec))
+    Some(embed_freedesktop_metadata_raw(
+        &png_bytes,
+        uri,
+        mtime_sec,
+        Some(software),
+    ))
 }
 
-/// Injects FreeDesktop `Thumb::URI` and `Thumb::MTime` chunks into PNG image bytes.
-pub fn embed_freedesktop_metadata(raw_bytes: &[u8], uri: &str, mtime_sec: u64) -> Vec<u8> {
+/// Injects FreeDesktop `Thumb::URI`, `Thumb::MTime` and `Software` chunks into PNG image bytes.
+///
+/// `software` names the program generating the thumbnail; see
+/// [`embed_freedesktop_metadata_raw`].
+pub fn embed_freedesktop_metadata(
+    raw_bytes: &[u8],
+    uri: &str,
+    mtime_sec: u64,
+    software: &str,
+) -> Vec<u8> {
     let png_bytes = ensure_png_bytes(raw_bytes);
-    embed_freedesktop_metadata_raw(&png_bytes, uri, mtime_sec)
+    embed_freedesktop_metadata_raw(&png_bytes, uri, mtime_sec, Some(software))
 }
 
 /// Locates standard FreeDesktop thumbnail directories (`$XDG_CACHE_HOME/thumbnails/{normal,large}`).
@@ -313,7 +343,10 @@ pub fn freedesktop_thumbnail_dirs() -> (PathBuf, PathBuf) {
 }
 
 /// Installs a Nextcloud-provided preview into the FreeDesktop thumbnail cache for `target_file`.
-pub fn install_freedesktop_thumbnail(target_file: &Path, png_bytes: &[u8]) {
+///
+/// `software` names the program generating the thumbnail and is written to the PNG
+/// `Software` chunk.
+pub fn install_freedesktop_thumbnail(target_file: &Path, png_bytes: &[u8], software: &str) {
     let mtime_sec = target_file
         .metadata()
         .and_then(|m| m.modified())
@@ -321,7 +354,7 @@ pub fn install_freedesktop_thumbnail(target_file: &Path, png_bytes: &[u8]) {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    install_freedesktop_thumbnail_with_mtime(target_file, png_bytes, mtime_sec);
+    install_freedesktop_thumbnail_with_mtime(target_file, png_bytes, mtime_sec, software);
 }
 
 /// Installs a Nextcloud-provided preview into the FreeDesktop thumbnail cache for `target_file` with explicit modification time.
@@ -329,6 +362,7 @@ pub fn install_freedesktop_thumbnail_with_mtime(
     target_file: &Path,
     png_bytes: &[u8],
     mtime_sec: u64,
+    software: &str,
 ) {
     let (normal_dir, large_dir) = freedesktop_thumbnail_dirs();
     let _ = fs::create_dir_all(&normal_dir);
@@ -367,20 +401,20 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         }
 
         if let Some(ref img) = parsed_img {
-            if let Some(normal_png) = create_freedesktop_png(img, 128, uri, mtime_sec) {
+            if let Some(normal_png) = create_freedesktop_png(img, 128, uri, mtime_sec, software) {
                 let _ = fs::write(&normal_dest, normal_png);
             }
-            if let Some(large_png) = create_freedesktop_png(img, 256, uri, mtime_sec) {
+            if let Some(large_png) = create_freedesktop_png(img, 256, uri, mtime_sec, software) {
                 let _ = fs::write(&large_dest, large_png);
             }
-            if let Some(xlarge_png) = create_freedesktop_png(img, 512, uri, mtime_sec) {
+            if let Some(xlarge_png) = create_freedesktop_png(img, 512, uri, mtime_sec, software) {
                 let _ = fs::write(&xlarge_dest, xlarge_png);
             }
-            if let Some(xxlarge_png) = create_freedesktop_png(img, 1024, uri, mtime_sec) {
+            if let Some(xxlarge_png) = create_freedesktop_png(img, 1024, uri, mtime_sec, software) {
                 let _ = fs::write(&xxlarge_dest, xxlarge_png);
             }
         } else {
-            let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec);
+            let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec, software);
             let _ = fs::write(&normal_dest, &tagged_bytes);
             let _ = fs::write(&large_dest, &tagged_bytes);
             let _ = fs::write(&xlarge_dest, &tagged_bytes);
@@ -435,7 +469,7 @@ pub fn install_freedesktop_fail_marker(target_file: &Path, mtime_sec: u64) {
 
         let uris = file_uris_for_path(target_file);
         for uri in uris {
-            let tagged_bytes = embed_freedesktop_metadata(&minimal_png, &uri, mtime_sec);
+            let tagged_bytes = embed_freedesktop_metadata_raw(&minimal_png, &uri, mtime_sec, None);
             let hash = md5_hex(uri.as_bytes());
             let filename = format!("{hash}.png");
             let _ = fs::write(fail_factory_dir.join(&filename), &tagged_bytes);
@@ -502,8 +536,12 @@ mod tests {
             0xAE, 0x42, 0x60, 0x82, // CRC
         ];
 
-        let tagged =
-            embed_freedesktop_metadata(&raw_png, "file:///home/user/photo.jpg", 1700000000);
+        let tagged = embed_freedesktop_metadata(
+            &raw_png,
+            "file:///home/user/photo.jpg",
+            1700000000,
+            "Test App",
+        );
         assert!(tagged.len() > raw_png.len());
         let tagged_str = String::from_utf8_lossy(&tagged);
         assert!(tagged_str.contains("Thumb::URI"));

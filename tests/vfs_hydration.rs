@@ -233,7 +233,7 @@ fn freedesktop_fail_marker_lifecycle() {
         0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
         0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
     ];
-    install_freedesktop_thumbnail_with_mtime(test_file, &minimal_png, 1700000000);
+    install_freedesktop_thumbnail_with_mtime(test_file, &minimal_png, 1700000000, "Test App");
 
     assert!(
         !fail_file.exists(),

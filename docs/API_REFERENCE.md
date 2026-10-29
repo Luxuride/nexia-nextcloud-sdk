@@ -127,6 +127,13 @@ The crate also owns the FreeDesktop thumbnail protocol:
 `path_to_file_uri()`, `crc32()`, `md5_hex()`, `ensure_png_bytes()`,
 `embed_freedesktop_metadata()`, `extract_embedded_jpeg_thumbnail()`.
 
+The `Software` PNG chunk is caller-supplied, never defaulted: the Thumbnail
+Managing Standard defines it as the name of the generating program, which only
+the caller knows. `install_freedesktop_thumbnail[_with_mtime]()` and
+`create_freedesktop_png()` take a `software: &str`; `embed_freedesktop_metadata_raw()`
+takes `Option<&str>` and omits the chunk when `None`, which is what the fail
+marker uses — a sentinel is not a generated thumbnail and names no generator.
+
 ### Trashbin & versions
 
 | Endpoint | Method | Crate | Client / method | Parameters | Returns |
