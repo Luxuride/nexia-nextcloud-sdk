@@ -1,6 +1,5 @@
 [package]
 name = "nextcloud-sdk-request"
-publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true

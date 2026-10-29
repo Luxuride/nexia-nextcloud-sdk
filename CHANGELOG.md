@@ -2,10 +2,19 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
-## Unreleased
+## 0.2.0
 
 ### Breaking
 
+- The published crate is now `nexia-nextcloud-sdk` (was `nextcloud-rust-sdk`).
+  Its two renamed dependencies are `nexia-nextcloud-core` (was
+  `nextcloud-sdk-core`) and `nexia-nextcloud-search` (was `nextcloud-search`),
+  so import paths become `nexia_nextcloud_sdk::`, `nexia_nextcloud_core::` and
+  `nexia_nextcloud_search::`. No API was removed; only the crate names moved.
+- Runtime identity strings move with the rename: the default data directory,
+  the default keyring service and the transport `User-Agent` are all
+  `nexia-nextcloud-sdk`. Credentials stored under the old service name are not
+  found and must be re-authenticated.
 - `nextcloud-preview`: the FreeDesktop `Software` PNG chunk is no longer
   hardcoded to a fixed product string. The generating program is caller
   knowledge under the Thumbnail Managing Standard, so it is now a parameter:
@@ -20,6 +29,13 @@ All notable changes to the Nextcloud Rust SDK workspace.
 
 - Thumbnail-cache cleanup in consumers no longer has to pattern-match a
   hardcoded product name to recognise its own cache entries.
+
+### Changed
+
+- The `Nextcloud Desktop` string is no longer used as an example client name.
+- The README states that this is an unofficial SDK and that "Nextcloud" names
+  the APIs implemented, not an affiliation with Nextcloud GmbH.
+
 
 ## 0.1.2
 
