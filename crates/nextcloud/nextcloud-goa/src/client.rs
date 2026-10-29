@@ -39,7 +39,7 @@ impl GnomeOnlineAccounts {
     /// This method calls `GetManagedObjects` on `/org/gnome/OnlineAccounts`,
     /// filters for objects implementing `org.gnome.OnlineAccounts.Account` with
     /// `ProviderType == "owncloud"`, extracts the username from `Identity`,
-    /// parses `Files.Uri` into a [`nextcloud_sdk_core::ServerUrl`], queries the password
+    /// parses `Files.Uri` into a [`nexia_nextcloud_core::ServerUrl`], queries the password
     /// from `org.gnome.OnlineAccounts.PasswordBased`, and returns the assembled
     /// accounts.
     ///

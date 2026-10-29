@@ -3,8 +3,8 @@
 //! Official documentation:
 //! - [Nextcloud Talk API documentation](https://nextcloud-talk.readthedocs.io/en/latest/)
 
+use nexia_nextcloud_core::{ApiPath, AuthProvider, Error, Transport};
 use nextcloud_ocs::{OcsClient, OcsFormat, Query};
-use nextcloud_sdk_core::{ApiPath, AuthProvider, Error, Transport};
 use serde::Serialize;
 
 use crate::message::ChatMessage;
@@ -148,10 +148,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll, Waker};
 
-    use nextcloud_ocs::OcsClient;
-    use nextcloud_sdk_core::{
+    use nexia_nextcloud_core::{
         AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
     };
+    use nextcloud_ocs::OcsClient;
 
     use super::TalkClient;
     use crate::room_type::RoomType;

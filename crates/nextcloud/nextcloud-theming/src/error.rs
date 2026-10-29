@@ -3,7 +3,7 @@
 use std::error::Error as StdError;
 use std::fmt;
 
-use nextcloud_sdk_core::{DecodeError, Error as SdkError, StatusError, UrlError};
+use nexia_nextcloud_core::{DecodeError, Error as SdkError, StatusError, UrlError};
 
 /// Errors encountered when fetching theming metadata, resolving branding, or probing server status.
 #[derive(Debug)]

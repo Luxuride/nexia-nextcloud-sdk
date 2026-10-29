@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::{Arc, RwLock};
 
-use nextcloud_sdk_core::{Error, Request, Response, ServerUrl, Transport};
+use nexia_nextcloud_core::{Error, Request, Response, ServerUrl, Transport};
 use nextcloud_sdk_ratelimit::{BandwidthLimit, BandwidthLimiter, ProgressCallback};
 
 use crate::header_copy::to_header_map;

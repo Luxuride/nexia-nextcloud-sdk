@@ -12,7 +12,7 @@ use crate::theme_info::ThemeInfo;
 /// Nextcloud builds) to provide custom branding, titles, colors, and user agent parameters.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomBranding {
-    /// Client application name (e.g. `"Nextcloud Desktop"` or `"ACME Sync"`).
+    /// Client application name (e.g. `"ACME Sync"` or `"Example Files"`).
     pub app_name: String,
     /// Client application version (e.g. `"1.2.0"`).
     pub app_version: Option<String>,

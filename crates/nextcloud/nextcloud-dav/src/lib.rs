@@ -6,7 +6,7 @@
 //! Multi-Status` answer into typed resources ([`DavResource`]) through
 //! [`DavClient`].
 //!
-//! Requests travel through `nextcloud_sdk_core`'s transport seam, so this crate
+//! Requests travel through `nexia_nextcloud_core`'s transport seam, so this crate
 //! is generic over *how* bytes move and *how* credentials are applied; it
 //! never opens a socket itself.
 //!

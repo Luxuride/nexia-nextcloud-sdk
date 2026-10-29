@@ -1,6 +1,6 @@
 # Nextcloud Rust SDK — Architecture
 
-`nextcloud-rust-sdk` is the full-featured Rust SDK for Nextcloud. It is not a thin
+`nexia-nextcloud-sdk` is the full-featured Rust SDK for Nextcloud. It is not a thin
 HTTP wrapper: it owns the parts of a client that are hard to get right — the
 credential and cache stores, session and request state machines, the mount
 registry, the synchronization engine, the virtual filesystem with hydration
@@ -54,13 +54,13 @@ the caller passes in a descriptor or config struct.
 |   nextcloud-dav | nextcloud-ocs | nextcloud-shares | nextcloud-users | ...        |
 |   nextcloud-goa | nextcloud-kaccounts | nextcloud-client-config | nextcloud-theming |
 |   nextcloud-trashbin | nextcloud-versions | nextcloud-uploads | nextcloud-preview  |
-|   nextcloud-deck | nextcloud-talk | nextcloud-search | nextcloud-activity          |
+|   nextcloud-deck | nextcloud-talk | nexia-nextcloud-search | nextcloud-activity          |
 +----------------------------------------------------------------------------------+
               | Transport + AuthProvider seams
               v
 +----------------------------------------------------------------------------------+
 | nextcloud-transport (reqwest)  /  nextcloud-auth (Basic, Bearer, Anonymous)       |
-| nextcloud-sdk-core (ServerUrl, ApiPath, Header, Transport, AuthProvider, Error)   |
+| nexia-nextcloud-core (ServerUrl, ApiPath, Header, Transport, AuthProvider, Error)   |
 +----------------------------------------------------------------------------------+
 ```
 
@@ -74,9 +74,9 @@ lives in `nextcloud-sdk-storage` or in the orchestrator worker.
 ## 2. Repository map
 
 ```text
-nextcloud-rust-sdk/
+nexia-nextcloud-sdk/
 ├── Cargo.toml                      # workspace: members = ["crates/*/*"]
-├── src/                            # facade crate `nextcloud-rust-sdk`
+├── src/                            # facade crate `nexia-nextcloud-sdk`
 │   ├── lib.rs                      # re-exports + crate docs
 │   ├── builder/client_builder.rs   # ClientBuilder
 │   ├── client.rs                   # Client: session + client factories + mounts
@@ -91,7 +91,7 @@ nextcloud-rust-sdk/
 │   └── SECURITY_AND_STORAGE.md
 └── crates/
     ├── core/
-    │   ├── nextcloud-sdk-core/         # Transport/AuthProvider seams, ServerUrl, ApiPath, Error
+    │   ├── nexia-nextcloud-core/         # Transport/AuthProvider seams, ServerUrl, ApiPath, Error
     │   ├── nextcloud-sdk-session/      # Login Flow v2 state machine
     │   ├── nextcloud-sdk-request/      # retry/backoff state machine
     │   ├── nextcloud-sdk-storage/      # encrypted stores
@@ -116,7 +116,7 @@ nextcloud-rust-sdk/
         ├── nextcloud-talk/             # Talk
         ├── nextcloud-preview/          # previews/thumbnails
         ├── nextcloud-theming/          # theming, branding, /status.php
-        ├── nextcloud-search/           # Unified Search
+        ├── nexia-nextcloud-search/           # Unified Search
         ├── nextcloud-sync/             # reconciliation engine + journal + queue
         ├── nextcloud-goa/              # GNOME Online Accounts
         ├── nextcloud-kaccounts/        # KDE KAccounts
@@ -334,7 +334,7 @@ applications and tools that cannot speak WebDAV:
 
 ---
 
-## 6. Facade crate: `nextcloud-rust-sdk`
+## 6. Facade crate: `nexia-nextcloud-sdk`
 
 `Client` is the per-account object an app keeps. It is built with `ClientBuilder`
 and exposes four groups:
@@ -407,7 +407,7 @@ handles and events.
 | App keeps a mount registry beside `ConfigStore` | Two sources of truth; mounts drift and vanish |
 | App re-implements ETag/mtime reconciliation | `nextcloud-sync::reconcile` + `SyncJournal` exist for this |
 | App polls progress on a timer | `MountProgress`, `DownloadProgress`, `TransferProgress` events |
-| App depends on `nextcloud-dav` / `nextcloud-sdk-core` directly | Wire types leak into the app; depend on the facade re-exports |
+| App depends on `nextcloud-dav` / `nexia-nextcloud-core` directly | Wire types leak into the app; depend on the facade re-exports |
 
 ---
 

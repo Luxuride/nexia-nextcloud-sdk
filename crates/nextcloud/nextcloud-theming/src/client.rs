@@ -1,9 +1,9 @@
 //! Asynchronous client for Nextcloud theming and server status endpoints.
 
-use nextcloud_ocs::OcsEnvelope;
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, DecodeError, Headers, HttpMethod, Request, StatusError, Transport,
 };
+use nextcloud_ocs::OcsEnvelope;
 use serde::Deserialize;
 
 use crate::custom_branding::CustomBranding;
@@ -212,8 +212,8 @@ impl<'a, T: Transport, A: AuthProvider> ThemingClient<'a, T, A> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nexia_nextcloud_core::{Error as SdkError, Response, StatusCode};
     use nextcloud_auth::Anonymous;
-    use nextcloud_sdk_core::{Error as SdkError, Response, StatusCode};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Debug)]

@@ -6,7 +6,7 @@ use super::policy::RetryPolicy;
 /// Where one API call currently stands.
 ///
 /// The state carries no response body: it records progress, not payload. The
-/// caller keeps the [`Response`](nextcloud_sdk_core::Response) it received, which
+/// caller keeps the [`Response`](nexia_nextcloud_core::Response) it received, which
 /// means an application can log the state machine freely without leaking
 /// file contents or OCS error bodies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 //! Contract checks for the public surface: the transport must be shareable
 //! across tasks and must not describe credentials anywhere.
 
-use nextcloud_sdk_core::{ServerUrl, Transport};
+use nexia_nextcloud_core::{ServerUrl, Transport};
 use nextcloud_transport::{ReqwestTransport, TimeoutConfig, TransportBuilder};
 
 fn assert_send_sync<T: Send + Sync>() {}
@@ -13,7 +13,7 @@ fn accepts_transport<T: Transport>(transport: &T) -> &T {
 fn build() -> ReqwestTransport {
     let server = ServerUrl::parse("https://cloud.example.org").expect("valid url");
     TransportBuilder::with_server(server)
-        .user_agent("nextcloud-rust-sdk-tests/1.0")
+        .user_agent("nexia-nextcloud-sdk-tests/1.0")
         .timeouts(TimeoutConfig::new())
         .build()
         .expect("default configuration must build")

@@ -24,8 +24,8 @@
 //!
 //! ```no_run
 //! use nextcloud_uploads::{UploadClient, UploadSession, DEFAULT_CHUNK_SIZE};
-//! # use nextcloud_sdk_core::{Transport, AuthProvider};
-//! # async fn run<T: Transport, A: AuthProvider>(transport: &T, auth: &A) -> Result<(), nextcloud_sdk_core::Error> {
+//! # use nexia_nextcloud_core::{Transport, AuthProvider};
+//! # async fn run<T: Transport, A: AuthProvider>(transport: &T, auth: &A) -> Result<(), nexia_nextcloud_core::Error> {
 //! let client = UploadClient::new(transport, auth);
 //!
 //! // 1. Start the upload session

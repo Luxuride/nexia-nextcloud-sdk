@@ -2,8 +2,8 @@ use std::fmt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use nexia_nextcloud_core::ServerUrl;
 use nextcloud_auth::SecretString;
-use nextcloud_sdk_core::ServerUrl;
 use nextcloud_sdk_session::{Account, LoginFlow, PollToken};
 use nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 

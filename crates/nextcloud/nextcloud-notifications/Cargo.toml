@@ -1,5 +1,6 @@
 [package]
 name = "nextcloud-notifications"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +11,7 @@ description = "Nextcloud Notifications API (v2) client and domain models"
 
 [dependencies]
 nextcloud-ocs.workspace = true
-nextcloud-sdk-core.workspace = true
+nexia-nextcloud-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

@@ -5,7 +5,7 @@ use std::fmt;
 
 /// An element a decode step required but could not find.
 ///
-/// Carries the qualified name so a [`DecodeError`](nextcloud_sdk_core::DecodeError)
+/// Carries the qualified name so a [`DecodeError`](nexia_nextcloud_core::DecodeError)
 /// wrapping it says *which* element was absent, not just that decoding failed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MissingElement {

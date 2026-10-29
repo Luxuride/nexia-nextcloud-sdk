@@ -30,7 +30,7 @@ pub async fn find_kaccount_credentials<K: KeyringBackend>(
 
 #[cfg(all(test, feature = "keyring"))]
 mod tests {
-    use nextcloud_sdk_core::ServerUrl;
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_sdk_keyring::MemoryKeyring;
 
     use super::*;

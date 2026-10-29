@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use nexia_nextcloud_core::ServerUrl;
+use nexia_nextcloud_search::SearchClient;
 use nextcloud_activity::ActivityClient;
 use nextcloud_auth::BasicAuth;
 use nextcloud_dav::DavClient;
@@ -9,10 +11,8 @@ use nextcloud_deck::DeckClient;
 use nextcloud_notifications::NotificationClient;
 use nextcloud_ocs::OcsClient;
 use nextcloud_preview::PreviewClient;
-use nextcloud_sdk_core::ServerUrl;
 use nextcloud_sdk_session::{LoginStart, SessionState};
 use nextcloud_sdk_vfs::VirtualTree;
-use nextcloud_search::SearchClient;
 use nextcloud_shares::ShareClient;
 use nextcloud_talk::TalkClient;
 use nextcloud_transport::{BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport};
@@ -478,7 +478,7 @@ impl fmt::Debug for Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nextcloud_sdk_core::ServerUrl;
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_transport::TransportBuilder;
 
     #[tokio::test]

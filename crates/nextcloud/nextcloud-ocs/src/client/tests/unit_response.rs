@@ -1,6 +1,6 @@
 use std::future::IntoFuture;
 
-use nextcloud_sdk_core::ApiPath;
+use nexia_nextcloud_core::ApiPath;
 
 use super::{FakeTransport, block_on, client};
 

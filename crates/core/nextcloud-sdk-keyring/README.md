@@ -2,7 +2,7 @@
 
 > Multiplatform secure credential storage abstraction with Flatpak portal fallback and native desktop keychain support.
 
-Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
 
 ## Installation
 

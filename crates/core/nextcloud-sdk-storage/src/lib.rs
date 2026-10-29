@@ -12,7 +12,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let paths = StoragePaths::default_xdg()?;
-//! let keys = KeychainKeyStore::new("dev.example.app", "nextcloud-rust-sdk");
+//! let keys = KeychainKeyStore::new("dev.example.app", "nexia-nextcloud-sdk");
 //! let auth = paths.open_auth_db(&keys.load_or_create().await?)?;
 //! # let _ = auth;
 //! # Ok(())

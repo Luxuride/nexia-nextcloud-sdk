@@ -2,7 +2,7 @@
 
 > Nextcloud Talk (Spreed) client for chat conversations and rooms.
 
-Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
 
 ## Installation
 

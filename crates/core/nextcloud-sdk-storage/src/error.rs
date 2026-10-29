@@ -163,8 +163,8 @@ mod tests {
     #[test]
     fn malformed_key_names_the_entry_without_its_secret() {
         let error = StorageError::MalformedKey {
-            entry: "dev.example.app/nextcloud-rust-sdk".to_owned(),
+            entry: "dev.example.app/nexia-nextcloud-sdk".to_owned(),
         };
-        assert!(error.to_string().contains("nextcloud-rust-sdk"));
+        assert!(error.to_string().contains("nexia-nextcloud-sdk"));
     }
 }

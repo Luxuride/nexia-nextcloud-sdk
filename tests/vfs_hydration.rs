@@ -11,7 +11,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
-use nextcloud_rust_sdk::{
+use nexia_nextcloud_sdk::{
     AsyncHydrator, FuseDriver, MountDescriptor, MountMode, NextcloudOrchestrator, NodeMetadata,
     OrchestratorConfig, OrchestratorEvent, SyncFileStatus, VfsError, VirtualEntrySummary,
     VirtualNode, VirtualTree, freedesktop_thumbnail_dirs, install_freedesktop_fail_marker,
@@ -505,10 +505,10 @@ fn vfs_directory_preservation_and_recovery() {
     let journal_path = temp_root.join("sync.journal");
     std::fs::create_dir_all(&local_sync_root).unwrap();
 
-    let runner = nextcloud_rust_sdk::FolderSyncRunner::new(&local_sync_root, "/", &journal_path);
+    let runner = nexia_nextcloud_sdk::FolderSyncRunner::new(&local_sync_root, "/", &journal_path);
 
     // 1. Remote has a directory /Camera
-    let remote_camera = nextcloud_rust_sdk::DiscoveredRemoteFile {
+    let remote_camera = nexia_nextcloud_sdk::DiscoveredRemoteFile {
         relative_path: "/Camera".to_string(),
         href: "/remote.php/dav/files/user/Camera/".to_string(),
         size: 1048576,
@@ -531,14 +531,14 @@ fn vfs_directory_preservation_and_recovery() {
     assert!(
         !actions
             .iter()
-            .any(|a| matches!(a, nextcloud_rust_sdk::SyncAction::Download { .. })),
+            .any(|a| matches!(a, nexia_nextcloud_sdk::SyncAction::Download { .. })),
         "Directory must NEVER be scheduled for Download: {actions:?}"
     );
 
     // 3. Testing apply_placeholder refuses to overwrite a directory
     let real_dir = local_sync_root.join("RealDir");
     std::fs::create_dir_all(&real_dir).unwrap();
-    let mut journal = nextcloud_rust_sdk::SyncJournal::new();
+    let mut journal = nexia_nextcloud_sdk::SyncJournal::new();
     let err = runner.apply_placeholder("/RealDir", 100, None, &mut journal);
     assert!(err.is_err(), "apply_placeholder must fail on a directory");
 

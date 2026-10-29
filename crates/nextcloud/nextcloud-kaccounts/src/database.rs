@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use nextcloud_sdk_core::ServerUrl;
+use nexia_nextcloud_core::ServerUrl;
 use rusqlite::{Connection, OpenFlags};
 
 use crate::account::KAccount;

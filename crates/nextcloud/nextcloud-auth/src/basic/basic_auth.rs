@@ -2,7 +2,7 @@ use std::fmt;
 
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
-use nextcloud_sdk_core::{AuthProvider, Headers};
+use nexia_nextcloud_core::{AuthProvider, Headers};
 
 use super::AppPassword;
 use crate::SecretString;
@@ -69,7 +69,7 @@ impl fmt::Debug for BasicAuth {
 mod tests {
     use base64::Engine as _;
     use base64::prelude::BASE64_STANDARD;
-    use nextcloud_sdk_core::{AuthProvider, Headers};
+    use nexia_nextcloud_core::{AuthProvider, Headers};
 
     use super::BasicAuth;
     use crate::SecretString;
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn authenticate_replaces_an_existing_authorization_header() {
         let mut headers =
-            Headers::new().with(nextcloud_sdk_core::Header::new("authorization", "stale"));
+            Headers::new().with(nexia_nextcloud_core::Header::new("authorization", "stale"));
         basic_auth().authenticate(&mut headers);
         assert_eq!(headers.len(), 1);
         assert_eq!(

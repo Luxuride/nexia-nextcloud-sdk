@@ -1,8 +1,8 @@
 //! HTTP transport for the Nextcloud SDK.
 //!
-//! The crate fills the [`nextcloud_sdk_core::Transport`] seam with a `reqwest`
+//! The crate fills the [`nexia_nextcloud_core::Transport`] seam with a `reqwest`
 //! backed implementation: a [`TransportBuilder`] turns a
-//! [`ServerUrl`](nextcloud_sdk_core::ServerUrl) plus timeout and user-agent
+//! [`ServerUrl`](nexia_nextcloud_core::ServerUrl) plus timeout and user-agent
 //! settings into a [`ReqwestTransport`], which resolves API paths to absolute
 //! URLs and hands raw responses back to the API crates unchanged.
 #![deny(missing_docs)]

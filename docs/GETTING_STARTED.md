@@ -23,7 +23,7 @@ Two integration modes exist and a real app uses both:
 
 ```toml
 [dependencies]
-nextcloud-rust-sdk = "0.1.3"
+nexia-nextcloud-sdk = "0.1.3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 ```
 
@@ -31,7 +31,7 @@ The facade re-exports the runtime types, so one dependency covers session
 handling, stateless clients **and** the orchestrator:
 
 ```rust
-use nextcloud_rust_sdk::{
+use nexia_nextcloud_sdk::{
     Client, ClientBuilder, ClientEvent, MountDescriptor, MountMode, MountsHandle,
     NextcloudOrchestrator, OrchestratorConfig, OrchestratorEvent, OrchestratorHandle,
     SyncFileStatus, VfsHandle,
@@ -43,7 +43,7 @@ must not carry the runtime (for example a CLI that only reads capabilities):
 
 ```toml
 [dependencies]
-nextcloud-sdk-core = "0.1.3"
+nexia-nextcloud-core = "0.1.3"
 nextcloud-auth = "0.1.3"
 nextcloud-transport = "0.1.3"
 nextcloud-dav = "0.1.3"
@@ -58,7 +58,7 @@ server directly. Login Flow v2 keeps the user's real password — and any 2FA �
 inside the browser; the app receives an app password.
 
 ```rust
-use nextcloud_rust_sdk::{Client, ClientBuilder, ServerUrl, SessionState};
+use nexia_nextcloud_sdk::{Client, ClientBuilder, ServerUrl, SessionState};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -132,7 +132,7 @@ mount per folder the user selects — a root mount plus any number of
 subdirectory mounts, all on the same account.
 
 ```rust
-use nextcloud_rust_sdk::{MountDescriptor, MountMode};
+use nexia_nextcloud_sdk::{MountDescriptor, MountMode};
 
 let documents = MountDescriptor::new(
     "alice",                    // account_id
@@ -160,7 +160,7 @@ switch: the orchestrator stores it and never branches on it, so declaring
 `FuseDriver` and call the lower-level API yourself:
 
 ```rust
-use nextcloud_rust_sdk::{mount_virtual_fs, FuseDriver};
+use nexia_nextcloud_sdk::{mount_virtual_fs, FuseDriver};
 
 let driver = FuseDriver::new(/* a VirtualTree snapshot */ client.new_vfs("Nextcloud"));
 let _session = mount_virtual_fs(driver, "/home/alice/NextcloudVfs")?; // RAII: unmounts on drop
@@ -172,7 +172,7 @@ Persist them so the next launch restores them exactly. The persisted record is
 `updated_at`):
 
 ```rust
-use nextcloud_rust_sdk::StoredSyncMount;
+use nexia_nextcloud_sdk::StoredSyncMount;
 
 client
     .store_sync_mount(StoredSyncMount {
@@ -200,7 +200,7 @@ OS thread and its own Tokio runtime; the app only sends commands and reads
 events.
 
 ```rust
-use nextcloud_rust_sdk::{NextcloudOrchestrator, OrchestratorConfig, OrchestratorEvent};
+use nexia_nextcloud_sdk::{NextcloudOrchestrator, OrchestratorConfig, OrchestratorEvent};
 
 let config = OrchestratorConfig::new("/home/alice/.cache/nextcloud")
     .with_mount(documents)
@@ -268,7 +268,7 @@ handle.resume_all_sync().await?;
 ### 3.2 File state and storage
 
 ```rust
-use nextcloud_rust_sdk::SyncFileStatus;
+use nexia_nextcloud_sdk::SyncFileStatus;
 
 // Per-file state inside a mount. `file_status` takes the mount id explicitly;
 // `status_for_local_path` resolves an absolute path across all mounts.
@@ -345,7 +345,7 @@ handle, then react to the events.
 When an application needs a real path rather than an API:
 
 ```rust
-use nextcloud_rust_sdk::{mount_virtual_fs, FuseDriver, VirtualTree};
+use nexia_nextcloud_sdk::{mount_virtual_fs, FuseDriver, VirtualTree};
 use std::sync::{Arc, RwLock};
 
 let tree: Arc<RwLock<VirtualTree>> = Arc::new(RwLock::new(vfs.snapshot().await?));
@@ -375,9 +375,9 @@ let auth = client.credentials().ok_or("not signed in")?;
 let ocs = client.ocs()?;
 
 // WebDAV file operations — every path is a `DavPath`, not a bare &str.
-use nextcloud_rust_sdk::{DavPath, Depth, Overwrite, PropfindBody};
+use nexia_nextcloud_sdk::{DavPath, Depth, Overwrite, PropfindBody};
 // Preview, activity and share helpers used further down.
-use nextcloud_rust_sdk::{ActivityFilter, CreateShare, PreviewMode, PreviewOptions};
+use nexia_nextcloud_sdk::{ActivityFilter, CreateShare, PreviewMode, PreviewOptions};
 
 let user = client.current_user_id().ok_or("not signed in")?;
 let documents = DavPath::new(&user, "Documents")?;
@@ -437,7 +437,7 @@ The full endpoint → crate → method matrix is in
 ```rust
 use std::sync::Arc;
 
-use nextcloud_rust_sdk::{BandwidthLimit, TransferProgress};
+use nexia_nextcloud_sdk::{BandwidthLimit, TransferProgress};
 
 client.set_download_limit(BandwidthLimit::from_mib(50));
 client.set_upload_limit(BandwidthLimit::from_mib(10));
@@ -488,7 +488,7 @@ macOS, Credential Manager on Windows). See
 [`SECURITY_AND_STORAGE.md`](SECURITY_AND_STORAGE.md) for the full model.
 
 ```rust
-use nextcloud_rust_sdk::{StoragePaths, StoreKey, KeychainKeyStore, KeyStore};
+use nexia_nextcloud_sdk::{StoragePaths, StoreKey, KeychainKeyStore, KeyStore};
 
 let paths = StoragePaths::default_xdg()?;
 paths.ensure_directories()?;
@@ -511,7 +511,7 @@ A thin integration satisfies all of these. Use it as a review checklist:
 - [ ] No local journal, etag cache or mount registry beside `ConfigStore`.
 - [ ] Progress comes from `OrchestratorEvent`, not from polling commands.
 - [ ] First-run setup uses direct requests only until the first mount is added.
-- [ ] Only `nextcloud-rust-sdk` is a dependency, not the internal crates.
+- [ ] Only `nexia-nextcloud-sdk` is a dependency, not the internal crates.
 
 ---
 

@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use nexia_nextcloud_core::ServerUrl;
 use nextcloud_auth::SecretString;
-use nextcloud_sdk_core::ServerUrl;
 use nextcloud_sdk_request::RetryPolicy;
 use nextcloud_sdk_session::{Account, SessionMachine, SessionState};
 use nextcloud_sdk_storage::{KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey};

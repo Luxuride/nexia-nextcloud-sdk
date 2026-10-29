@@ -1,4 +1,4 @@
-use nextcloud_sdk_core::ServerUrl;
+use nexia_nextcloud_core::ServerUrl;
 
 /// An online account discovered from KDE Plasma's KAccounts / Accounts-SSO system.
 #[derive(Clone, Debug, PartialEq, Eq)]

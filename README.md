@@ -1,8 +1,12 @@
-# nextcloud-rust-sdk
+# nexia-nextcloud-sdk
 
 The full-featured Rust SDK for Nextcloud: a typed client for every API area plus
 a managed runtime — mounts, synchronization, virtual-file hydration, thumbnails,
 caching and event delivery.
+
+> **Unofficial.** This is an independent, community SDK. It is not affiliated
+> with, endorsed by, or produced by Nextcloud GmbH. "Nextcloud" is a trademark
+> of Nextcloud GmbH and is used here only to name the APIs this crate implements.
 
 **This crate is the engine, and it is generic.** It has no knowledge of any
 particular consumer: no application is named here, none is special-cased, and
@@ -39,7 +43,7 @@ holds everything that knows Nextcloud's wire format.
 
 | Crate | Responsibility |
 | --- | --- |
-| `nextcloud-sdk-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
+| `nexia-nextcloud-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
 | `nextcloud-sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
 | `nextcloud-sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
 | `nextcloud-sdk-storage` | Encrypted SQLCipher SQLite stores: credentials (`auth.db`), response cache (`cache.db`) and configuration (`config.db`); `StoreKey` handling and migrations |
@@ -54,7 +58,7 @@ holds everything that knows Nextcloud's wire format.
 | Crate | Responsibility |
 | --- | --- |
 | `nextcloud-auth` | App password, bearer token and anonymous credentials |
-| `nextcloud-transport` | `reqwest`-backed implementation of `nextcloud_sdk_core::Transport` |
+| `nextcloud-transport` | `reqwest`-backed implementation of `nexia_nextcloud_core::Transport` |
 | `nextcloud-ocs` | OCS envelope (`meta`/`data`), mutations (POST, PUT, DELETE), and generic client |
 | `nextcloud-dav` | WebDAV paths, file & collection CRUD operations (`get`, `put`, `mkcol`, `delete`, `move_`, `copy`), PROPFIND bodies and multistatus decoding |
 | `nextcloud-users` | Server capabilities and user profile data |
@@ -68,7 +72,7 @@ holds everything that knows Nextcloud's wire format.
 | `nextcloud-talk` | Nextcloud Talk (Spreed) conversations, chat messages, and rooms (`/ocs/v2.php/apps/spreed/api/v4/room`, `/ocs/v2.php/apps/spreed/api/v1/chat`) |
 | `nextcloud-preview` | Nextcloud thumbnail and preview generation client (`/index.php/core/preview.png`) plus the FreeDesktop thumbnail protocol |
 | `nextcloud-theming` | Theming and custom branding (`/ocs/v2.php/apps/theming/api/v1/theme`), unauthenticated `/status.php` probing, `CustomBranding` overrides merged into `EffectiveBranding` |
-| `nextcloud-search` | Unified Search providers and queries (`/ocs/v2.php/search/providers`) |
+| `nexia-nextcloud-search` | Unified Search providers and queries (`/ocs/v2.php/search/providers`) |
 | `nextcloud-sync` | Bidirectional sync engine internals: 3-way `reconcile`, `SyncAction`, `SyncJournal`, local scanner, remote item metadata, download queue |
 | `nextcloud-goa` | Direct GNOME Online Accounts (`org.gnome.OnlineAccounts`) D-Bus client via `zbus` |
 | `nextcloud-kaccounts` | KDE Plasma Online Accounts (KAccounts / Accounts-SSO) reader for Nextcloud system accounts |
@@ -76,7 +80,7 @@ holds everything that knows Nextcloud's wire format.
 
 ### Facade (`src/`)
 
-The root `nextcloud-rust-sdk` package re-exports the workspace vocabulary, so a
+The root `nexia-nextcloud-sdk` package re-exports the workspace vocabulary, so a
 single dependency is enough, and adds the app-facing pieces:
 
 | Module | Contents |
@@ -158,7 +162,7 @@ user action, a filesystem watcher) drives
 * Assume `MountsHandle::sync_mount()` talks to the network. It reconciles the
   local directory against the journal only.
 * Depend on the internal crates and their wire types; depend on
-  `nextcloud-rust-sdk` and use the re-exports.
+  `nexia-nextcloud-sdk` and use the re-exports.
 
 ---
 

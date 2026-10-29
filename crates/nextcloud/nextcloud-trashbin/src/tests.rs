@@ -4,11 +4,11 @@ use std::future::Future;
 use std::sync::Mutex;
 use std::task::Poll;
 
-use nextcloud_auth::Anonymous;
-use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, OVERWRITE_HEADER};
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
 };
+use nextcloud_auth::Anonymous;
+use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, OVERWRITE_HEADER};
 
 use crate::TrashClient;
 

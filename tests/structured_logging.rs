@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use nextcloud_rust_sdk::{BandwidthLimit, ClientBuilder, SecretString, ServerUrl, StoreKey};
+use nexia_nextcloud_sdk::{BandwidthLimit, ClientBuilder, SecretString, ServerUrl, StoreKey};
 use tracing::span::{Attributes, Id, Record};
 use tracing::{Event, Metadata, Subscriber};
 

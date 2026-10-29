@@ -2,8 +2,10 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
+use nexia_nextcloud_core::{
+    AuthProvider, Error, Headers, Request, Response, StatusCode, Transport,
+};
 use nextcloud_ocs::OcsClient;
-use nextcloud_sdk_core::{AuthProvider, Error, Headers, Request, Response, StatusCode, Transport};
 
 use super::UserClient;
 

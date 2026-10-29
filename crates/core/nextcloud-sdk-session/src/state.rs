@@ -1,7 +1,7 @@
 use std::fmt;
 
+use nexia_nextcloud_core::ServerUrl;
 use nextcloud_auth::SecretString;
-use nextcloud_sdk_core::ServerUrl;
 
 /// Credentials the login flow produced, plus the identity behind them.
 ///
@@ -178,8 +178,8 @@ impl SessionState {
 
 #[cfg(test)]
 mod tests {
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_auth::SecretString;
-    use nextcloud_sdk_core::ServerUrl;
 
     use super::{Account, LoginFlow, PollToken, SessionState};
 

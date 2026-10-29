@@ -2,11 +2,11 @@
 
 use std::fmt;
 
-use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, OVERWRITE_HEADER, Overwrite};
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusCode,
     StatusError, Transport,
 };
+use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, OVERWRITE_HEADER, Overwrite};
 
 use crate::item::TrashItem;
 use crate::path::{restore_destination_path, trash_item_path, trash_root_path};

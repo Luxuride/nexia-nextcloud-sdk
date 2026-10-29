@@ -1,6 +1,6 @@
 //! URL parsing helpers for GNOME Online Accounts WebDAV endpoints.
 
-use nextcloud_sdk_core::{ServerUrl, UrlError};
+use nexia_nextcloud_core::{ServerUrl, UrlError};
 
 use crate::GoaError;
 

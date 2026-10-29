@@ -9,7 +9,7 @@ a mount, an ETag cache or a retry timer — that state lives in
 `nextcloud-sdk-orchestrator`. See
 [`ARCHITECTURE.md`](ARCHITECTURE.md#1-layers) for the layering rule.
 
-Reference implementation: `nextcloud-rust-sdk` version `0.1.3`, workspace
+Reference implementation: `nexia-nextcloud-sdk` version `0.1.3`, workspace
 `members = ["crates/*/*"]`.
 
 ---
@@ -172,8 +172,8 @@ the client does not read it from the session.
 
 | Endpoint | Method | Crate | Client / method | Parameters | Returns |
 | --- | --- | --- | --- | --- | --- |
-| `/ocs/v2.php/search/providers` | `GET` | `nextcloud-search` | `SearchClient::list_providers()` | — | `Vec<SearchProvider>` |
-| `/ocs/v2.php/search/providers/{id}/search` | `GET` | `nextcloud-search` | `SearchClient::search(provider_id, term)` / `search_with_options(provider_id, term, limit, cursor)` | `&str`, `&str`, `Option<u32>`, `Option<i64>` | `SearchResultSet` |
+| `/ocs/v2.php/search/providers` | `GET` | `nexia-nextcloud-search` | `SearchClient::list_providers()` | — | `Vec<SearchProvider>` |
+| `/ocs/v2.php/search/providers/{id}/search` | `GET` | `nexia-nextcloud-search` | `SearchClient::search(provider_id, term)` / `search_with_options(provider_id, term, limit, cursor)` | `&str`, `&str`, `Option<u32>`, `Option<i64>` | `SearchResultSet` |
 
 Search is always scoped to one provider — there is no global query method. Call
 `list_providers()` first, then `search(&provider.id, term)`.
@@ -200,13 +200,13 @@ D-Bus bus name, a SQLite file or an INI file.
 | `org.gnome.OnlineAccounts` | D-Bus (`zbus`) | `nextcloud-goa` | `GnomeOnlineAccounts::connect()` → `list_accounts()` | `Vec<GoaAccount>` |
 | `~/.local/share/accounts/accounts.db` | SQLite | `nextcloud-kaccounts` | `KAccountsDatabase::open_default()` → `list_accounts()`; free function `find_kaccount_credentials()` | `Vec<KAccount>` |
 | `nextcloud.cfg` (Linux/macOS/Windows) | INI | `nextcloud-client-config` | `ClientConfigParser::parse_file(path)` / `parse_str(&str)`; `discover_config_paths()`, `find_active_config_path()` | `Vec<DesktopClientAccount>` |
-| All of the above | Discovery | `nextcloud-rust-sdk` (`sso`) | `DesktopSso::discover_accounts()` → `Vec<DiscoveredAccount>`; `resolve_credentials()` | `Vec<DiscoveredAccount>` |
+| All of the above | Discovery | `nexia-nextcloud-sdk` (`sso`) | `DesktopSso::discover_accounts()` → `Vec<DiscoveredAccount>`; `resolve_credentials()` | `Vec<DiscoveredAccount>` |
 
 ---
 
 ## 3. Crate-by-crate reference
 
-### 3.1 `nextcloud-sdk-core` (core)
+### 3.1 `nexia-nextcloud-core` (core)
 
 Foundational HTTP semantics, type-safe paths, and the two seam traits.
 
@@ -384,7 +384,7 @@ call it directly.
   `effective_branding`.
 - `ThemeInfo`, `CustomBranding`, `EffectiveBranding`, `ServerStatusInfo`, `ThemingError`.
 
-### 3.20 `nextcloud-preview`, `nextcloud-trashbin`, `nextcloud-versions`, `nextcloud-uploads`, `nextcloud-deck`, `nextcloud-talk`, `nextcloud-search`
+### 3.20 `nextcloud-preview`, `nextcloud-trashbin`, `nextcloud-versions`, `nextcloud-uploads`, `nextcloud-deck`, `nextcloud-talk`, `nexia-nextcloud-search`
 
 See the endpoint tables above; each crate exposes exactly the methods listed, plus
 value types named after their row (`PreviewOptions`, `TrashItem`, `FileVersion`,
@@ -397,7 +397,7 @@ OS-level account discovery for SSO and migration: GNOME Online Accounts and
 KAccounts over their native channels, plus `nextcloud.cfg` parsing so a consumer
 can adopt existing account and folder pairs on first run.
 
-### 3.22 Facade: `nextcloud-rust-sdk`
+### 3.22 Facade: `nexia-nextcloud-sdk`
 
 - `ClientBuilder` — `server_url`, `storage`/`storage_paths`, `store_key`,
   `key_store`, `keychain(app_id, account)`, `initial_account`,

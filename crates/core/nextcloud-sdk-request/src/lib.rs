@@ -5,7 +5,7 @@
 //! [`RequestMachine`] never sleeps and never opens a connection; it returns an
 //! [`Effect`] the caller loop performs.
 //!
-//! Retry eligibility mirrors [`nextcloud_sdk_core::Error::is_retryable`]: transport
+//! Retry eligibility mirrors [`nexia_nextcloud_core::Error::is_retryable`]: transport
 //! failures, `5xx` and `429` are retried, everything else is final. Delays grow
 //! exponentially from a configurable base and are capped, so a long outage
 //! cannot push the next attempt far into the future.

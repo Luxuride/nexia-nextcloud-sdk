@@ -1,6 +1,6 @@
 use std::future::IntoFuture;
 
-use nextcloud_sdk_core::{ApiPath, HttpMethod};
+use nexia_nextcloud_core::{ApiPath, HttpMethod};
 use serde::{Deserialize, Serialize};
 
 use super::{FakeTransport, block_on, client};

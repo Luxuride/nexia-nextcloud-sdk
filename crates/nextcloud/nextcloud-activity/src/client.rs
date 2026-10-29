@@ -5,8 +5,8 @@
 //! - [Developer manual source](https://github.com/nextcloud/documentation/blob/master/developer_manual/client_apis/activity-api.rst)
 //! - [Activity endpoint specification](https://github.com/nextcloud/activity/blob/master/docs/endpoint-v2.md)
 
+use nexia_nextcloud_core::{ApiPath, AuthProvider, Error, Transport};
 use nextcloud_ocs::OcsClient;
-use nextcloud_sdk_core::{ApiPath, AuthProvider, Error, Transport};
 
 use crate::activity::Activity;
 use crate::query::ActivityFilter;
@@ -74,10 +74,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll, Waker};
 
-    use nextcloud_ocs::OcsClient;
-    use nextcloud_sdk_core::{
+    use nexia_nextcloud_core::{
         AuthProvider, Error, Headers, Request, Response, StatusCode, Transport,
     };
+    use nextcloud_ocs::OcsClient;
 
     use super::ActivityClient;
     use crate::query::ActivityFilter;

@@ -1,4 +1,4 @@
-use nextcloud_sdk_core::Error;
+use nexia_nextcloud_core::Error;
 
 /// Why a call failed, reduced to the part a retry policy cares about.
 ///

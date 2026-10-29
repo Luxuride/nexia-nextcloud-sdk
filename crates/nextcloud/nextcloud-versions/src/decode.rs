@@ -1,7 +1,7 @@
 //! Decoding WebDAV multistatus XML into [`FileVersion`] items.
 
+use nexia_nextcloud_core::DecodeError;
 use nextcloud_dav::xml::{self, MissingElement};
-use nextcloud_sdk_core::DecodeError;
 
 use crate::version::FileVersion;
 

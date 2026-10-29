@@ -1,5 +1,6 @@
 [package]
 name = "nextcloud-sdk-fuse"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +10,7 @@ readme = "README.md"
 description = "Transient VFS FUSE driver for desktop filesystem mounting"
 
 [dependencies]
-nextcloud-sdk-core.workspace = true
+nexia-nextcloud-core.workspace = true
 nextcloud-sdk-vfs.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros"] }
 tracing.workspace = true

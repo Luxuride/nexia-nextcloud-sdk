@@ -79,7 +79,7 @@ pub enum OrchestratorError {
         /// Context or name of the operation.
         operation: String,
         /// Underlying SDK core error.
-        source: nextcloud_sdk_core::Error,
+        source: nexia_nextcloud_core::Error,
     },
 
     /// Serialization or deserialization failed.
@@ -155,8 +155,8 @@ impl std::error::Error for OrchestratorError {
     }
 }
 
-impl From<nextcloud_sdk_core::Error> for OrchestratorError {
-    fn from(source: nextcloud_sdk_core::Error) -> Self {
+impl From<nexia_nextcloud_core::Error> for OrchestratorError {
+    fn from(source: nexia_nextcloud_core::Error) -> Self {
         Self::Api {
             operation: "transport execution".to_string(),
             source,

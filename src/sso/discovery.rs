@@ -12,7 +12,7 @@ use crate::sso::error::SsoError;
 #[derive(Clone, Debug, Default)]
 pub struct DesktopSso;
 
-fn canonical_key(server_url: &nextcloud_sdk_core::ServerUrl, username: &str) -> (String, String) {
+fn canonical_key(server_url: &nexia_nextcloud_core::ServerUrl, username: &str) -> (String, String) {
     let auth = server_url.authority();
     let host = auth.split(':').next().unwrap_or(auth);
     let resolved = std::net::ToSocketAddrs::to_socket_addrs(&(host, 443))
@@ -84,7 +84,7 @@ impl DesktopSso {
             }
         }
 
-        // 3. Official Nextcloud Desktop Client configurations
+        // 3. Upstream desktop client configurations
         for path in nextcloud_client_config::discover_config_paths() {
             if path.is_file()
                 && let Ok(accounts) = nextcloud_client_config::ClientConfigParser::parse_file(&path)
@@ -144,7 +144,7 @@ impl DesktopSso {
 
 #[cfg(test)]
 mod tests {
-    use nextcloud_sdk_core::ServerUrl;
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_sdk_keyring::MemoryKeyring;
 
     use super::*;

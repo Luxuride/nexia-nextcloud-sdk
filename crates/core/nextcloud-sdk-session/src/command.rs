@@ -50,8 +50,8 @@ impl PollTarget {
 
 #[cfg(test)]
 mod tests {
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_auth::SecretString;
-    use nextcloud_sdk_core::ServerUrl;
 
     use super::{Account, Command, PollTarget};
 

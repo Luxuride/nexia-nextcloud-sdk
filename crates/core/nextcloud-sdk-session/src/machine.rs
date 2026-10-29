@@ -162,8 +162,8 @@ impl Default for SessionMachine {
 
 #[cfg(test)]
 mod tests {
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_auth::SecretString;
-    use nextcloud_sdk_core::ServerUrl;
 
     use super::SessionMachine;
     use crate::command::{Command, PollTarget};

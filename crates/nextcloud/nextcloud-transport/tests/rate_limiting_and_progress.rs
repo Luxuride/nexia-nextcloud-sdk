@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use nextcloud_sdk_core::{ApiPath, HttpMethod, Request, ServerUrl, Transport};
+use nexia_nextcloud_core::{ApiPath, HttpMethod, Request, ServerUrl, Transport};
 use nextcloud_transport::{BandwidthLimit, TransportBuilder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;

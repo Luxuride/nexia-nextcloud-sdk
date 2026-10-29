@@ -1,8 +1,8 @@
 use std::fmt;
 
+use nexia_nextcloud_core::{ApiPath, Error, HttpMethod, Request, ServerUrl, Transport};
 use nextcloud_auth::{BasicAuth, SecretString};
 use nextcloud_ocs::OcsClient;
-use nextcloud_sdk_core::{ApiPath, Error, HttpMethod, Request, ServerUrl, Transport};
 use nextcloud_sdk_session::{
     Account, LoginFlow, LoginStart, LoginSuccess, PollToken, SessionError, SessionEvent,
     SessionMachine, SessionState,
@@ -247,7 +247,7 @@ impl WorkerActor {
             self.state_tx
                 .send_replace(self.session_machine.state().clone());
             return Err(ClientError::Core(Error::Status(
-                nextcloud_sdk_core::StatusError::new(
+                nexia_nextcloud_core::StatusError::new(
                     "POST",
                     path,
                     response.status(),

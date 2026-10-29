@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use nextcloud_sdk_core::Error;
+use nexia_nextcloud_core::Error;
 use nextcloud_sdk_session::SessionError;
 use nextcloud_sdk_storage::StorageError;
 use nextcloud_transport::TransportBuildError;

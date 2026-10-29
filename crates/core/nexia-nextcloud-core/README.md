@@ -1,14 +1,14 @@
-# nextcloud-sdk-core
+# nexia-nextcloud-core
 
 > Core primitives, type-safe path abstractions, and seam traits for the Nextcloud Rust SDK.
 
-Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
 
 ## Installation
 
 ```toml
 [dependencies]
-nextcloud-sdk-core = "0.1.2"
+nexia-nextcloud-core = "0.1.3"
 ```
 
 ## Features
@@ -23,7 +23,7 @@ nextcloud-sdk-core = "0.1.2"
 ## Example
 
 ```rust,no_run
-use nextcloud_sdk_core::{ApiPath, HttpMethod, Request, ServerUrl};
+use nexia_nextcloud_core::{ApiPath, HttpMethod, Request, ServerUrl};
 
 let server = ServerUrl::parse("https://cloud.example.org")?;
 let path = ApiPath::dav("files/alice/Photos")?;

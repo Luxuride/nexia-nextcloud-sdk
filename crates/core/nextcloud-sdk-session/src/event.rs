@@ -1,5 +1,5 @@
+use nexia_nextcloud_core::ServerUrl;
 use nextcloud_auth::SecretString;
-use nextcloud_sdk_core::ServerUrl;
 
 use crate::state::PollToken;
 
@@ -131,8 +131,8 @@ impl SessionEvent {
 
 #[cfg(test)]
 mod tests {
+    use nexia_nextcloud_core::ServerUrl;
     use nextcloud_auth::SecretString;
-    use nextcloud_sdk_core::ServerUrl;
 
     use super::{LoginStart, LoginSuccess, SessionEvent};
     use crate::state::PollToken;

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use nextcloud_sdk_core::{ApiPath, UrlError};
+use nexia_nextcloud_core::{ApiPath, UrlError};
 
 use super::validation;
 

@@ -1,6 +1,6 @@
 # Security & Encrypted Storage Model
 
-Security and data confidentiality are foundational tenets of the `nextcloud-rust-sdk`. The SDK is engineered for zero credential leakage, compile-time memory safety, and military-grade encryption for local data at rest.
+Security and data confidentiality are foundational tenets of the `nexia-nextcloud-sdk`. The SDK is engineered for zero credential leakage, compile-time memory safety, and military-grade encryption for local data at rest.
 
 ---
 
@@ -24,7 +24,7 @@ mount records).
 ```text
                    +---------------------------------------------+
                    |          Application Storage Root           |
-                   |      (~/.local/share/nextcloud-rust-sdk)    |
+                   |      (~/.local/share/nexia-nextcloud-sdk)    |
                    +---------------------------------------------+
                                      /         \
                                     /           \

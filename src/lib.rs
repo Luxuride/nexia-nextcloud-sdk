@@ -1,7 +1,7 @@
 //! Rust client for the Nextcloud APIs — the crate an application depends on.
 //!
 //! The workspace underneath this one owns the layers:
-//! - `nextcloud-sdk-core` the HTTP vocabulary and the [`Transport`]/[`AuthProvider`] seams,
+//! - `nexia-nextcloud-core` the HTTP vocabulary and the [`Transport`]/[`AuthProvider`] seams,
 //! - `nextcloud-auth` the credential types,
 //! - `nextcloud-transport` the `reqwest` implementation,
 //! - `nextcloud-ocs` the OCS envelope and mutation engine,
@@ -59,6 +59,11 @@ pub use builder::ClientBuilder;
 pub use client::Client;
 pub use error::ClientError;
 pub use event::ClientEvent;
+pub use nexia_nextcloud_core::{
+    ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
+    ServerUrl, StatusCode, StatusError, Transport, UrlError,
+};
+pub use nexia_nextcloud_search::{SearchClient, SearchEntry, SearchProvider, SearchResultSet};
 pub use nextcloud_activity::{Activity, ActivityClient, ActivityFilter};
 pub use nextcloud_auth::{
     Anonymous, AppPassword, BasicAuth, BearerAuth, BearerToken, SecretString,
@@ -84,10 +89,6 @@ pub use nextcloud_preview::{
     install_freedesktop_fail_marker, install_freedesktop_thumbnail,
     install_freedesktop_thumbnail_with_mtime, make_png_text_chunk, md5_hex, path_to_file_uri,
     remove_freedesktop_fail_marker,
-};
-pub use nextcloud_sdk_core::{
-    ApiPath, AuthProvider, DecodeError, Error, Header, Headers, HttpMethod, Request, Response,
-    ServerUrl, StatusCode, StatusError, Transport, UrlError,
 };
 pub use nextcloud_sdk_fuse::{
     AsyncHydrator, BackgroundSession, DirEntry, FileAttr, FileType, FuseDriver, InodeTable,
@@ -118,7 +119,6 @@ pub use nextcloud_sdk_vfs::{
     ThumbnailCache, VfsError, VirtualEntrySummary, VirtualNode, VirtualTree, breadcrumb_segments,
     file_name, format_bytes, normalize_path, parent_path,
 };
-pub use nextcloud_search::{SearchClient, SearchEntry, SearchProvider, SearchResultSet};
 pub use nextcloud_shares::{CreateShare, Share, ShareClient, SharePermissions, ShareType};
 pub use nextcloud_sync::{
     DiscoveredLocalFile, DiscoveredRemoteFile, DownloadExecutor, DownloadPriority,

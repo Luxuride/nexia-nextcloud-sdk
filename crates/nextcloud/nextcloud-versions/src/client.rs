@@ -1,10 +1,10 @@
 //! Asynchronous client for Nextcloud WebDAV file versions.
 
-use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, DavProperty, Depth, PropfindBody};
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, StatusCode,
     StatusError, Transport,
 };
+use nextcloud_dav::{DEPTH_HEADER, DESTINATION_HEADER, DavProperty, Depth, PropfindBody};
 
 use crate::decode::decode_multistatus;
 use crate::validation::{validate_revision, validate_user};

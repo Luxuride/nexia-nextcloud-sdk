@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use nextcloud_sdk_core::ServerUrl;
+use nexia_nextcloud_core::ServerUrl;
 use nextcloud_sdk_ratelimit::{
     BandwidthLimit, BandwidthLimiter, ProgressCallback, TransferProgress,
 };
@@ -12,7 +12,7 @@ use crate::reqwest_transport::ReqwestTransport;
 use super::timeouts::TimeoutConfig;
 
 /// User agent sent when the caller does not supply one.
-pub const DEFAULT_USER_AGENT: &str = concat!("nextcloud-rust-sdk/", env!("CARGO_PKG_VERSION"));
+pub const DEFAULT_USER_AGENT: &str = concat!("nexia-nextcloud-sdk/", env!("CARGO_PKG_VERSION"));
 
 /// Configures a [`ReqwestTransport`].
 ///

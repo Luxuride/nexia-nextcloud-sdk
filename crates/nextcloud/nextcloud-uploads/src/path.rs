@@ -1,7 +1,7 @@
 //! URL and path helpers for Nextcloud WebDAV Chunked Upload v2.
 
+use nexia_nextcloud_core::{ApiPath, UrlError};
 use nextcloud_dav::DavPath;
-use nextcloud_sdk_core::{ApiPath, UrlError};
 
 /// Validates that a user identifier is suitable as a single URL path segment.
 pub fn validate_user(user_id: &str) -> Result<&str, UrlError> {

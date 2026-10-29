@@ -1,4 +1,4 @@
-use nextcloud_sdk_core::ServerUrl;
+use nexia_nextcloud_core::ServerUrl;
 
 /// Authentication type configured in the Nextcloud desktop client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]

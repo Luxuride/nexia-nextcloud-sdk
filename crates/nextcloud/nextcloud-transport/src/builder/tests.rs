@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use nextcloud_sdk_core::ServerUrl;
+use nexia_nextcloud_core::ServerUrl;
 
 use crate::builder::{DEFAULT_USER_AGENT, TimeoutConfig, TransportBuilder};
 use crate::error::TransportBuildError;
@@ -49,6 +49,6 @@ fn build_rejects_a_header_breaking_user_agent() {
 #[test]
 fn user_agent_override_replaces_the_default() {
     let builder = TransportBuilder::with_server(server()).user_agent("my-app/1.0");
-    assert!(DEFAULT_USER_AGENT.starts_with("nextcloud-rust-sdk/"));
+    assert!(DEFAULT_USER_AGENT.starts_with("nexia-nextcloud-sdk/"));
     assert!(builder.build().is_ok());
 }

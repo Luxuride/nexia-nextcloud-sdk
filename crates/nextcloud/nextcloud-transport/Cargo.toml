@@ -1,5 +1,6 @@
 [package]
 name = "nextcloud-transport"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +10,7 @@ readme = "README.md"
 description = "HTTP transport for the Nextcloud Rust SDK"
 
 [dependencies]
-nextcloud-sdk-core.workspace = true
+nexia-nextcloud-core.workspace = true
 nextcloud-sdk-ratelimit.workspace = true
 futures-util = "0.3"
 reqwest.workspace = true

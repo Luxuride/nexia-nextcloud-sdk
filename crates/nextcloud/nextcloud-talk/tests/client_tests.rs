@@ -4,10 +4,10 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-use nextcloud_ocs::OcsClient;
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
 };
+use nextcloud_ocs::OcsClient;
 use nextcloud_talk::{RoomType, TalkClient};
 
 fn block_on<F: Future>(future: F) -> F::Output {

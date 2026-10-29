@@ -1,10 +1,10 @@
 //! Asynchronous client for Nextcloud's Notifications API v2.
 
-use nextcloud_ocs::{OcsEnvelope, OcsStatus};
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusCode,
     StatusError, Transport,
 };
+use nextcloud_ocs::{OcsEnvelope, OcsStatus};
 use serde::Deserialize;
 
 use crate::notification::Notification;

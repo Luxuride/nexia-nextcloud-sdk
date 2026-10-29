@@ -1,8 +1,8 @@
-use nextcloud_ocs::{OcsEnvelope, OcsFormat, OcsStatus, Query};
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, DecodeError, Error, Headers, HttpMethod, Request, Response, StatusError,
     Transport,
 };
+use nextcloud_ocs::{OcsEnvelope, OcsFormat, OcsStatus, Query};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -242,7 +242,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll, Waker};
 
-    use nextcloud_sdk_core::{
+    use nexia_nextcloud_core::{
         AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusCode, Transport,
     };
 

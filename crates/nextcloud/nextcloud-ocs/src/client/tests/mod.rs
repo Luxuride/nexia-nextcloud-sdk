@@ -2,7 +2,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, Error, Headers, Request, Response, StatusCode, Transport,
 };
 use serde::{Deserialize, Serialize};

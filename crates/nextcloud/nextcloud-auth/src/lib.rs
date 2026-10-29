@@ -1,6 +1,6 @@
 //! Credential types for the Nextcloud SDK.
 //!
-//! Every provider here implements [`nextcloud_sdk_core::AuthProvider`] and only
+//! Every provider here implements [`nexia_nextcloud_core::AuthProvider`] and only
 //! mutates request headers, so callers stay generic over the credential
 //! format:
 //!

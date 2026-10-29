@@ -1,8 +1,8 @@
 //! PROPFIND request building and multistatus XML decoding for trashbin items.
 
+use nexia_nextcloud_core::DecodeError;
 use nextcloud_dav::xml::response::{first_element, has_element, text_of};
 use nextcloud_dav::xml::{Element, MissingElement, XmlWriter};
-use nextcloud_sdk_core::DecodeError;
 
 use crate::item::TrashItem;
 

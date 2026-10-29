@@ -1,6 +1,6 @@
 //! `207 Multi-Status` body -> `Vec<DavResource>`.
 
-use nextcloud_sdk_core::DecodeError;
+use nexia_nextcloud_core::DecodeError;
 
 use crate::resource::DavResource;
 use crate::xml::MissingElement;

@@ -59,7 +59,7 @@ impl StoragePaths {
         )
     }
 
-    /// Defaults to `<data dir>/nextcloud-rust-sdk/{auth,cache,config}.db`.
+    /// Defaults to `<data dir>/nexia-nextcloud-sdk/{auth,cache,config}.db`.
     ///
     /// Uses `$XDG_DATA_HOME`, falling back to `$HOME/.local/share`.
     pub fn default_xdg() -> Result<Self, StorageError> {
@@ -78,7 +78,7 @@ impl StoragePaths {
                 }
             },
         };
-        Ok(Self::in_directory(data_home.join("nextcloud-rust-sdk")))
+        Ok(Self::in_directory(data_home.join("nexia-nextcloud-sdk")))
     }
 
     /// Path of the credentials database.

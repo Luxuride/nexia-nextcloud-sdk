@@ -1,10 +1,10 @@
-use nextcloud_sdk_core::{Error, Headers};
+use nexia_nextcloud_core::{Error, Headers};
 
 use crate::error::HeaderCopyError;
 
 /// Header names whose values are credentials and must never be rendered.
 ///
-/// `nextcloud_sdk_core::Header` already redacts its own `Debug` output; this list
+/// `nexia_nextcloud_core::Header` already redacts its own `Debug` output; this list
 /// additionally lets the value reach `reqwest` marked sensitive, so transport
 /// level logging cannot print it either.
 const CREDENTIAL_HEADERS: [&str; 3] = ["authorization", "proxy-authorization", "cookie"];
@@ -47,7 +47,7 @@ fn is_credential(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use nextcloud_sdk_core::{Header, Headers};
+    use nexia_nextcloud_core::{Header, Headers};
 
     use super::{is_credential, to_header_map};
 

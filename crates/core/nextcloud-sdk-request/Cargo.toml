@@ -1,5 +1,6 @@
 [package]
 name = "nextcloud-sdk-request"
+publish = false
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,5 +10,5 @@ readme = "README.md"
 description = "Per-call lifecycle and retry policy for the Nextcloud Rust SDK"
 
 [dependencies]
-nextcloud-sdk-core.workspace = true
+nexia-nextcloud-core.workspace = true
 tracing.workspace = true

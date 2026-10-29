@@ -4,10 +4,10 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use nextcloud_dav::DESTINATION_HEADER;
-use nextcloud_sdk_core::{
+use nexia_nextcloud_core::{
     ApiPath, AuthProvider, Error, Headers, HttpMethod, Request, Response, StatusError, Transport,
 };
+pub use nextcloud_dav::DESTINATION_HEADER;
 
 use crate::path::{
     abort_path, assembly_path, chunk_path, destination_header_value, upload_collection_path,

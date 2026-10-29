@@ -2,7 +2,7 @@
 
 > Nextcloud WebDAV Chunked Uploads v2 streaming client for reliable large file uploads.
 
-Part of the [`nextcloud-rust-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
 
 ## Installation
 

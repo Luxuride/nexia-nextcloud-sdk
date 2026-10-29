@@ -1,4 +1,4 @@
-# nextcloud-rust-sdk — repo rules
+# nexia-nextcloud-sdk — repo rules
 
 Rules for agents working in this repository. This file is canonical; the
 root-level `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` are symlinks to it.

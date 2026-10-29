@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use tracing::info;
 
 use crate::error::{OrchestratorError, OrchestratorResult};
+use nexia_nextcloud_core::{AuthProvider, Transport};
 use nextcloud_dav::{DavClient, DavPath, Depth, PropfindBody};
-use nextcloud_sdk_core::{AuthProvider, Transport};
 use nextcloud_sync::{
     DiscoveredRemoteFile, JournalEntry, SyncAction, SyncJournal, reconcile, scan_local_directory,
 };
