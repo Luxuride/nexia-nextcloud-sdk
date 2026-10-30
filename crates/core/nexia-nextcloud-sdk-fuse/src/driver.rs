@@ -192,8 +192,14 @@ pub struct FuseDriver {
     partial_blocks: Arc<RwLock<PartialBlocks>>,
     /// Bounds how many threads may wait on a remote fetch, protecting metadata requests.
     download_gate: Arc<DownloadGate>,
-    /// Windows already prefetched ahead of a sequential reader, per file.
-    readahead_inflight: Arc<RwLock<std::collections::HashSet<String>>>,
+    /// One async gate per file, so concurrent readers of the same file do not fetch the same bytes.
+    ///
+    /// A mounted directory is read by several threads at once, and with readahead on they converge
+    /// on the same spans: a live measurement showed 25 fetches for 13 distinct spans, so nearly half
+    /// the round trips returned data another thread had already pulled. Holding the gate across the
+    /// cache re-check makes the loser of the race reuse the winner's bytes instead of paying for
+    /// them again.
+    fetch_gates: Arc<RwLock<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
 impl FuseDriver {
@@ -249,7 +255,7 @@ impl FuseDriver {
             root_prefix: normalized_root,
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
-            readahead_inflight: Arc::new(RwLock::new(std::collections::HashSet::new())),
+            fetch_gates: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -691,6 +697,19 @@ impl FuseDriver {
                 .min(MAX_RANGE_REQUEST_SIZE)
                 .max(span_len);
 
+            // Take this file's fetch gate, then re-check the cache: another thread may have
+            // fetched this very span while we were queuing for the gate, in which case its bytes
+            // are reused instead of paid for twice.
+            let gate = self.fetch_gate(vfs_path);
+            let _gate_guard = gate.lock().await;
+            if let Some((chunk_start, chunk)) = self.take_cached_block(vfs_path, cursor) {
+                let skip = (cursor - chunk_start) as usize;
+                let n = (chunk.len() - skip).min(out.len() - filled);
+                out[filled..filled + n].copy_from_slice(&chunk[skip..skip + n]);
+                filled += n;
+                continue;
+            }
+
             // Wait for a download slot before touching the network, so a burst of reads cannot
             // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
             let Some(bytes) = self
@@ -752,6 +771,23 @@ impl FuseDriver {
                 Ok(None)
             }
         }
+    }
+
+    /// Returns the async gate serialising fetches for `vfs_path`.
+    fn fetch_gate(&self, vfs_path: &str) -> Arc<tokio::sync::Mutex<()>> {
+        if let Ok(gates) = self.fetch_gates.read() {
+            if let Some(gate) = gates.get(vfs_path) {
+                return gate.clone();
+            }
+        }
+        let mut gates = match self.fetch_gates.write() {
+            Ok(gates) => gates,
+            Err(_) => return Arc::new(tokio::sync::Mutex::new(())),
+        };
+        gates
+            .entry(vfs_path.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
     }
 
     /// Returns the buffered block that already covers `cursor`, as `(block_start, bytes)`.
