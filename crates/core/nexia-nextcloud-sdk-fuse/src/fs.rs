@@ -252,6 +252,27 @@ impl Filesystem for FuseDriver {
             return;
         }
 
+        // A file manager never parks a worker. Waiting for a download slot occupies a thread from
+        // the pool every window shares, so one directory being enumerated leaves the next window's
+        // `getattr`/`lookup` queued behind it and every window goes choppy together. When no slot
+        // is free the read is declined immediately instead; the thumbnail cache already holds what
+        // a browser is looking for. Copies and every other caller are untouched — they still wait
+        // for a slot and always complete.
+        if self.is_placeholder(ino.0)
+            && crate::intent::is_browser_process(req.pid())
+            && self.download_gate().is_saturated()
+        {
+            debug!(
+                pid = req.pid(),
+                ino = ino.0,
+                offset,
+                size,
+                "Declining a file-manager read rather than parking a worker on the download gate"
+            );
+            reply.error(Errno::ECHILD);
+            return;
+        }
+
         let result = if let Some(rt) = self.runtime_handle() {
             Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size))
         } else {
@@ -336,23 +357,28 @@ pub fn mount_virtual_fs_with_options(
     let mut config = Config::default();
     config.mount_options = options;
     // Two threads meant a single large hydration blocked every concurrent lookup/readdir, so the
-    // mount looked hung while one image downloaded. Scale with the machine, within sane bounds.
+    // mount looked hung while one image downloaded. Size the pool well above the download limit
+    // instead of merely scaling with the machine: a read that waits for a download slot still
+    // occupies its worker, so with a small pool a burst of waiting reads leaves no thread for
+    // `getattr`/`lookup`/`readdir`. Every window on the mount shares this pool, which is why one
+    // directory listing used to make *all* file-manager windows choppy at once.
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .clamp(4, 16);
+        .saturating_mul(4)
+        .clamp(16, 64);
     config.n_threads = Some(threads);
     config.clone_fd = true;
 
-    // Keep payload downloads strictly below the thread-pool size so a burst of them can never
-    // occupy every worker: metadata (`getattr`/`readdir`/`lookup`) then always has a thread free,
-    // which is what keeps a directory listing responsive while photos download. With the clamp
-    // above this leaves at least half the pool for metadata.
-    let download_limit = (threads / 2).max(2);
+    // Keep payload downloads a small fraction of the pool so a burst of them can never occupy
+    // every worker: metadata (`getattr`/`readdir`/`lookup`) then always has a thread free, which
+    // is what keeps a directory listing responsive while photos download.
+    let download_limit = (threads / 8).max(4);
     driver.set_download_limit(download_limit);
     debug!(
         threads,
-        download_limit, "Bounding concurrent payload downloads below the FUSE thread-pool size"
+        download_limit,
+        "Bounding concurrent payload downloads well below the FUSE thread-pool size"
     );
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");

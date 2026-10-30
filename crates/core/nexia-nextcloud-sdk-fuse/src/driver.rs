@@ -148,6 +148,27 @@ impl DownloadGate {
         self.in_flight.lock().map(|g| *g).unwrap_or(0)
     }
 
+    /// How many downloads can still start without waiting for a slot.
+    ///
+    /// A poisoned mutex reports "plenty" rather than "none": callers use this only to decide
+    /// whether to refuse, and refusing a read because of a poisoned lock would be worse than
+    /// reading without the throttle.
+    pub fn available(&self) -> usize {
+        match self.in_flight.lock() {
+            Ok(in_flight) => self.limit.saturating_sub(*in_flight),
+            Err(_) => usize::MAX,
+        }
+    }
+
+    /// `true` when starting a download would park the calling thread.
+    ///
+    /// Every FUSE worker comes out of one shared pool, so a read that waits here holds the very
+    /// thread the *next* `getattr`/`lookup` needs — which is how one window enumerating a
+    /// directory used to make every other window choppy at the same time.
+    pub fn is_saturated(&self) -> bool {
+        self.available() == 0
+    }
+
     /// Blocks until a download slot is free, returning a guard that frees it on drop.
     ///
     /// A poisoned mutex is treated as "no limit" rather than as an error: refusing to read at all
@@ -1661,6 +1682,34 @@ mod tests {
             "more downloads ran at once than the gate allows"
         );
         assert_eq!(gate.in_flight(), 0, "a slot was leaked by a dropped guard");
+    }
+
+    /// The gate must be able to answer "would this read park?" without blocking, because that
+    /// answer is what stops a file-manager sweep from occupying the whole shared thread pool.
+    #[test]
+    fn download_gate_reports_saturation_without_blocking() {
+        let gate = Arc::new(DownloadGate::new(2));
+        assert!(!gate.is_saturated(), "a fresh gate must not look saturated");
+        assert_eq!(gate.available(), 2);
+
+        let first = gate.acquire().expect("first slot");
+        assert!(!gate.is_saturated());
+        assert_eq!(gate.available(), 1);
+
+        let second = gate.acquire().expect("second slot");
+        assert!(
+            gate.is_saturated(),
+            "a full gate must report saturation so callers decline instead of parking"
+        );
+        assert_eq!(gate.available(), 0);
+
+        drop(first);
+        assert!(
+            !gate.is_saturated(),
+            "releasing a slot must clear saturation"
+        );
+        drop(second);
+        assert_eq!(gate.available(), 2);
     }
 
     /// An unknown file size must still be range-read, never fetched wholesale.
