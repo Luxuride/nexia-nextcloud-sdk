@@ -241,6 +241,11 @@ impl SyncDownloadQueue {
     ) {
         let mut inner = self.inner.write().await;
         if let Some(task) = inner.tasks.get_mut(&id) {
+            // A progress report can arrive after the task was cancelled or
+            // failed; it must not resurrect it.
+            if task.is_terminal() {
+                return;
+            }
             task.status = DownloadStatus::Downloading {
                 transferred_bytes,
                 total_bytes,
@@ -274,6 +279,9 @@ impl SyncDownloadQueue {
     pub async fn mark_completed(&self, id: DownloadTaskId, total_bytes: u64) {
         let mut inner = self.inner.write().await;
         if let Some(task) = inner.tasks.get_mut(&id) {
+            if task.is_terminal() {
+                return;
+            }
             task.status = DownloadStatus::Completed { total_bytes };
             task.speed_bps = None;
             let remote = task.remote_path.clone();
@@ -291,6 +299,9 @@ impl SyncDownloadQueue {
         let mut inner = self.inner.write().await;
         let err_msg = error.into();
         if let Some(task) = inner.tasks.get_mut(&id) {
+            if task.is_terminal() {
+                return;
+            }
             task.status = DownloadStatus::Failed {
                 error: err_msg.clone(),
             };
@@ -320,6 +331,37 @@ impl SyncDownloadQueue {
             .cloned()
     }
 
+    /// Moves the highest-priority pending task to `Downloading` and returns it.
+    ///
+    /// The selection and the status change are one critical section, so a task
+    /// can be handed to exactly one caller.
+    async fn claim_next(&self) -> Option<DownloadTaskId> {
+        let mut inner = self.inner.write().await;
+        let id = inner
+            .tasks
+            .values()
+            .filter(|t| t.is_pending())
+            .max_by(|a, b| {
+                a.priority
+                    .cmp(&b.priority)
+                    .then_with(|| b.created_at_epoch_ms.cmp(&a.created_at_epoch_ms))
+            })
+            .map(|t| t.id)?;
+
+        let task = inner.tasks.get_mut(&id)?;
+        task.status = DownloadStatus::Downloading {
+            transferred_bytes: 0,
+            total_bytes: task.expected_size,
+        };
+        let remote = task.remote_path.clone();
+        let _ = self.event_tx.send(DownloadQueueEvent::Started {
+            task_id: id,
+            remote_path: remote,
+        });
+        self.notify_snapshot_update(&inner);
+        Some(id)
+    }
+
     /// Dispatches and processes the next pending task using `executor`.
     ///
     /// Returns `Ok(Some(task_id))` if a task was processed, or `Ok(None)` if no pending tasks remain.
@@ -327,13 +369,18 @@ impl SyncDownloadQueue {
         &self,
         executor: &E,
     ) -> Result<Option<DownloadTaskId>, SyncError> {
-        let task = match self.next_pending_task().await {
-            Some(t) => t,
+        // Claiming and starting happen under one write guard. Selecting first and
+        // marking afterwards lets two workers pick the same pending task and
+        // write the same destination concurrently.
+        let task_id = match self.claim_next().await {
+            Some(id) => id,
             None => return Ok(None),
         };
 
-        let task_id = task.id;
-        self.mark_started(task_id).await;
+        let task = match self.task(task_id).await {
+            Some(task) => task,
+            None => return Ok(None),
+        };
 
         let queue = self.clone();
         let progress_cb = Box::new(move |transferred: u64, total: Option<u64>| {
@@ -408,5 +455,43 @@ mod tests {
         assert!(queue.cancel(id1).await);
         let snap3 = queue.snapshot().await;
         assert_eq!(snap3.pending_tasks, 0);
+    }
+
+    #[tokio::test]
+    async fn a_claimed_task_is_not_handed_out_twice() {
+        let queue = SyncDownloadQueue::new();
+        let id = queue
+            .enqueue(
+                "/shared.bin",
+                "/tmp/shared.bin",
+                None,
+                DownloadPriority::Normal,
+            )
+            .await;
+
+        assert_eq!(queue.claim_next().await, Some(id));
+        assert_eq!(queue.claim_next().await, None);
+
+        let task = queue.task(id).await.unwrap();
+        assert!(task.is_active());
+    }
+
+    #[tokio::test]
+    async fn progress_does_not_resurrect_a_cancelled_task() {
+        let queue = SyncDownloadQueue::new();
+        let id = queue
+            .enqueue("/gone.bin", "/tmp/gone.bin", None, DownloadPriority::Normal)
+            .await;
+
+        assert!(queue.cancel(id).await);
+        queue.update_progress(id, 512, Some(1024), None).await;
+
+        let task = queue.task(id).await.unwrap();
+        assert!(!task.is_active());
+        assert_eq!(
+            task.progress().transferred_bytes,
+            0,
+            "a late progress report must not move bytes into a terminal task"
+        );
     }
 }

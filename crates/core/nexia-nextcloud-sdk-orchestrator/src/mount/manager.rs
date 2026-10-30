@@ -150,6 +150,11 @@ impl MountManager {
     }
 
     /// Finds the mount whose local target directory contains the specified local filesystem path.
+    ///
+    /// A path can sit under several targets when one mount is nested inside
+    /// another (`/cloud` and `/cloud/Photos`), so the longest matching target
+    /// wins. Picking arbitrarily would attribute a file to the wrong mount and
+    /// make the answer depend on hash order.
     #[must_use]
     pub fn find_mount_for_path<'a>(
         &'a self,
@@ -157,7 +162,8 @@ impl MountManager {
     ) -> Option<(&'a MountDescriptor, &'a MountState)> {
         self.mounts
             .values()
-            .find(|(desc, _)| local_path.starts_with(&desc.local_target))
+            .filter(|(desc, _)| local_path.starts_with(&desc.local_target))
+            .max_by_key(|(desc, _)| desc.local_target.components().count())
             .map(|(desc, state)| (desc, state))
     }
 

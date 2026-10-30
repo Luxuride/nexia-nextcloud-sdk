@@ -1,16 +1,10 @@
 use std::fmt;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use nexia_nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 use serde::{Deserialize, Serialize};
 
-fn query_err(operation: &'static str, source: rusqlite::Error) -> StorageError {
-    StorageError::Query {
-        operation,
-        source: Box::new(source),
-    }
-}
+use super::{now_unix, query_err};
 
 /// Persistent cached visual branding and server metadata.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,10 +69,7 @@ impl ConfigStore {
 
     /// Stores or updates an arbitrary key-value setting.
     pub fn set_setting(&self, key: &str, value: &str) -> Result<(), StorageError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let now = now_unix();
 
         self.database
             .connection()
@@ -121,11 +112,21 @@ impl ConfigStore {
     }
 
     /// Stores or updates visual branding theme metadata for `server`.
-    pub fn store_theme(&self, server: &str, theme: &CachedTheme) -> Result<(), StorageError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+    ///
+    /// Returns the record as persisted, with `updated_at` set to the storage
+    /// time. Callers that publish the result (for example as an event) MUST use
+    /// the returned value, otherwise the published timestamp and the stored one
+    /// disagree.
+    pub fn store_theme(
+        &self,
+        server: &str,
+        theme: &CachedTheme,
+    ) -> Result<CachedTheme, StorageError> {
+        let stored = CachedTheme {
+            server: server.to_string(),
+            updated_at: now_unix(),
+            ..theme.clone()
+        };
 
         self.database
             .connection()
@@ -141,19 +142,19 @@ impl ConfigStore {
                      background_url = excluded.background_url,
                      updated_at = excluded.updated_at",
                 rusqlite::params![
-                    server,
-                    theme.name.as_deref(),
-                    theme.slogan.as_deref(),
-                    theme.color.as_deref(),
-                    theme.color_text.as_deref(),
-                    theme.logo_path.as_deref(),
-                    theme.background_url.as_deref(),
-                    now,
+                    stored.server,
+                    stored.name.as_deref(),
+                    stored.slogan.as_deref(),
+                    stored.color.as_deref(),
+                    stored.color_text.as_deref(),
+                    stored.logo_path.as_deref(),
+                    stored.background_url.as_deref(),
+                    stored.updated_at,
                 ],
             )
             .map_err(|e| query_err("storing theme in config store", e))?;
 
-        Ok(())
+        Ok(stored)
     }
 
     /// Loads visual branding theme metadata for `server`.
@@ -212,11 +213,17 @@ impl ConfigStore {
     }
 
     /// Stores or updates a sync mount point configuration.
-    pub fn store_sync_mount(&self, mount: &StoredSyncMount) -> Result<(), StorageError> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+    ///
+    /// Returns the record as persisted, with `updated_at` set to the storage
+    /// time, so a caller publishing the mount does not advertise a stale stamp.
+    pub fn store_sync_mount(
+        &self,
+        mount: &StoredSyncMount,
+    ) -> Result<StoredSyncMount, StorageError> {
+        let stored = StoredSyncMount {
+            updated_at: now_unix(),
+            ..mount.clone()
+        };
 
         self.database
             .connection()
@@ -232,20 +239,20 @@ impl ConfigStore {
                      enabled = excluded.enabled,
                      updated_at = excluded.updated_at",
                 rusqlite::params![
-                    mount.id,
-                    mount.account_id,
-                    mount.remote_path,
-                    mount.local_target,
-                    mount.mode,
-                    mount.display_name.as_deref(),
-                    if mount.enabled { 1 } else { 0 },
-                    mount.created_at,
-                    now,
+                    stored.id,
+                    stored.account_id,
+                    stored.remote_path,
+                    stored.local_target,
+                    stored.mode,
+                    stored.display_name.as_deref(),
+                    if stored.enabled { 1 } else { 0 },
+                    stored.created_at,
+                    stored.updated_at,
                 ],
             )
             .map_err(|e| query_err("storing sync mount", e))?;
 
-        Ok(())
+        Ok(stored)
     }
 
     /// Removes a sync mount by its unique identifier.
@@ -364,8 +371,8 @@ mod tests {
 
     #[test]
     fn test_directory_sort_persistence() {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         let db_path = std::env::temp_dir().join(format!("test_config_sort_{nanos}.db"));

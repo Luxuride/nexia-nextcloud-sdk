@@ -1,18 +1,11 @@
 use std::fmt;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use nexia_nextcloud_core::ServerUrl;
 use nexia_nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 
 use super::cache_entry::CachedDavEntry;
-
-fn query_err(operation: &'static str, source: rusqlite::Error) -> StorageError {
-    StorageError::Query {
-        operation,
-        source: Box::new(source),
-    }
-}
+use super::{now_unix, query_err};
 
 /// Encrypted storage adapter for cached server capabilities and WebDAV metadata.
 pub struct CacheStore {
@@ -39,10 +32,7 @@ impl CacheStore {
         body: &[u8],
     ) -> Result<(), StorageError> {
         tracing::trace!(server = %server, user_id, "Storing capabilities in cache store");
-        let fetched_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let fetched_at = now_unix();
 
         self.database
             .connection()

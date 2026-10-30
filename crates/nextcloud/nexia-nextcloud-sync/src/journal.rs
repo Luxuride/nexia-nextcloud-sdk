@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -112,9 +113,30 @@ impl SyncJournal {
             source: err,
         })?;
 
-        fs::write(path, json).map_err(|err| SyncError::LocalIo {
+        // Write beside the target and rename over it: a crash mid-write then
+        // leaves the previous journal intact instead of a truncated file that
+        // no longer parses, which would discard the whole sync baseline.
+        let temp = path.with_extension("json.tmp");
+        let mut file = fs::File::create(&temp).map_err(|err| SyncError::LocalIo {
+            path: temp.clone(),
+            context: "creating temporary sync journal file".to_string(),
+            source: err,
+        })?;
+        file.write_all(json.as_bytes())
+            .map_err(|err| SyncError::LocalIo {
+                path: temp.clone(),
+                context: "writing temporary sync journal file".to_string(),
+                source: err,
+            })?;
+        file.sync_all().map_err(|err| SyncError::LocalIo {
+            path: temp.clone(),
+            context: "flushing temporary sync journal file".to_string(),
+            source: err,
+        })?;
+        drop(file);
+        fs::rename(&temp, path).map_err(|err| SyncError::LocalIo {
             path: path.to_path_buf(),
-            context: "writing sync journal file".to_string(),
+            context: "replacing sync journal file".to_string(),
             source: err,
         })
     }

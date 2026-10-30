@@ -79,16 +79,34 @@ pub(crate) fn decode_response<Res: DeserializeOwned>(
     match serde_json::from_slice::<OcsEnvelope<Res>>(response.body()) {
         Ok(envelope) => Ok(envelope.into_data()),
         Err(cause) => {
-            if let Ok(value) = serde_json::from_str::<Res>("null") {
-                Ok(value)
-            } else {
-                Err(Error::Decode(DecodeError::new(
-                    type_name::<OcsEnvelope<Res>>(),
-                    cause,
-                )))
+            // Endpoints that report nothing in `data` answer with `[]`, `{}` or
+            // no `data` field at all, and a caller that asked for `()` only
+            // wants the verdict checked above. That leniency is granted only
+            // once the envelope itself is known to be well formed: the raw
+            // document must carry an `ocs.meta` object, so a garbled or
+            // truncated body is reported instead of becoming an empty success.
+            let lenient = envelope_is_well_formed(response.body())
+                .then(|| serde_json::from_str::<Res>("null").ok())
+                .flatten();
+            if let Some(value) = lenient {
+                return Ok(value);
             }
+            Err(Error::Decode(DecodeError::new(
+                type_name::<OcsEnvelope<Res>>(),
+                cause,
+            )))
         }
     }
+}
+
+/// Returns whether `body` parses as an OCS document carrying an `ocs.meta` object.
+fn envelope_is_well_formed(body: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(|document| document.get("ocs"))
+        .and_then(|ocs| ocs.get("meta"))
+        .is_some_and(serde_json::Value::is_object)
 }
 
 /// Builds an [`Error::Status`] error from an HTTP response, method, and path.

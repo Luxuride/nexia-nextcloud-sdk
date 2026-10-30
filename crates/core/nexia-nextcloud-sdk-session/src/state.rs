@@ -8,6 +8,12 @@ use nexia_nextcloud_core::ServerUrl;
 /// The login name is what the user typed into the browser and is what
 /// credentials are sent with; the WebDAV user id can differ from it (an email
 /// address logs in but does not name a file tree), which is why both are kept.
+///
+/// The login flow itself reports no user id, so a record built straight from
+/// [`LoginSuccess`](crate::LoginSuccess) carries the login name in both fields
+/// until the caller resolves the real one with a `cloud/user` request. Code that
+/// needs the file tree must use [`user_id`](Self::user_id) after that lookup, not
+/// [`login_name`](Self::login_name).
 #[derive(Clone, PartialEq, Eq)]
 pub struct Account {
     server: ServerUrl,
@@ -68,7 +74,12 @@ impl fmt::Debug for Account {
 }
 
 /// Opaque token identifying one pending login.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+///
+/// The token is a bearer credential for the poll step: whoever holds it can
+/// collect the app password the user is about to grant. It therefore never
+/// appears in [`Debug`](fmt::Debug) output, which covers every state and event
+/// that carries one.
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PollToken(String);
 
 impl PollToken {
@@ -83,9 +94,9 @@ impl PollToken {
     }
 }
 
-impl fmt::Display for PollToken {
+impl fmt::Debug for PollToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str("PollToken(\u{2039}redacted\u{203a})")
     }
 }
 
@@ -196,6 +207,29 @@ mod tests {
         let rendered = format!("{:?}", account());
         assert!(!rendered.contains("app-pw"));
         assert!(rendered.contains("alice"));
+    }
+
+    #[test]
+    fn poll_token_debug_redacts_the_token() {
+        let token = PollToken::new("super-secret-poll-token");
+        assert_eq!(token.expose(), "super-secret-poll-token");
+        let rendered = format!("{token:?}");
+        assert!(!rendered.contains("super-secret"), "{rendered}");
+    }
+
+    #[test]
+    fn a_login_flow_debug_redacts_the_token() {
+        let flow = LoginFlow::new(
+            PollToken::new("super-secret-poll-token"),
+            "https://cloud.example.org/login/v2/flow/x",
+            "https://cloud.example.org/login/v2/poll",
+        );
+        let rendered = format!("{flow:?}");
+        assert!(!rendered.contains("super-secret"), "{rendered}");
+        assert!(
+            rendered.contains("login_url") || rendered.contains("https://"),
+            "{rendered}"
+        );
     }
 
     #[test]

@@ -134,7 +134,12 @@ fn normalise_authority(authority: &str, scheme: Scheme) -> Result<String, UrlErr
     }
     match authority_without_user.rsplit_once(':') {
         Some((host, port)) if port.chars().all(|c| c.is_ascii_digit()) && !port.is_empty() => {
-            let port: u16 = port.parse().map_err(|_| UrlError::MissingHost)?;
+            if host.is_empty() {
+                return Err(UrlError::MissingHost);
+            }
+            let port: u16 = port
+                .parse()
+                .map_err(|_| UrlError::InvalidPort(port.to_owned()))?;
             if port == scheme.default_port() {
                 Ok(host.to_owned())
             } else {
@@ -157,6 +162,7 @@ fn validate_prefix(prefix: &str) -> Result<(), UrlError> {
 #[cfg(test)]
 mod tests {
     use super::ServerUrl;
+    use crate::url::UrlError;
 
     #[test]
     fn trims_trailing_slash() {
@@ -197,6 +203,23 @@ mod tests {
     #[test]
     fn rejects_traversal_in_prefix() {
         assert!(ServerUrl::parse("https://example.org/a/../b").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_host_with_port() {
+        assert_eq!(
+            ServerUrl::parse("https://:8080"),
+            Err(UrlError::MissingHost)
+        );
+        assert_eq!(ServerUrl::parse("https://:443"), Err(UrlError::MissingHost));
+    }
+
+    #[test]
+    fn rejects_out_of_range_port() {
+        assert_eq!(
+            ServerUrl::parse("https://example.org:70000"),
+            Err(UrlError::InvalidPort("70000".to_owned()))
+        );
     }
 
     #[test]

@@ -140,12 +140,22 @@ Both omit `Serialize`, so neither can be pushed into JSON logs. The keyring vari
 also implements `Display` (redacted) and `Drop` — `Drop` zeroes the backing bytes
 before releasing them.
 
-### 3.2 HTTP Header Redaction
+### 3.2 Login Flow Token and Request Bodies
+`nexia_nextcloud_sdk_session::PollToken` holds the token that collects the app
+password the user is about to grant. Only `expose()` returns it; `Debug` renders
+`PollToken(‹redacted›)` and the type implements no `Display`, so it cannot reach a
+log through a derived `Debug` on `SessionState`, `SessionEvent` or `LoginFlow`.
+
+`nexia_nextcloud_core::Request` prints `body_len: Option<usize>` instead of its
+bytes, because a login or password-change body *is* the credential. Headers keep
+the redaction described below.
+
+### 3.3 HTTP Header Redaction
 The `Header` type automatically detects sensitive HTTP header names (case-insensitively):
 - Matching names: `authorization`, `proxy-authorization`, `cookie`, `set-cookie`.
 - When formatted via `Debug`, the header value is replaced with `"<redacted>"`. Non-sensitive headers (e.g. `Content-Type: application/json`) remain readable for debugging.
 
-### 3.3 User Profile Privacy Redaction
+### 3.4 User Profile Privacy Redaction
 In `nexia-nextcloud-users`, the `User` struct contains sensitive personal metadata. Its `Debug` implementation redacts private attributes:
 - `email`: Formatted as `email: Some("<redacted>")`.
 - `storage_location`: Formatted as `storage_location: Some("<redacted>")` (prevents exposing internal server filesystem paths).

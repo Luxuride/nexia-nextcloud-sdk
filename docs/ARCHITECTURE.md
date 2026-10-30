@@ -197,6 +197,11 @@ bytes the caller already fetched** — it is not a download; the network path is
 `FolderSyncRunner::hydrate_file_from_dav` (`sync/runner.rs:772`) and the download
 queue.
 
+`hydrate_local` and `dehydrate_local` resolve the local path through one private
+gate: a relative path that is empty, absolute, or carries a `.`/`..`/empty
+segment is rejected with `OrchestratorError::InvalidPath` before it touches the
+filesystem, because the path originates in a server listing.
+
 `MountsHandle::sync_mount(id)` is **local-only today**: the worker branch for
 `OrchestratorCommand::SyncMount` (`worker.rs:376-437`) constructs a
 `FolderSyncRunner` and calls `run_local_reconciliation()`
@@ -423,9 +428,13 @@ handles and events.
    (`src/builder/client_builder.rs:268`). A lagging consumer sees
    `RecvError::Lagged` and should re-read state via a handle, never assume it can
    replay.
-4. **Pure state machines stay pure.** `nexia-nextcloud-sdk-session` and
+4. **A command that fails says so.** `OrchestratorCommand::AddMount` replies
+   with the `MountManager` error and registers no `VfsManager` when the mount is
+   rejected; configured mounts that fail at startup are logged and skipped. A
+   successful reply always names a mount every other command can act on.
+5. **Pure state machines stay pure.** `nexia-nextcloud-sdk-session` and
    `nexia-nextcloud-sdk-request` perform no I/O, hold no timers and log nothing, so they
    are unit-testable without a server.
-5. **`#![forbid(unsafe_code)]` and `#![deny(missing_docs)]`** across the
+6. **`#![forbid(unsafe_code)]` and `#![deny(missing_docs)]`** across the
    workspace; credentials redact through `SecretString` and header redaction (see
    [`SECURITY_AND_STORAGE.md`](SECURITY_AND_STORAGE.md)).

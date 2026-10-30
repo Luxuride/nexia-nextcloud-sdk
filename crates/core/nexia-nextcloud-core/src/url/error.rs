@@ -11,6 +11,8 @@ pub enum UrlError {
     UnsupportedScheme(String),
     /// The input carried no host.
     MissingHost,
+    /// The port is not a valid `u16`.
+    InvalidPort(String),
     /// The base URL carried a query string or fragment.
     UnexpectedComponent(&'static str),
     /// A path component was not absolute.
@@ -27,6 +29,9 @@ impl fmt::Display for UrlError {
                 write!(f, "server URL scheme `{scheme}` is not http or https")
             }
             Self::MissingHost => f.write_str("server URL has no host"),
+            Self::InvalidPort(port) => {
+                write!(f, "server URL port `{port}` is not a valid port number")
+            }
             Self::UnexpectedComponent(component) => {
                 write!(f, "server URL must not carry a {component}")
             }

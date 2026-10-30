@@ -197,7 +197,9 @@ impl<'a, T: Transport, A: AuthProvider> ShareClient<'a, T, A> {
             .map_err(|cause| DecodeError::new(std::any::type_name::<OcsEnvelope<R>>(), cause))
             .map_err(Error::Decode)?;
 
-        if envelope.meta().verdict() == Some(OcsStatus::Failure) {
+        // An envelope without a readable verdict is malformed; treating it as a
+        // success would hand the caller an empty payload built from a broken answer.
+        if envelope.meta().verdict() != Some(OcsStatus::Ok) {
             return Err(Error::Status(StatusError::new(
                 method.as_str(),
                 path,

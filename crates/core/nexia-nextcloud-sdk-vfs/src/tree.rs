@@ -1725,10 +1725,7 @@ mod tests {
         let cached = root.join("Photos/a.jpg");
         assert_eq!(std::fs::read(&cached).unwrap(), b"hello".to_vec());
         assert_eq!(
-            tree.get("/Photos/a.jpg")
-                .unwrap()
-                .hydration()
-                .cached_path(),
+            tree.get("/Photos/a.jpg").unwrap().hydration().cached_path(),
             Some(cached.as_path())
         );
 

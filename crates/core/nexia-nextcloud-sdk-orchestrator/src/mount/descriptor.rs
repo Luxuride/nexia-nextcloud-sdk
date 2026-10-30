@@ -144,7 +144,10 @@ mod tests {
 
         assert_eq!(one, base.join("accounts/alice/mounts/mount-a"));
         assert_ne!(one, two, "two mounts of one account must not share state");
-        assert_ne!(one, other, "one mount name in two accounts must not share state");
+        assert_ne!(
+            one, other,
+            "one mount name in two accounts must not share state"
+        );
     }
 
     #[test]

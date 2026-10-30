@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::command::OrchestratorCommand;
 use crate::config::OrchestratorConfig;
@@ -105,9 +105,19 @@ async fn run_orchestrator_actor(
         let mount_dir = mount.cache_dir_in(&config.base_cache_dir);
         let vfs = VfsManager::new(mount_dir.join("vfs"), &mount.remote_path);
 
-        if let Ok(id) = mount_manager.add_mount(mount.clone()) {
-            vfs_managers.insert(id, vfs);
-            let _ = event_tx.send(OrchestratorEvent::MountAdded(mount));
+        match mount_manager.add_mount(mount.clone()) {
+            Ok(id) => {
+                vfs_managers.insert(id, vfs);
+                let _ = event_tx.send(OrchestratorEvent::MountAdded(mount));
+            }
+            Err(err) => {
+                warn!(
+                    mount_id = %mount.id,
+                    local_target = %mount.local_target.display(),
+                    error = %err,
+                    "skipping configured mount"
+                );
+            }
         }
     }
 
@@ -133,9 +143,12 @@ async fn run_orchestrator_actor(
                         let _ = event_tx.send(OrchestratorEvent::MountAdded(descriptor));
                         let _ = responder.send(Ok(new_id));
                     }
-                    Err(_e) => {
-                        vfs_managers.entry(id.clone()).or_insert(vfs);
-                        let _ = responder.send(Ok(id));
+                    Err(err) => {
+                        // The mount was not registered, so the caller must not be
+                        // told it was: a success here would hand out an id that
+                        // no other command can act on.
+                        warn!(mount_id = %id, error = %err, "rejecting mount");
+                        let _ = responder.send(Err(err));
                     }
                 }
             }

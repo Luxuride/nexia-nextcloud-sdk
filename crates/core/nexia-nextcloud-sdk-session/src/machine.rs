@@ -94,6 +94,15 @@ impl SessionMachine {
 
             (SessionState::Idle, E::FlowStartFailed) => Ok((SessionState::Idle, Command::Idle)),
 
+            // A failed or expired poll ends the flow: the token is gone server
+            // side, so the only useful next step is to start over.
+            (SessionState::AwaitingLogin(_), E::PollFailed)
+            | (SessionState::AwaitingGrant(_), E::PollFailed)
+            | (SessionState::AwaitingLogin(_), E::Expired)
+            | (SessionState::AwaitingGrant(_), E::Expired) => {
+                Ok((SessionState::Idle, Command::StopPolling))
+            }
+
             (SessionState::AwaitingLogin(flow), E::PollPending)
             | (SessionState::AwaitingGrant(flow), E::PollPending) => {
                 Ok((SessionState::AwaitingGrant(flow), next_poll(&current)))
@@ -142,6 +151,9 @@ fn next_poll(state: &SessionState) -> Command {
 }
 
 fn authenticated(success: super::event::LoginSuccess) -> (SessionState, Command) {
+    // The poll answer carries no user id, so the login name stands in for it
+    // until the caller resolves the account identity; a file tree must not be
+    // derived from `user_id` while it still equals the login name.
     let account = Account::new(
         success.server().clone(),
         success.login_name(),
@@ -286,9 +298,29 @@ mod tests {
     }
 
     #[test]
-    fn expiry_is_rejected_while_pending() {
+    fn expiry_ends_the_flow() {
         let mut machine = flow();
-        let error = machine.handle(SessionEvent::Expired).unwrap_err();
-        assert_eq!(error.event(), "expired");
+        let command = machine.handle(SessionEvent::Expired).unwrap();
+        assert_eq!(command, Command::StopPolling);
+        assert_eq!(machine.state().name(), "idle");
+        assert_eq!(
+            machine.handle(SessionEvent::StartRequested).unwrap(),
+            Command::StartLogin
+        );
+    }
+
+    #[test]
+    fn a_failed_poll_ends_the_flow() {
+        let mut machine = flow();
+        let command = machine.handle(SessionEvent::PollFailed).unwrap();
+        assert_eq!(command, Command::StopPolling);
+        assert_eq!(machine.state().name(), "idle");
+    }
+
+    #[test]
+    fn a_failed_poll_is_rejected_once_idle() {
+        let mut machine = flow();
+        machine.handle(SessionEvent::PollFailed).unwrap();
+        assert!(machine.handle(SessionEvent::PollFailed).is_err());
     }
 }

@@ -409,11 +409,14 @@ impl FuseDriver {
             Ok(cur) if cur.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
                 tokio::task::block_in_place(|| rt.block_on(fut))
             }
-            Ok(_) => std::thread::scope(|s| {
-                s.spawn(|| rt.block_on(fut))
-                    .join()
-                    .expect("hydration thread panicked")
-            }),
+            Ok(_) => {
+                // A hydrator that panics must surface as a failed read, not as a
+                // panic on the FUSE dispatch path.
+                match std::thread::scope(|s| s.spawn(|| rt.block_on(fut)).join()) {
+                    Ok(value) => value,
+                    Err(panic) => std::panic::resume_unwind(panic),
+                }
+            }
             Err(_) => rt.block_on(fut),
         }
     }
@@ -1123,7 +1126,11 @@ pub fn parse_date_to_unix_secs(raw: &str) -> Option<u64> {
 
 fn parse_node_mtime(s: Option<&str>) -> SystemTime {
     let secs = s.and_then(parse_date_to_unix_secs).unwrap_or(1_700_000_000);
-    SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs)
+    // `secs` comes straight from server metadata and a numeric string can carry
+    // `u64::MAX`; adding that to the epoch would panic inside getattr.
+    SystemTime::UNIX_EPOCH
+        .checked_add(std::time::Duration::from_secs(secs))
+        .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
 fn parse_month(m: &str) -> Option<u64> {
@@ -1148,8 +1155,14 @@ fn civil_to_unix_secs(y: i64, m: u64, d: u64, h: u64, min: u64, sec: u64) -> Opt
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) || h > 23 || min > 59 || sec > 60 {
         return None;
     }
-    let y = y - if m <= 2 { 1 } else { 0 };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
+    // No Nextcloud timestamp predates the epoch by much or postdates this
+    // range, and bounding the year keeps the day arithmetic below from
+    // overflowing for a hostile input such as year `i64::MIN`.
+    if !(1900..=9999).contains(&y) {
+        return None;
+    }
+    let y = y - i64::from(m <= 2);
+    let era = y / 400;
     let yoe = (y - era * 400) as u64;
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
@@ -1157,7 +1170,9 @@ fn civil_to_unix_secs(y: i64, m: u64, d: u64, h: u64, min: u64, sec: u64) -> Opt
     if days < 0 {
         return None;
     }
-    Some((days as u64) * 86400 + h * 3600 + min * 60 + sec)
+    (days as u64)
+        .checked_mul(86400)?
+        .checked_add(h * 3600 + min * 60 + sec)
 }
 
 fn parse_http_date(s: &str) -> Option<u64> {

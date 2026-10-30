@@ -1,18 +1,12 @@
 use std::fmt;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use nexia_nextcloud_auth::SecretString;
 use nexia_nextcloud_core::ServerUrl;
 use nexia_nextcloud_sdk_session::{Account, LoginFlow, PollToken};
 use nexia_nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 
-fn query_err(operation: &'static str, source: rusqlite::Error) -> StorageError {
-    StorageError::Query {
-        operation,
-        source: Box::new(source),
-    }
-}
+use super::{now_unix, query_err};
 
 /// Encrypted storage adapter for session credentials and login flows.
 pub struct SessionStore {
@@ -34,10 +28,7 @@ impl SessionStore {
     /// Persists an account record, replacing any existing entry for the same server and login name.
     pub fn store_account(&self, account: &Account) -> Result<(), StorageError> {
         tracing::debug!(server = %account.server(), user_id = %account.user_id(), "Storing account in session store");
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let created_at = now_unix();
 
         self.database
             .connection()
@@ -130,25 +121,30 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Stores an in-flight login flow for `server`.
+    /// Stores an in-flight login flow for `server`, replacing any previous one.
+    ///
+    /// The delete and the insert run in one transaction: a crash in between
+    /// would otherwise leave the server with no flow at all, and a flow is the
+    /// only way to finish a login that is already pending in the browser.
     pub fn store_login_flow(
         &self,
         server: &ServerUrl,
         flow: &LoginFlow,
     ) -> Result<(), StorageError> {
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
+        let created_at = now_unix();
 
         let conn = self.database.connection();
-        conn.execute(
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| query_err("starting login flow transaction", e))?;
+
+        tx.execute(
             "DELETE FROM login_flow WHERE server = ?1",
             rusqlite::params![server.as_str()],
         )
         .map_err(|e| query_err("clearing previous login flow", e))?;
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO login_flow (server, poll_endpoint, poll_token, login_url, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             rusqlite::params![
@@ -160,6 +156,9 @@ impl SessionStore {
             ],
         )
         .map_err(|e| query_err("storing login flow", e))?;
+
+        tx.commit()
+            .map_err(|e| query_err("committing login flow transaction", e))?;
 
         Ok(())
     }

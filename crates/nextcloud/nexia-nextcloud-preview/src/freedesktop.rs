@@ -7,7 +7,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 /// Computes the `file://` URI for a local path according to RFC 3986 without resolving symlinks.
 pub fn path_to_file_uri(path: &Path) -> String {
@@ -347,13 +347,13 @@ pub fn freedesktop_thumbnail_dirs() -> (PathBuf, PathBuf) {
 /// `software` names the program generating the thumbnail and is written to the PNG
 /// `Software` chunk.
 pub fn install_freedesktop_thumbnail(target_file: &Path, png_bytes: &[u8], software: &str) {
-    let mtime_sec = target_file
-        .metadata()
-        .and_then(|m| m.modified())
-        .unwrap_or_else(|_| SystemTime::now())
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    // The modification time is the cache key the standard defines: stamping
+    // `now` instead would write a `Thumb::MTime` that never matches the file
+    // again, so the thumbnail would be regenerated forever. Without a readable
+    // mtime there is nothing to key on, so no thumbnail is installed.
+    let Some(mtime_sec) = file_mtime_secs(target_file) else {
+        return;
+    };
     install_freedesktop_thumbnail_with_mtime(target_file, png_bytes, mtime_sec, software);
 }
 
@@ -391,10 +391,75 @@ fn thumbnails_current_in(dirs: &[PathBuf], target_file: &Path) -> bool {
         return false;
     }
 
+    let Some(mtime_secs) = file_mtime_secs(target_file) else {
+        return false;
+    };
+
     uris.iter().all(|uri| {
         let filename = format!("{}.png", md5_hex(uri.as_bytes()));
-        dirs.iter().all(|dir| dir.join(&filename).is_file())
+        dirs.iter()
+            .all(|dir| thumbnail_matches(&dir.join(&filename), mtime_secs))
     })
+}
+
+/// Returns the file's modification time as whole seconds since the epoch.
+fn file_mtime_secs(path: &Path) -> Option<u64> {
+    let modified = path.metadata().and_then(|m| m.modified()).ok()?;
+    Some(
+        modified
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    )
+}
+
+/// Returns whether `thumbnail` was generated for the file version with `mtime_secs`.
+///
+/// The standard stores the source file's modification time in the `Thumb::MTime`
+/// text chunk and treats a mismatch as stale, which is the only way a changed
+/// file gets a fresh thumbnail: without it a thumbnail is regenerated never.
+fn thumbnail_matches(thumbnail: &Path, mtime_secs: u64) -> bool {
+    let Ok(bytes) = fs::read(thumbnail) else {
+        return false;
+    };
+    match png_text_value(&bytes, "Thumb::MTime") {
+        Some(stored) => stored == mtime_secs.to_string(),
+        None => false,
+    }
+}
+
+/// Reads the value of a PNG `tEXt` chunk by keyword.
+fn png_text_value(png: &[u8], keyword: &str) -> Option<String> {
+    const SIGNATURE_LEN: usize = 8;
+    if png.len() < SIGNATURE_LEN + 8 {
+        return None;
+    }
+
+    let mut offset = SIGNATURE_LEN;
+    while offset + 8 <= png.len() {
+        let length = u32::from_be_bytes(png.get(offset..offset + 4)?.try_into().ok()?) as usize;
+        let kind = png.get(offset + 4..offset + 8)?;
+        let data_start = offset + 8;
+        let data_end = data_start.checked_add(length)?;
+        let data = png.get(data_start..data_end)?;
+
+        if kind == b"tEXt" {
+            // `tEXt` data is `keyword\0text`; `split_once` on a byte predicate
+            // is still unstable, so the separator is located directly.
+            if let Some(separator) = data.iter().position(|byte| *byte == 0) {
+                let (stored_keyword, rest) = data.split_at(separator);
+                if stored_keyword == keyword.as_bytes() {
+                    return Some(String::from_utf8_lossy(&rest[1..]).into_owned());
+                }
+            }
+        } else if kind == b"IEND" {
+            return None;
+        }
+
+        // length + type + data + crc
+        offset = data_end.checked_add(4)?;
+    }
+
+    None
 }
 
 /// Installs a Nextcloud-provided preview into the FreeDesktop thumbnail cache for `target_file` with explicit modification time.
@@ -458,11 +523,10 @@ pub fn install_freedesktop_thumbnail_with_mtime(
                 let _ = fs::write(&xxlarge_dest, xxlarge_png);
             }
         } else {
-            let tagged_bytes = embed_freedesktop_metadata(png_bytes, uri, mtime_sec, software);
-            let _ = fs::write(&normal_dest, &tagged_bytes);
-            let _ = fs::write(&large_dest, &tagged_bytes);
-            let _ = fs::write(&xlarge_dest, &tagged_bytes);
-            let _ = fs::write(&xxlarge_dest, &tagged_bytes);
+            // The payload could not be decoded, so there is no image to install.
+            // Splicing metadata chunks onto it used to write non-PNG bytes under
+            // a `.png` name that every file manager then failed to render.
+            continue;
         }
 
         if let Some(parent) = normal_dir.parent() {
@@ -692,6 +756,7 @@ mod tests {
         }
         let target = root.join("photo.jpg");
         std::fs::write(&target, b"not a real image").expect("write target file");
+        let mtime = file_mtime_secs(&target).expect("target has a modification time");
 
         assert!(
             !thumbnails_current_in(&dirs, &target),
@@ -703,19 +768,32 @@ mod tests {
             !uris.is_empty(),
             "the target must resolve to at least one URI"
         );
-        for dir in &dirs {
-            for uri in &uris {
-                std::fs::write(
-                    dir.join(format!("{}.png", md5_hex(uri.as_bytes()))),
-                    b"thumb",
-                )
-                .expect("write thumbnail");
+        let image = sample_image();
+        let install = |mtime_secs: u64| {
+            for dir in &dirs {
+                for uri in &uris {
+                    let png = create_freedesktop_png(&image, 128, uri, mtime_secs, "test")
+                        .expect("encode thumbnail");
+                    std::fs::write(dir.join(format!("{}.png", md5_hex(uri.as_bytes()))), png)
+                        .expect("write thumbnail");
+                }
             }
-        }
+        };
+        install(mtime);
         assert!(
             thumbnails_current_in(&dirs, &target),
             "every size is installed"
         );
+
+        // A thumbnail generated for an older version of the file is stale: the standard keys the
+        // cache on `Thumb::MTime`, and answering "current" here means the changed file keeps its
+        // old picture forever.
+        install(mtime - 1);
+        assert!(
+            !thumbnails_current_in(&dirs, &target),
+            "a thumbnail with a different Thumb::MTime must count as stale"
+        );
+        install(mtime);
 
         // A missing size makes the entry stale: the file manager falls back to the original for
         // that size, so the honest answer is false rather than "mostly installed".

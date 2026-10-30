@@ -34,7 +34,9 @@ impl Serialize for HydrationState {
         use serde::ser::SerializeMap;
 
         match self {
-            Self::Placeholder => serializer.serialize_unit_variant("HydrationState", 0, "Placeholder"),
+            Self::Placeholder => {
+                serializer.serialize_unit_variant("HydrationState", 0, "Placeholder")
+            }
             Self::Hydrated(HydratedContent::Path(path)) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("Hydrated", &PersistedContent::Path(path))?;

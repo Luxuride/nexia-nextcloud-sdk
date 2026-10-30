@@ -99,14 +99,38 @@ impl VfsManager {
         self.tree.directory_size_summary(path)
     }
 
+    /// Maps a remote-relative path to its location inside the cache directory.
+    ///
+    /// Rejects anything that could escape `cache_dir`: an absolute path or a
+    /// path with a `.`/`..`/empty segment. Every caller resolves the local path
+    /// through here so the check cannot be forgotten on one of them.
+    fn cached_file_path(&self, relative_path: &str) -> OrchestratorResult<PathBuf> {
+        let clean = relative_path.trim_start_matches('/');
+        let rejected = clean.split('/').any(|segment| {
+            segment.is_empty() || segment == "." || segment == ".." || segment.contains('\\')
+        });
+        if rejected || clean.is_empty() {
+            return Err(OrchestratorError::InvalidPath {
+                path: relative_path.to_string(),
+                reason: "path must be a non-empty relative path inside the cache directory"
+                    .to_string(),
+            });
+        }
+        Ok(self.cache_dir.join(clean))
+    }
+
     /// Hydrates a virtual file locally by writing its content to the cache directory.
+    ///
+    /// `relative_path` comes from a remote listing or a caller, so it is checked
+    /// before it touches the filesystem: a path that climbs out of the cache
+    /// directory would otherwise let a server-supplied name write anywhere the
+    /// process can.
     pub fn hydrate_local(
         &mut self,
         relative_path: &str,
         content: &[u8],
     ) -> OrchestratorResult<PathBuf> {
-        let clean_path = relative_path.trim_start_matches('/');
-        let local_file_path = self.cache_dir.join(clean_path);
+        let local_file_path = self.cached_file_path(relative_path)?;
 
         if let Some(parent) = local_file_path.parent() {
             fs::create_dir_all(parent).map_err(|err| OrchestratorError::Io {
@@ -144,8 +168,7 @@ impl VfsManager {
 
     /// Dehydrates a locally cached file, deleting its local bytes and reverting to a placeholder.
     pub fn dehydrate_local(&mut self, relative_path: &str) -> OrchestratorResult<()> {
-        let clean_path = relative_path.trim_start_matches('/');
-        let local_file_path = self.cache_dir.join(clean_path);
+        let local_file_path = self.cached_file_path(relative_path)?;
 
         if local_file_path.exists() {
             let _ = fs::remove_file(&local_file_path);

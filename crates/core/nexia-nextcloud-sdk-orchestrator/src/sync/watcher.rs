@@ -128,7 +128,13 @@ impl FileSystemWatcher {
 
             loop {
                 tokio::select! {
-                    Some((kind, changed_path)) = rx.recv() => {
+                    received = rx.recv() => {
+                        // `None` means every watch callback was dropped. Both
+                        // branches can then be disabled at once, which makes
+                        // `select!` panic unless the channel close ends the task.
+                        let Some((kind, changed_path)) = received else {
+                            break;
+                        };
                         let is_placeholder = is_unhydrated_placeholder(&changed_path);
                         if is_placeholder {
                             if let Some(ref handler) = hydrate_cb {

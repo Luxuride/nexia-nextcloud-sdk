@@ -1,30 +1,10 @@
 /// Percent-encodes one query key or value.
 ///
-/// Only the RFC 3986 unreserved set survives verbatim; everything else,
-/// including `&`, `=` and `+`, is escaped so a caller-supplied value cannot
-/// inject an extra parameter or be reinterpreted as a space by the server.
+/// Delegates to [`nexia_nextcloud_core::url::percent_encode`], the single
+/// implementation the workspace uses, so an OCS parameter and a DAV path
+/// segment cannot drift apart in what they escape.
 pub(super) fn encode_component(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(char::from(byte));
-            }
-            other => {
-                encoded.push('%');
-                encoded.push(hex_digit(other >> 4));
-                encoded.push(hex_digit(other & 0x0f));
-            }
-        }
-    }
-    encoded
-}
-
-fn hex_digit(nibble: u8) -> char {
-    char::from(match nibble {
-        0..=9 => b'0' + nibble,
-        _ => b'A' + (nibble - 10),
-    })
+    nexia_nextcloud_core::url::percent_encode(value)
 }
 
 #[cfg(test)]

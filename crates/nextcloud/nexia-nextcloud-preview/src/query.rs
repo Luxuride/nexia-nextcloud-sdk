@@ -1,5 +1,7 @@
 //! Query parameter encoding for Nextcloud preview requests.
 
+use nexia_nextcloud_core::url::percent_encode_path;
+
 use crate::options::PreviewOptions;
 
 /// Encodes query parameters for a preview request by numeric file cache ID.
@@ -18,7 +20,7 @@ pub(crate) fn build_path_query(path: &str, options: &PreviewOptions) -> String {
     } else {
         format!("/{path}")
     };
-    parts.push(format!("file={}", encode_path_component(&normalized)));
+    parts.push(format!("file={}", percent_encode_path(&normalized)));
     append_options(&mut parts, options);
     format!("?{}", parts.join("&"))
 }
@@ -36,31 +38,6 @@ fn append_options(parts: &mut Vec<String>, options: &PreviewOptions) {
     }
     if let Some(mode) = options.preview_mode() {
         parts.push(format!("mode={}", mode.as_str()));
-    }
-}
-
-/// Percent-encodes a URI path query value following RFC 3986, preserving `/` path delimiters.
-fn encode_path_component(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                encoded.push(char::from(byte));
-            }
-            other => {
-                encoded.push('%');
-                encoded.push(hex_digit(other >> 4));
-                encoded.push(hex_digit(other & 0x0f));
-            }
-        }
-    }
-    encoded
-}
-
-const fn hex_digit(nibble: u8) -> char {
-    match nibble {
-        0..=9 => (b'0' + nibble) as char,
-        _ => (b'A' + (nibble - 10)) as char,
     }
 }
 
@@ -114,10 +91,10 @@ mod tests {
 
     #[test]
     fn encode_path_component_escapes_special_characters() {
-        assert_eq!(encode_path_component("a b&c=d"), "a%20b%26c%3Dd");
-        assert_eq!(encode_path_component("hello/world"), "hello/world");
+        assert_eq!(percent_encode_path("a b&c=d"), "a%20b%26c%3Dd");
+        assert_eq!(percent_encode_path("hello/world"), "hello/world");
         assert_eq!(
-            encode_path_component("simple-name_1.txt~"),
+            percent_encode_path("simple-name_1.txt~"),
             "simple-name_1.txt~"
         );
     }

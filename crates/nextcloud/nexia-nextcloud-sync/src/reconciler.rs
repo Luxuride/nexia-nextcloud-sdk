@@ -1,6 +1,6 @@
 //! Bidirectional reconciliation logic between local files, remote files, and journal entries.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use crate::action::SyncAction;
 use crate::journal::SyncJournal;
@@ -34,7 +34,9 @@ pub fn reconcile(
         .map(|f| (f.relative_path.as_str(), f))
         .collect();
 
-    let mut all_paths: HashSet<&str> = HashSet::new();
+    // Sorted so the action list is identical across runs (and so a parent
+    // directory is always ordered before the entries inside it).
+    let mut all_paths: BTreeSet<&str> = BTreeSet::new();
     all_paths.extend(local_map.keys().copied());
     all_paths.extend(remote_map.keys().copied());
 

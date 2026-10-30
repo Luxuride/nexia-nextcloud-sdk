@@ -1,5 +1,7 @@
 use std::fmt;
 
+use nexia_nextcloud_core::url::percent_encode;
+
 use crate::permissions::SharePermissions;
 use crate::share_type::ShareType;
 
@@ -212,30 +214,6 @@ fn encode_form_pairs(pairs: &[(&str, String)]) -> String {
         out.push_str(&percent_encode(v));
     }
     out
-}
-
-fn percent_encode(val: &str) -> String {
-    let mut out = String::with_capacity(val.len());
-    for byte in val.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                out.push(char::from(byte));
-            }
-            other => {
-                out.push('%');
-                out.push(hex_digit(other >> 4));
-                out.push(hex_digit(other & 0x0f));
-            }
-        }
-    }
-    out
-}
-
-fn hex_digit(nibble: u8) -> char {
-    match nibble {
-        0..=9 => (b'0' + nibble) as char,
-        _ => (b'A' + (nibble - 10)) as char,
-    }
 }
 
 #[cfg(test)]

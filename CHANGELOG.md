@@ -2,6 +2,69 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
+## Unreleased
+
+### Added
+
+- `nexia-nextcloud-core::url::{percent_encode, percent_encode_path}` — the single
+  RFC 3986 encoder for the workspace. Query values, form values and path segments
+  previously had three separate implementations that had already drifted.
+- `UrlError::InvalidPort` for a port outside `u16`. A malformed port used to be
+  reported as `MissingHost`.
+
+### Fixed
+
+- `nexia-nextcloud-sdk-session`: `PollFailed` and `Expired` now end a pending
+  Login Flow with `Command::StopPolling`. Both events existed and were documented
+  but no transition accepted them, so a poll that could never succeed left the
+  machine pending forever.
+- `nexia-nextcloud-sdk-session`: `PollToken`'s `Debug` redacts the token and the
+  type no longer implements `Display`. Both previously printed the raw value, and
+  every owning state derives `Debug`.
+- `nexia-nextcloud-core`: `Request`'s `Debug` prints the body length instead of
+  the bytes, so a login or password body cannot reach a log.
+- `nexia-nextcloud-core`: `ServerUrl` rejects an empty host (`https://:8080`).
+- `nexia-nextcloud-core`: `StatusError` truncation decodes a bounded prefix of the
+  body instead of the whole thing, so a multi-megabyte error page no longer costs
+  a full lossy conversion plus a full character count.
+- `nexia-nextcloud-ocs`: a payload that fails to decode is only tolerated when the
+  document really is a well-formed OCS envelope. A garbled body previously became
+  an empty success whenever the requested type deserialised from `null`.
+- `nexia-nextcloud-notifications`, `nexia-nextcloud-shares`: an envelope with no
+  readable verdict is a failure, not a success.
+- `nexia-nextcloud-sync`: the journal is written to a temporary file, flushed and
+  renamed, so a crash cannot leave a truncated journal that discards the whole
+  sync baseline.
+- `nexia-nextcloud-sync`: the download queue claims a task in one critical
+  section, so two workers can no longer pick the same pending download, and a
+  late progress or completion event no longer overwrites a cancelled or failed
+  task. Reconciliation plans are deterministic (`BTreeSet`).
+- `nexia-nextcloud-sdk-orchestrator`: `AddMount` reports the `MountManager` error
+  instead of replying `Ok` with an id nothing can act on, and no `VfsManager` is
+  registered for a rejected mount.
+- `nexia-nextcloud-sdk-orchestrator`: the filesystem watcher exits when its
+  channel closes instead of panicking in `tokio::select!` with every branch
+  disabled.
+- `nexia-nextcloud-sdk-orchestrator`: `hydrate_local`/`dehydrate_local` reject a
+  relative path that is empty, absolute or carries a `.`/`..` segment, so a
+  server-supplied name can no longer write outside the cache directory.
+- `nexia-nextcloud-sdk-orchestrator`: `find_mount_for_path` picks the longest
+  matching target, so a mount nested inside another is attributed correctly.
+- `nexia-nextcloud-sdk-fuse`: a metadata date that overflows `SystemTime` no
+  longer panics `getattr`; date arithmetic is checked.
+- `nexia-nextcloud-preview`: `freedesktop_thumbnail_is_current` compares the
+  stored `Thumb::MTime` with the file, so a changed file gets a fresh thumbnail,
+  and a payload that cannot be decoded is no longer installed under a `.png`
+  name.
+
+### Changed
+
+- `ConfigStore::store_theme` returns the stored `CachedTheme` and
+  `ConfigStore::store_sync_mount` returns the stored `StoredSyncMount`, so the
+  emitted event and the persisted row carry the same `updated_at`. Both returned
+  `()` and the event carried the caller's timestamp instead of the stored one.
+- The Login Flow poll body percent-encodes the token.
+
 ## 0.2.2
 
 ### Fixed

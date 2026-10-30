@@ -147,10 +147,12 @@ impl WorkerActor {
                     .config_store
                     .store_theme(self.server_url.as_str(), &theme)
                     .map_err(ClientError::Storage);
-                if res.is_ok() {
-                    let _ = self.event_tx.send(ClientEvent::ThemeUpdated(theme));
+                if let Ok(stored) = &res {
+                    let _ = self
+                        .event_tx
+                        .send(ClientEvent::ThemeUpdated(stored.clone()));
                 }
-                let _ = reply.send(res);
+                let _ = reply.send(res.map(|_| ()));
             }
             WorkerTask::LoadTheme { reply } => {
                 let res = self
@@ -178,10 +180,12 @@ impl WorkerActor {
                     .config_store
                     .store_sync_mount(&mount)
                     .map_err(ClientError::Storage);
-                if res.is_ok() {
-                    let _ = self.event_tx.send(ClientEvent::SyncMountAdded(mount));
+                if let Ok(stored) = &res {
+                    let _ = self
+                        .event_tx
+                        .send(ClientEvent::SyncMountAdded(stored.clone()));
                 }
-                let _ = reply.send(res);
+                let _ = reply.send(res.map(|_| ()));
             }
             WorkerTask::RemoveSyncMount { id, reply } => {
                 let res = self
@@ -301,7 +305,12 @@ impl WorkerActor {
             .client()
             .post(flow.poll_endpoint())
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(format!("token={}", flow.poll_token().expose()))
+            // The token is server-issued opaque text: encode it so a delimiter
+            // character cannot terminate the `token` parameter early.
+            .body(format!(
+                "token={}",
+                nexia_nextcloud_core::url::percent_encode(flow.poll_token().expose())
+            ))
             .send()
             .await;
 

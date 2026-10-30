@@ -215,8 +215,18 @@ Foundational HTTP semantics, type-safe paths, and the two seam traits.
 - `Transport` — `async fn execute(&self, req: Request) -> Result<Response, Error>`.
 - `AuthProvider` — injects credentials into outbound `Headers`.
 - `Header` / `Headers` — case-insensitive map with credential redaction.
+- `Request` — method, `ApiPath`, `Headers` and an optional body. Its `Debug`
+  reports the body length, never the bytes: bodies carry Login Flow tokens and
+  app passwords.
+- `url::percent_encode` / `url::percent_encode_path` — the one RFC 3986 encoder
+  in the workspace. The first escapes `/` (query and form values), the second
+  keeps it (path segments). Every crate that needs to escape a value uses these
+  rather than a local copy.
 - `Error` — unified error covering URL parsing, transport failures, non-2xx
-  status (`StatusError`), and JSON/XML decode (`DecodeError`).
+  status (`StatusError`), and JSON/XML decode (`DecodeError`). A rejected
+  `ServerUrl` reports `UrlError::MissingHost`, `UrlError::InvalidScheme`,
+  `UrlError::InvalidPort` (a port that is not a `u16`) or
+  `UrlError::UnsupportedScheme`.
 
 ### 3.2 `nexia-nextcloud-sdk-session` (core)
 
@@ -226,6 +236,15 @@ Pure Login Flow v2 state machine; performs no I/O.
 - `LoginStart { login_url, poll_endpoint, token }` with accessors of the same names.
 - `LoginSuccess { server, login_name, app_password }`.
 - `SessionEvent` in, `Command` out — the caller performs the described effect.
+- `SessionEvent::{ PollPending, Granted, CredentialsRejected, PollFailed, Expired, LogoutRequested }`.
+  `PollFailed` and `Expired` end a pending flow from `AwaitingLogin` or
+  `AwaitingGrant` with `Command::StopPolling`, so a poll that cannot succeed
+  returns the machine to `Idle` instead of leaving it pending forever.
+- `PollToken` keeps a bearer credential for the poll step: `expose()` is the only
+  way to read it, and both `Debug` and every owning state render it redacted.
+  It implements neither `Clone`-by-value printing nor `Display`.
+- `Account::user_id` equals `login_name` until a `cloud/user` lookup resolves the
+  real WebDAV user id; the two differ when a user signs in with an email address.
 
 ### 3.3 `nexia-nextcloud-sdk-request` (core)
 
@@ -407,9 +426,10 @@ can adopt existing account and folder pairs on first run.
 - `Client` — session (`start_login`, `poll_login`, `logout`, `clear_cache`,
   `credentials`, `session_state`, `is_authenticated`, `current_user_id`,
   `server_status`), client factories (see §2), persistence
-  (`store_sync_mount`, `remove_sync_mount`, `list_sync_mounts`,
-  `store_cached_theme`, `load_cached_theme`, `store_directory_sort`,
-  `load_directory_sort`, `set_setting`, `get_setting`), runtime knobs
+  (`store_sync_mount` → `StoredSyncMount`, `remove_sync_mount`,
+  `list_sync_mounts`, `store_cached_theme` → `CachedTheme`, `load_cached_theme`,
+  `store_directory_sort`, `load_directory_sort`, `set_setting`, `get_setting`),
+  runtime knobs
   (`set_upload_limit`, `set_download_limit`, `set_download_progress`,
   `set_upload_progress`, `subscribe_events`).
 - `ClientEvent::{ SyncMountAdded, SyncMountRemoved, SyncMountUpdated, ThemeUpdated }`

@@ -53,11 +53,23 @@ impl StatusError {
 /// Longest body prefix retained in a [`StatusError`].
 pub const MAX_BODY_LEN: usize = 512;
 
+/// Keeps at most [`MAX_BODY_LEN`] characters of `body`.
+///
+/// Only a prefix that can hold the bound is decoded, so a multi-megabyte error
+/// body (a DAV collection listing, say) costs a bounded copy rather than a full
+/// lossy conversion plus a full character count. The cut is moved to the next
+/// character boundary so a multi-byte sequence is never split.
 fn truncate(body: &[u8]) -> String {
-    let text = String::from_utf8_lossy(body);
-    if text.chars().count() <= MAX_BODY_LEN {
+    // Four bytes per character is the widest UTF-8 encoding, so the first
+    // `MAX_BODY_LEN * 4` bytes already contain the whole prefix; a short body is
+    // decoded in full and returned as-is.
+    let window = &body[..body.len().min(MAX_BODY_LEN * 4)];
+    let text = String::from_utf8_lossy(window);
+
+    if text.chars().count() <= MAX_BODY_LEN && window.len() == body.len() {
         return text.into_owned();
     }
+
     let mut truncated: String = text.chars().take(MAX_BODY_LEN).collect();
     truncated.push('…');
     truncated
@@ -112,6 +124,31 @@ mod tests {
         let body = vec![b'a'; MAX_BODY_LEN * 2];
         let error = error(500, &body);
         assert!(error.body().chars().count() <= MAX_BODY_LEN + 1);
+    }
+
+    #[test]
+    fn short_bodies_are_kept_whole() {
+        let error = error(500, "échec réseau".as_bytes());
+        assert_eq!(error.body(), "échec réseau");
+    }
+
+    #[test]
+    fn truncation_keeps_character_boundaries() {
+        // Multi-byte characters straddle the byte window: the retained prefix
+        // must still be valid text and must not lose the ellipsis marker.
+        let body = "é".repeat(MAX_BODY_LEN * 2);
+        let error = error(500, body.as_bytes());
+        assert!(error.body().ends_with('…'));
+        assert_eq!(error.body().chars().count(), MAX_BODY_LEN + 1);
+    }
+
+    #[test]
+    fn a_large_body_costs_a_bounded_decode() {
+        // Guards the truncation fast path: a body far past the window must not
+        // be decoded, counted and rescanned in full.
+        let body = vec![b'7'; 8 * 1024 * 1024];
+        let error = error(500, &body);
+        assert_eq!(error.body().chars().count(), MAX_BODY_LEN + 1);
     }
 
     #[test]
