@@ -102,8 +102,7 @@ async fn run_orchestrator_actor(
 
     // Register initial mounts from configuration
     for mount in config.mounts {
-        let mount_id = mount.id.clone();
-        let mount_dir = config.base_cache_dir.join("mounts").join(mount_id.as_str());
+        let mount_dir = mount.cache_dir_in(&config.base_cache_dir);
         let vfs = VfsManager::new(mount_dir.join("vfs"), &mount.remote_path);
 
         if let Ok(id) = mount_manager.add_mount(mount.clone()) {
@@ -119,7 +118,7 @@ async fn run_orchestrator_actor(
                 responder,
             } => {
                 let id = descriptor.id.clone();
-                let mount_dir = config.base_cache_dir.join("mounts").join(id.as_str());
+                let mount_dir = descriptor.cache_dir_in(&config.base_cache_dir);
                 let vfs = VfsManager::new(mount_dir.join("vfs"), &descriptor.remote_path);
 
                 if mount_manager.get_mount(&id).is_some() {
