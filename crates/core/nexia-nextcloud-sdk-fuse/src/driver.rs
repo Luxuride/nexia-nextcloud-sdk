@@ -26,11 +26,14 @@ pub const HYDRATION_BLOCK_SIZE: u64 = 128 * 1024;
 
 /// Largest file that a placeholder read will fetch in one piece.
 ///
-/// Below this, a full hydration is a single round trip and makes the whole file readable, which
-/// is what small images want. Above it, hydrating the whole file to answer one small read blocks
-/// its FUSE thread for the length of the transfer and caches the entire payload, so reads go
-/// through [`read_ranged`](FuseDriver::read_ranged) instead and fetch only what is asked for.
-pub const FULL_HYDRATION_MAX_SIZE: u64 = 4 * 1024 * 1024;
+/// This is exactly one ranged window (`2 * HYDRATION_BLOCK_SIZE`), which makes the rule
+/// self-evident rather than a guess: for a file this small, a full hydration transfers no more
+/// data than the single ranged fetch it replaces, and it leaves the whole file readable so no
+/// further round trips are needed. Above it, hydrating wholesale to answer one small read blocks
+/// its FUSE thread for the length of a transfer that can be tens of MiB — measured at 46-620 KiB/s
+/// against a real server, so tens of seconds — and caches the entire payload in the page cache.
+/// Those reads go through [`read_ranged`](FuseDriver::read_ranged) instead.
+pub const FULL_HYDRATION_MAX_SIZE: u64 = 2 * HYDRATION_BLOCK_SIZE;
 
 /// Buffered `(block_start, bytes)` windows per virtual path, for files whose full hydration failed.
 type PartialBlocks = std::collections::HashMap<String, Vec<(u64, Vec<u8>)>>;
@@ -1090,15 +1093,15 @@ mod tests {
         assert!(driver.read(attr.ino, 0, 16).await.is_ok());
     }
 
-    /// A large placeholder must never be fetched whole to answer a small read.
+    /// A file above the threshold must never be fetched whole to answer a small read.
     ///
     /// This is the freeze that made a file manager hang on a photo directory: every touch of a
     /// large file pulled the entire payload, holding one FUSE thread for the whole transfer, so a
     /// handful of concurrent reads exhausted the thread pool and no request could complete. The
-    /// read must stay ranged.
+    /// read must stay ranged. One byte over the limit is enough to switch behaviour.
     #[tokio::test]
     async fn large_placeholder_is_read_in_ranges_not_wholesale() {
-        let size = FULL_HYDRATION_MAX_SIZE * 4;
+        let size = FULL_HYDRATION_MAX_SIZE + 1;
         let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
         let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
         let full_calls = hydrator.full_calls.clone();
@@ -1132,10 +1135,11 @@ mod tests {
         );
     }
 
-    /// A small placeholder still hydrates in one piece, which is the cheap case for thumbnails.
+    /// A small placeholder still hydrates in one piece: up to one ranged window it costs no more
+    /// than the ranged fetch it replaces, and leaves the whole file readable.
     #[tokio::test]
     async fn small_placeholder_is_hydrated_wholesale() {
-        let payload = vec![7u8; 32 * 1024];
+        let payload = vec![7u8; 64 * 1024];
         let hydrator = Arc::new(RangeHydrator::new(payload.clone(), true));
         let full_calls = hydrator.full_calls.clone();
 
@@ -1155,7 +1159,10 @@ mod tests {
         );
     }
 
-    /// A large file whose reported size is 0 (unknown) must also avoid a wholesale fetch.
+    /// A file whose reported size is 0 (unknown) must avoid a wholesale fetch.
+    ///
+    /// Size is unknown precisely when the server did not tell us, so it could be anything; the
+    /// safe reading is "too large", since guessing wrong means downloading something unbounded.
     #[tokio::test]
     async fn unknown_size_placeholder_avoids_wholesale_fetch() {
         let payload: Vec<u8> = (0..=255u8).cycle().take(256 * 1024).collect();
