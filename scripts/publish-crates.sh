@@ -5,9 +5,10 @@
 # package whose dependencies do not already resolve from the registry, so a
 # `publish = false` dependency makes its dependents unpublishable.
 #
-# crates.io rate-limits publishes per user (a burst allowance, then one crate per
-# minute). This script waits and retries on 429 instead of failing the run, so a
-# full publish can take half an hour without any manual intervention.
+# crates.io allows five brand-new crates in a burst, then one every ten minutes,
+# per user. A workspace of thirty new crates therefore takes hours, not minutes.
+# This script waits and retries on 429 instead of failing the run, so a full
+# publish completes unattended.
 #
 # Usage:
 #   scripts/publish-crates.sh            # publish everything, skipping what exists
@@ -36,7 +37,9 @@ fi
 retry_publish() {
     local crate=$1
     local attempt=1
-    local max_attempts=12
+    # A 429 means the bucket is empty; one crate is earned back every 10 minutes,
+    # so allow enough attempts to sit out several refills without giving up.
+    local max_attempts=40
 
     while (( attempt <= max_attempts )); do
         local output
@@ -51,8 +54,8 @@ retry_publish() {
         fi
 
         if grep -qE "429|too many (crates|requests)|Please try again" <<<"$output"; then
-            echo "  rate limited on $crate, waiting 90s (attempt $attempt/$max_attempts)"
-            sleep 90
+            echo "  rate limited on $crate, waiting 300s (attempt $attempt/$max_attempts)"
+            sleep 300
             attempt=$((attempt + 1))
             continue
         fi
@@ -73,9 +76,10 @@ mapfile -t order < <(python3 scripts/crate-publish-order.py)
 echo "Publishing ${#order[@]} crates${1:+ (${1})}"
 for crate in "${order[@]}"; do
     retry_publish "$crate"
-    # Stay under the per-minute limit rather than discovering it the hard way.
+    # New-crate allowance refills one per ten minutes; waiting the full interval
+    # avoids spending retry attempts on a bucket that cannot have refilled.
     if [[ -z "${dry_run[*]:-}" ]]; then
-        sleep 65
+        sleep 600
     fi
 done
 
