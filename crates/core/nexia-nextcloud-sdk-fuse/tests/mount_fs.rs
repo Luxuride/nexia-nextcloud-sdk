@@ -506,3 +506,153 @@ fn remounting_the_same_path_does_not_clobber_the_first_mount() {
     let bytes = std::fs::read(&file).expect("the first mount must still serve reads");
     assert_eq!(bytes, payload, "the original mount was clobbered");
 }
+
+/// A slow hydrator that keeps the other side of the wire busy, like a real DAV server.
+///
+/// The freeze this guards against is not a deadlock: every read of an unhydrated file holds its
+/// FUSE thread for a whole network round trip, so a burst of them occupies the entire thread pool
+/// and unrelated metadata requests cannot be served at all. A file manager touching a photo
+/// directory does exactly that, and then hangs in `readdir`/`getattr` — the reported "Nautilus
+/// hard freeze" — while the server is merely slow.
+struct SlowHydrator {
+    payload: Vec<u8>,
+    delay: Duration,
+    /// Shared with the in-flight futures so a slot is released when the fetch finishes.
+    concurrent: Arc<AtomicUsize>,
+    /// High-water mark of `concurrent`, i.e. how many fetches really overlapped.
+    peak: Arc<AtomicUsize>,
+}
+
+impl SlowHydrator {
+    fn new(payload: &[u8], delay: Duration) -> Arc<Self> {
+        Arc::new(Self {
+            payload: payload.to_vec(),
+            delay,
+            concurrent: Arc::new(AtomicUsize::new(0)),
+            peak: Arc::new(AtomicUsize::new(0)),
+        })
+    }
+}
+
+impl AsyncHydrator for SlowHydrator {
+    fn hydrate(&self, _canonical_path: &str) -> HydratorFuture<'_> {
+        self.range_calls(0, self.payload.len() as u32)
+    }
+
+    fn hydrate_range(&self, _canonical_path: &str, offset: u64, size: u32) -> HydratorFuture<'_> {
+        self.range_calls(offset, size)
+    }
+}
+
+impl SlowHydrator {
+    fn range_calls(&self, offset: u64, size: u32) -> HydratorFuture<'_> {
+        let now = self.concurrent.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(now, Ordering::SeqCst);
+        let payload = self.payload.clone();
+        let delay = self.delay;
+        let concurrent = Arc::clone(&self.concurrent);
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            // Release the slot when the fetch completes, so `peak` measures overlap rather than
+            // the total number of fetches ever started.
+            concurrent.fetch_sub(1, Ordering::SeqCst);
+            let start = (offset as usize).min(payload.len());
+            let end = (start + size as usize).min(payload.len());
+            Ok(payload[start..end].to_vec())
+        })
+    }
+}
+
+/// While many reads are blocked on a slow server, directory metadata must still be answerable.
+///
+/// This is the "Nautilus hard freeze" stated as an assertion. `readdir`/`getattr`/`lookup` are what
+/// a file manager calls to draw a window; if the read burst can take every thread, those calls
+/// block behind it and the whole application appears frozen. The mount must keep answering, and the
+/// number of simultaneous downloads must stay below the thread-pool size.
+#[test]
+fn metadata_stays_responsive_while_reads_are_blocked_on_the_server() {
+    require_fuse!();
+
+    // Large enough that every read is ranged (so it cannot be served by one full hydration).
+    let payload = patterned_payload(4 * 1024 * 1024);
+    let delay = Duration::from_millis(400);
+    let hydrator = SlowHydrator::new(&payload, delay);
+    let peak = std::sync::Arc::clone(&hydrator.peak);
+
+    let mut tree = VirtualTree::new("Nextcloud");
+    for i in 0..32 {
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file(format!("/photo{i}.bin")).with_size(payload.len() as u64),
+        ));
+    }
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .enable_all()
+        .build()
+        .expect("build test runtime");
+    let driver = driver_with(&runtime, tree, hydrator.clone());
+    let created = TempMountpoint::new("metadata-during-burst");
+    let session = mount_virtual_fs(driver, created.path()).expect("mount");
+    let mounted = MountedFs {
+        session,
+        runtime,
+        mp: created,
+    };
+    let dir = mounted.path().to_path_buf();
+    assert!(wait_until(ENTRY_TIMEOUT, || dir.join("photo0.bin").exists()));
+
+    // Launch a burst of reads that each block for `delay` on the server.
+    // (no stop flag: the readers are joined below)
+    let mut readers = Vec::new();
+    for i in 0..32 {
+        let file = dir.join(format!("photo{i}.bin"));
+        readers.push(std::thread::spawn(move || {
+            use std::io::Read;
+            if let Ok(mut f) = std::fs::File::open(&file) {
+                let mut buf = [0u8; 4096];
+                let _ = f.read(&mut buf);
+            }
+        }));
+    }
+
+    // Give the burst time to occupy whatever it can, then time a pure metadata call.
+    std::thread::sleep(Duration::from_millis(150));
+    let start = Instant::now();
+    let listing = std::fs::read_dir(&dir);
+    let elapsed = start.elapsed();
+    assert!(
+        listing.is_ok(),
+        "readdir failed while reads were in flight: {:?}",
+        listing.err()
+    );
+    // Generous, but far below the `delay` a single blocked round trip costs: if metadata were
+    // queueing behind the downloads this would be seconds.
+    assert!(
+        elapsed < delay,
+        "readdir took {elapsed:?} while reads were in flight; metadata is queueing behind \
+         payload downloads, which is what freezes a file manager"
+    );
+
+    for r in readers {
+        let _ = r.join();
+    }
+
+    // `mount_virtual_fs` sizes the download gate below the thread-pool size; the observed overlap
+    // must respect that bound rather than reaching the full pool.
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(4, 16);
+    let expected_limit = (threads / 2).max(2);
+    assert!(
+        peak.load(Ordering::SeqCst) <= expected_limit,
+        "peak concurrent downloads was {} but the gate allows at most {expected_limit} \
+         (thread pool {threads})",
+        peak.load(Ordering::SeqCst)
+    );
+    assert!(
+        peak.load(Ordering::SeqCst) > 0,
+        "no fetch overlapped at all, so the burst never actually exercised the gate"
+    );
+}

@@ -305,8 +305,7 @@ pub fn mount_virtual_fs_with_options(
     driver.set_download_limit(download_limit);
     debug!(
         threads,
-        download_limit,
-        "Bounding concurrent payload downloads below the FUSE thread-pool size"
+        download_limit, "Bounding concurrent payload downloads below the FUSE thread-pool size"
     );
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");

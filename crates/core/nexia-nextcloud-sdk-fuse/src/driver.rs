@@ -1309,11 +1309,7 @@ mod tests {
             3,
             "more downloads ran at once than the gate allows"
         );
-        assert_eq!(
-            gate.in_flight(),
-            0,
-            "a slot was leaked by a dropped guard"
-        );
+        assert_eq!(gate.in_flight(), 0, "a slot was leaked by a dropped guard");
     }
 
     /// An unknown file size must still be range-read, never fetched wholesale.
