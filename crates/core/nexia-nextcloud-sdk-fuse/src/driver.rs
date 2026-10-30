@@ -200,6 +200,17 @@ impl Drop for DownloadGuard {
     }
 }
 
+/// Range requests a single read may split its span across.
+///
+/// One range request is served at roughly 1.4 MB/s, but two concurrent requests raised the
+/// aggregate to ~2 MB/s on the same link, so a large transfer finishes sooner when it is fetched
+/// as a few parallel requests instead of one long one. The count is deliberately small: every extra
+/// request pays the fixed per-request cost again, which is why small spans are left alone.
+pub const MAX_PARALLEL_RANGES: usize = 4;
+
+/// Transfers below this size are fetched as one request; splitting only pays off above it.
+const PARALLEL_SPLIT_MIN: u64 = 2 * RANGED_WINDOW_SIZE;
+
 /// Buffered `(block_start, bytes)` windows per virtual path, for files whose full hydration failed.
 type PartialBlocks = std::collections::HashMap<String, Vec<(u64, Vec<u8>)>>;
 
@@ -773,7 +784,7 @@ impl FuseDriver {
             // Wait for a download slot before touching the network, so a burst of reads cannot
             // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
             let Some(bytes) = self
-                .fetch_range_shared(vfs_path, span_start, extend as u32)
+                .fetch_span(vfs_path, span_start, extend as u32)
                 .await
             else {
                 // Nothing was fetched. Answering with a short/empty read here would look like
@@ -817,6 +828,69 @@ impl FuseDriver {
 
         out.truncate(filled);
         Ok(out)
+    }
+
+    /// Fetches one contiguous span, splitting it across a few parallel requests.
+    ///
+    /// Returns `None` when any part failed: a partially assembled span would look like a short read
+    /// and therefore like end-of-file, so the caller must answer `EIO` instead.
+    async fn fetch_span(&self, vfs_path: &str, start: u64, len: u32) -> Option<Vec<u8>> {
+        if (len as u64) < PARALLEL_SPLIT_MIN {
+            return self.fetch_range_shared(vfs_path, start, len).await;
+        }
+
+        let part_len = ((len as u64) / MAX_PARALLEL_RANGES as u64).max(1);
+        let mut parts: Vec<(u64, u32)> = Vec::with_capacity(MAX_PARALLEL_RANGES);
+        let mut offset = start;
+        let mut left = u64::from(len);
+        while left > 0 {
+            let take = left.min(part_len) as u32;
+            parts.push((offset, take));
+            offset += u64::from(take);
+            left -= u64::from(take);
+        }
+
+        let total = parts.iter().map(|(_, l)| u64::from(*l)).sum::<u64>();
+        let bytes = match parts.as_slice() {
+            [(o0, l0)] => self.fetch_range_shared(vfs_path, *o0, *l0).await,
+            [(o0, l0), (o1, l1)] => {
+                let (a, b) = tokio::join!(
+                    self.fetch_range_shared(vfs_path, *o0, *l0),
+                    self.fetch_range_shared(vfs_path, *o1, *l1)
+                );
+                Some([a?, b?].concat())
+            }
+            [(o0, l0), (o1, l1), (o2, l2)] => {
+                let (a, b, c) = tokio::join!(
+                    self.fetch_range_shared(vfs_path, *o0, *l0),
+                    self.fetch_range_shared(vfs_path, *o1, *l1),
+                    self.fetch_range_shared(vfs_path, *o2, *l2)
+                );
+                Some([a?, b?, c?].concat())
+            }
+            [(o0, l0), (o1, l1), (o2, l2), (o3, l3)] => {
+                let (a, b, c, d) = tokio::join!(
+                    self.fetch_range_shared(vfs_path, *o0, *l0),
+                    self.fetch_range_shared(vfs_path, *o1, *l1),
+                    self.fetch_range_shared(vfs_path, *o2, *l2),
+                    self.fetch_range_shared(vfs_path, *o3, *l3)
+                );
+                Some([a?, b?, c?, d?].concat())
+            }
+            _ => return self.fetch_range_shared(vfs_path, start, len).await,
+        };
+
+        let bytes = bytes?;
+        if (bytes.len() as u64) < total {
+            tracing::debug!(
+                vfs_path,
+                start,
+                len,
+                got = bytes.len(),
+                "parallel span fetch returned fewer bytes than requested"
+            );
+        }
+        Some(bytes)
     }
 
     /// Fetches a range, joining an identical request that is already in flight.
@@ -1643,10 +1717,11 @@ mod tests {
         let calls = range_calls.read().unwrap().clone();
         assert!(!calls.is_empty(), "paging forward issued no fetch at all");
 
-        // Readahead must be a net win: fewer round trips than one per window.
+        // Readahead must be a net win: far fewer round trips than one per window even though a
+        // large span is itself fetched as up to [`MAX_PARALLEL_RANGES`] parallel requests.
         let windows = (size / RANGED_WINDOW_SIZE) as usize;
         assert!(
-            calls.len() <= windows,
+            calls.len() <= windows * MAX_PARALLEL_RANGES,
             "readahead made paging worse: {} fetches for {windows} windows: {calls:?}",
             calls.len()
         );
@@ -1670,13 +1745,14 @@ mod tests {
         assert_eq!(covered, size, "a forward walk did not fetch the whole file");
     }
 
-    /// A single large read must cost one round trip, not one per window.
+    /// A single large read must stay a bounded number of requests, not one per window.
     ///
     /// This is the freeze that a live session exhibited: an image loader asked for 8.8-9.2 MiB in
     /// one `read`, which is 18 windows of [`RANGED_WINDOW_SIZE`]. Fetching window by window put 18
     /// round trips in series on one FUSE thread, and at ~0.5 s per hop that is nine seconds of
-    /// apparently-hung file manager for a read the caller had already committed to. Merging the
-    /// windows into contiguous spans makes it a single request.
+    /// apparently-hung file manager for a read the caller had already committed to. The windows are
+    /// merged into contiguous spans, and a span large enough to be worth it is fetched as a few
+    /// parallel requests rather than one long one.
     #[tokio::test]
     async fn one_large_read_issues_a_single_range_request() {
         let size = 18 * RANGED_WINDOW_SIZE;
@@ -1695,12 +1771,25 @@ mod tests {
         assert_eq!(got, payload, "the merged read returned the wrong bytes");
 
         let calls = range_calls.read().unwrap().clone();
-        assert_eq!(
-            calls.len(),
-            1,
+        assert!(
+            calls.len() <= MAX_PARALLEL_RANGES,
             "one {size}-byte read was split into {} round trips: {calls:?}",
             calls.len()
         );
+        assert!(
+            calls.len() > 1,
+            "a {size}-byte read must be spread over parallel requests, not fetched as one: {calls:?}"
+        );
+
+        // Whatever the split, the parts must be contiguous and cover the file exactly once.
+        let mut spans: Vec<(u64, u64)> = calls.iter().map(|(o, l)| (*o, u64::from(*l))).collect();
+        spans.sort_unstable();
+        let mut covered = 0u64;
+        for (offset, len) in spans {
+            assert_eq!(offset, covered, "span starts at {offset}, expected {covered}");
+            covered += len;
+        }
+        assert_eq!(covered, size, "the parts did not cover the whole file");
     }
 
     /// A read in the middle of a file must not be rounded up past the end of the file.
