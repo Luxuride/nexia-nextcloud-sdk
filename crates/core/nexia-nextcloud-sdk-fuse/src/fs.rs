@@ -13,6 +13,7 @@ use tracing::{debug, error, trace};
 
 use crate::attr::FileType;
 use crate::driver::FuseDriver;
+use crate::intent::ReadVerdict;
 
 const TTL: Duration = Duration::from_secs(60);
 
@@ -224,6 +225,33 @@ impl Filesystem for FuseDriver {
             reply.error(Errno::ECHILD);
             return;
         }
+
+        // A file manager opening a directory touches every entry in it: small speculative reads
+        // spread across hundreds of files, each one a full round trip. That is what makes the
+        // folder look hung, and it is not something the user asked for — the preview it wants
+        // either already exists in the thumbnail cache or can be built from the thumbnail we
+        // serve. A process that keeps reading one file (a copy, an archive, a video player) is
+        // streaming, not browsing, and is always served.
+        //
+        // Only unhydrated placeholders are subject to this: once the bytes are local the read
+        // costs nothing and there is no reason to refuse it.
+        if self.is_placeholder(ino.0)
+            && self.classify_read(req.pid(), ino.0, offset, size) == ReadVerdict::Refuse
+        {
+            // `ECHILD` for the same reason as above: it is passed through verbatim instead of
+            // being converted into `EIO`, so the reader can retry later rather than recording the
+            // file as permanently unreadable.
+            debug!(
+                pid = req.pid(),
+                ino = ino.0,
+                offset,
+                size,
+                "Refusing speculative read while the caller sweeps a directory"
+            );
+            reply.error(Errno::ECHILD);
+            return;
+        }
+
         let result = if let Some(rt) = self.runtime_handle() {
             Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size))
         } else {

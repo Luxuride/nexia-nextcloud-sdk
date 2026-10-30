@@ -18,6 +18,7 @@ pub mod entry;
 pub mod fs;
 pub mod hydrator;
 pub mod inode;
+pub mod intent;
 
 pub use attr::{FileAttr, FileType};
 pub use driver::{
@@ -31,6 +32,7 @@ pub use fs::{mount_virtual_fs, mount_virtual_fs_with_options};
 pub use fuser::{BackgroundSession, MountOption};
 pub use hydrator::{AsyncHydrator, NoopHydrator};
 pub use inode::{FUSE_ROOT_INODE, InodeTable};
+pub use intent::{ReadIntent, ReadVerdict};
 
 #[cfg(not(target_os = "linux"))]
 #[derive(Clone, Debug)]

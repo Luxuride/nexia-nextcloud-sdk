@@ -89,7 +89,11 @@ fn plan_fetch_spans(start: u64, len: u64, file_size: u64) -> Vec<(u64, u64)> {
     let rounded_end = want_end
         .div_ceil(RANGED_WINDOW_SIZE)
         .saturating_mul(RANGED_WINDOW_SIZE);
-    let end = rounded_end.min(if file_size > 0 { file_size } else { rounded_end });
+    let end = rounded_end.min(if file_size > 0 {
+        file_size
+    } else {
+        rounded_end
+    });
     while cursor < end {
         let span_len = (end - cursor).min(MAX_RANGE_REQUEST_SIZE);
         spans.push((cursor, span_len));
@@ -199,6 +203,11 @@ pub struct FuseDriver {
     /// Without that check every first touch of every file prefetches four extra windows, and a file
     /// manager building thumbnails for hundreds of photos pays for megabytes it will never read.
     readahead_cursor: Arc<RwLock<std::collections::HashMap<String, (u64, u64)>>>,
+    /// Distinguishes a file manager browsing a directory from a real bulk read.
+    ///
+    /// A directory sweep touches many files with small speculative reads, each costing a full
+    /// round trip; a copy keeps reading one file. See [`crate::intent`].
+    read_intent: Arc<crate::intent::ReadIntent>,
 }
 
 impl FuseDriver {
@@ -255,8 +264,18 @@ impl FuseDriver {
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
             readahead_cursor: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            read_intent: Arc::new(crate::intent::ReadIntent::default()),
         }
     }
+
+    /// Classifies a read as browsing or streaming, so `fs::read` can refuse speculative sweeps.
+    ///
+    /// `pid` is the calling process; the inode is used as the file identity because it is stable
+    /// for the lifetime of the mount and needs no path resolution here.
+    pub fn classify_read(&self, pid: u32, ino: u64, offset: u64, size: u32) -> crate::intent::ReadVerdict {
+        self.read_intent.classify(pid, ino, offset, size)
+    }
+
 
     /// The gate bounding simultaneous remote fetches.
     pub fn download_gate(&self) -> &Arc<DownloadGate> {
@@ -795,7 +814,10 @@ impl FuseDriver {
         };
         cursors.insert(
             vfs_path.to_string(),
-            (span_start.saturating_add(span_len), span_start.saturating_add(got)),
+            (
+                span_start.saturating_add(span_len),
+                span_start.saturating_add(got),
+            ),
         );
     }
 
@@ -1449,10 +1471,7 @@ mod tests {
 
         // Ranges must be disjoint and must together cover every byte exactly once, so a forward
         // walk never pays twice for the same data.
-        let mut spans: Vec<(u64, u64)> = calls
-            .iter()
-            .map(|(o, l)| (*o, u64::from(*l)))
-            .collect();
+        let mut spans: Vec<(u64, u64)> = calls.iter().map(|(o, l)| (*o, u64::from(*l))).collect();
         spans.sort_unstable();
         let mut covered = 0u64;
         for (offset, len) in spans {
@@ -1594,7 +1613,9 @@ mod tests {
             calls.len()
         );
         assert!(
-            calls.iter().any(|(_, len)| u64::from(*len) > RANGED_WINDOW_SIZE),
+            calls
+                .iter()
+                .any(|(_, len)| u64::from(*len) > RANGED_WINDOW_SIZE),
             "no request ever exceeded one window: {calls:?}"
         );
     }
