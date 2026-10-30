@@ -85,10 +85,24 @@ impl VirtualTree {
                 node.metadata.size = existing.metadata.size;
             }
             if !node.metadata.is_directory {
-                if existing.is_hydrated() {
+                // Only carry the hydrated payload over when the remote object is unchanged.
+                // A changed ETag (or a changed byte length) means the cached bytes belong to an
+                // older revision of the file, and keeping them made every later read serve stale
+                // content — and, for `HydratedContent::Path` entries, content read from a cache
+                // file that no longer matched the node.
+                let content_changed = existing.metadata.etag.is_some()
+                    && node.metadata.etag.is_some()
+                    && existing.metadata.etag != node.metadata.etag;
+                let size_changed = existing.metadata.size > 0
+                    && node.metadata.size > 0
+                    && existing.metadata.size != node.metadata.size;
+
+                if existing.is_hydrated() && !content_changed && !size_changed {
                     node.hydration = existing.hydration.clone();
                 }
-                node.thumbnails = existing.thumbnails.clone();
+                if !content_changed && !size_changed {
+                    node.thumbnails = existing.thumbnails.clone();
+                }
             }
         }
 
@@ -305,6 +319,100 @@ impl VirtualTree {
 
         node.hydration = HydrationState::Hydrated(HydratedContent::Bytes(content));
         Ok(())
+    }
+
+    /// Reads the buffered bytes of `path`, reading through the local cache file when the node is
+    /// hydrated via [`HydratedContent::Path`].
+    ///
+    /// Returns `Ok(None)` when the node carries no readable payload at all (a placeholder). This is
+    /// the accessor callers must use instead of [`HydrationState::bytes`], which silently reports
+    /// "no data" for path-backed nodes.
+    ///
+    /// # Errors
+    ///
+    /// - [`VfsError::NotFound`] if the path does not exist in the tree.
+    /// - [`VfsError::InvalidPath`] if the path format is malformed.
+    pub fn read_hydrated_bytes(&self, path: &str) -> Result<Option<Vec<u8>>, VfsError> {
+        let normalized = normalize_path(path)?;
+        let node = self
+            .nodes
+            .get(&normalized)
+            .ok_or_else(|| VfsError::NotFound(normalized.clone()))?;
+        match node.hydration() {
+            HydrationState::Hydrated(HydratedContent::Bytes(bytes)) => Ok(Some(bytes.clone())),
+            HydrationState::Hydrated(HydratedContent::Path(cached)) => {
+                match std::fs::read(cached) {
+                    Ok(bytes) => Ok(Some(bytes)),
+                    Err(err) => {
+                        tracing::warn!(
+                            path = %normalized,
+                            cached = %cached.display(),
+                            error = %err,
+                            "hydrated cache file is unreadable"
+                        );
+                        Ok(None)
+                    }
+                }
+            }
+            HydrationState::Placeholder => Ok(None),
+        }
+    }
+
+    /// Merges freshly discovered remote metadata into this tree without discarding local state.
+    ///
+    /// This is the entry point to use when refreshing a tree that a live FUSE mount is serving:
+    /// it differs from [`Self::populate_from_resources`] in that it **never** removes existing
+    /// nodes, so a partial refresh (a single directory PROPFIND) cannot wipe out sibling subtrees,
+    /// and it preserves in-flight hydrations and downloaded thumbnails via [`Self::insert`].
+    ///
+    /// Returns the number of resources applied.
+    pub fn merge_from_resources(
+        &mut self,
+        base_dav_prefix: &str,
+        resources: &[crate::resource::DavResourceSummary],
+    ) -> usize {
+        merge_resources_into(self, base_dav_prefix, resources)
+    }
+
+    /// Copies hydration state and thumbnails from `source` onto every file node whose remote
+    /// revision is unchanged.
+    ///
+    /// Used right after replacing a live tree with a snapshot: the snapshot is generally older
+    /// than the running mount, and without this every file that was hydrated in the meantime
+    /// silently reverts to a placeholder and has to be downloaded again.
+    ///
+    /// Returns the number of nodes that kept their hydrated payload.
+    pub fn adopt_hydration_from(&mut self, source: &Self) -> usize {
+        let mut adopted = 0;
+        for path in source.paths().map(str::to_string).collect::<Vec<_>>() {
+            let Some(src) = source.get(&path) else {
+                continue;
+            };
+            if src.is_directory() || !src.is_hydrated() {
+                continue;
+            }
+            let Some(dst) = self.nodes.get_mut(&path) else {
+                continue;
+            };
+            if dst.is_directory() {
+                continue;
+            }
+            let revision_changed = src.metadata.etag.is_some()
+                && dst.metadata.etag.is_some()
+                && src.metadata.etag != dst.metadata.etag;
+            let size_changed = src.metadata.size > 0
+                && dst.metadata.size > 0
+                && src.metadata.size != dst.metadata.size;
+            if revision_changed || size_changed {
+                continue;
+            }
+            dst.hydration = src.hydration.clone();
+            if dst.thumbnails.is_empty() {
+                dst.thumbnails = src.thumbnails.clone();
+            }
+            adopted += 1;
+        }
+        adopted
     }
 
     /// Hydrates a file node with a local filesystem cache path.
@@ -698,11 +806,24 @@ impl VirtualTree {
     /// Populates and synchronizes the virtual tree from a list of discovered remote WebDAV resources,
     /// ensuring all intermediate parent directories exist automatically.
     ///
+    /// Children of the listed directory that the server no longer reports are pruned. Use
+    /// [`Self::merge_from_resources`] instead when the refresh is partial or when a live mount is
+    /// reading from this tree.
+    ///
     /// Returns the number of resources inserted.
     pub fn populate_from_resources(
         &mut self,
         base_dav_prefix: &str,
         resources: &[crate::resource::DavResourceSummary],
+    ) -> usize {
+        self.apply_resources(base_dav_prefix, resources, true)
+    }
+
+    fn apply_resources(
+        &mut self,
+        base_dav_prefix: &str,
+        resources: &[crate::resource::DavResourceSummary],
+        prune: bool,
     ) -> usize {
         let mut inserted = 0;
 
@@ -775,15 +896,19 @@ impl VirtualTree {
                 .filter(|p| p != &target)
                 .collect();
 
-            let current_children = self.children(&target);
-            let stale_children: Vec<String> = current_children
-                .into_iter()
-                .map(|c| c.path().to_string())
-                .filter(|p| !returned_children.contains(p))
-                .collect();
+            if prune {
+                let current_children = self.children(&target);
+                let stale_children: Vec<String> = current_children
+                    .into_iter()
+                    .map(|c| c.path().to_string())
+                    .filter(|p| !returned_children.contains(p))
+                    .collect();
 
-            for stale in stale_children {
-                self.remove(&stale);
+                for stale in stale_children {
+                    self.remove(&stale);
+                }
+            } else {
+                let _ = returned_children;
             }
         }
 
@@ -799,6 +924,16 @@ impl VirtualTree {
         }
         self.insert(VirtualNode::new_directory(NodeMetadata::directory(path)));
     }
+}
+
+/// Shared resource-application loop for [`VirtualTree::populate_from_resources`] and
+/// [`VirtualTree::merge_from_resources`].
+fn merge_resources_into(
+    tree: &mut VirtualTree,
+    base_dav_prefix: &str,
+    resources: &[crate::resource::DavResourceSummary],
+) -> usize {
+    tree.apply_resources(base_dav_prefix, resources, false)
 }
 
 fn percent_decode(s: &str) -> String {
@@ -1317,5 +1452,147 @@ mod tests {
         assert_eq!(sub_children[0].name, "Work Plan.pdf");
         assert_eq!(sub_children[0].size, 2048);
         assert!(!sub_children[0].is_directory);
+    }
+
+    /// Regression: a `Path`-backed hydration must be readable, not reported as "no data".
+    #[test]
+    fn read_hydrated_bytes_reads_through_cache_path() {
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg").with_size(4),
+        ));
+
+        let dir = std::env::temp_dir().join(format!("nexia-vfs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join("a.jpg");
+        std::fs::write(&cached, b"DATA").unwrap();
+
+        tree.hydrate_path("/Photos/a.jpg", cached.clone()).unwrap();
+
+        // The legacy accessor silently reports nothing for path-backed nodes.
+        assert!(
+            tree.get("/Photos/a.jpg")
+                .unwrap()
+                .hydration()
+                .bytes()
+                .is_none()
+        );
+
+        assert_eq!(
+            tree.read_hydrated_bytes("/Photos/a.jpg")
+                .unwrap()
+                .expect("path-backed hydration must be readable"),
+            b"DATA".to_vec()
+        );
+
+        let _ = std::fs::remove_file(&cached);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// Regression: a resource refresh must not drop an already hydrated payload.
+    #[test]
+    fn refreshing_resources_keeps_hydrated_bytes() {
+        let mut tree = VirtualTree::new("root");
+        let prefix = "/remote.php/dav/files/user";
+        let resources = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Photos/", true)
+                .with_etag("etag-1".to_string()),
+            crate::resource::DavResourceSummary {
+                content_length: Some(4),
+                ..crate::resource::DavResourceSummary::new(
+                    "/remote.php/dav/files/user/Photos/a.jpg",
+                    false,
+                )
+                .with_etag("etag-1".to_string())
+            },
+        ];
+        tree.populate_from_resources(prefix, &resources);
+        tree.hydrate("/Photos/a.jpg", b"DATA".to_vec()).unwrap();
+
+        // Same revision reported again (a periodic ETag poll): hydration must survive.
+        tree.populate_from_resources(prefix, &resources);
+        assert_eq!(
+            tree.read_hydrated_bytes("/Photos/a.jpg").unwrap().unwrap(),
+            b"DATA".to_vec()
+        );
+
+        // A new revision must NOT keep the stale payload.
+        let changed = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Photos/", true)
+                .with_etag("etag-2".to_string()),
+            crate::resource::DavResourceSummary {
+                content_length: Some(4),
+                ..crate::resource::DavResourceSummary::new(
+                    "/remote.php/dav/files/user/Photos/a.jpg",
+                    false,
+                )
+                .with_etag("etag-2".to_string())
+            },
+        ];
+        tree.populate_from_resources(prefix, &changed);
+        assert!(tree.get("/Photos/a.jpg").unwrap().is_placeholder());
+    }
+
+    /// A live mount's hydration state wins over the snapshot it is merged into.
+    #[test]
+    fn adopt_hydration_from_live_tree() {
+        let mut live = VirtualTree::new("root");
+        live.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg")
+                .with_size(4)
+                .with_etag("etag-1".to_string()),
+        ));
+        live.hydrate("/Photos/a.jpg", b"DATA".to_vec()).unwrap();
+
+        // Snapshot taken before the file was hydrated.
+        let mut snapshot = VirtualTree::new("root");
+        snapshot.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg")
+                .with_size(4)
+                .with_etag("etag-1".to_string()),
+        ));
+        assert_eq!(snapshot.adopt_hydration_from(&live), 1);
+        assert!(!snapshot.get("/Photos/a.jpg").unwrap().is_placeholder());
+
+        // A different revision must not inherit the payload.
+        let mut stale = VirtualTree::new("root");
+        stale.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg")
+                .with_size(4)
+                .with_etag("etag-9".to_string()),
+        ));
+        assert_eq!(stale.adopt_hydration_from(&live), 0);
+        assert!(stale.get("/Photos/a.jpg").unwrap().is_placeholder());
+    }
+
+    /// A partial refresh must not prune siblings it never asked about.
+    #[test]
+    fn merge_from_resources_never_prunes() {
+        let mut tree = VirtualTree::new("root");
+        let prefix = "/remote.php/dav/files/user";
+        let initial = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Photos/", true),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Photos/a.jpg",
+                false,
+            ),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Photos/b.jpg",
+                false,
+            ),
+        ];
+        tree.populate_from_resources(prefix, &initial);
+
+        let partial = vec![
+            crate::resource::DavResourceSummary::new("/remote.php/dav/files/user/Photos/", true),
+            crate::resource::DavResourceSummary::new(
+                "/remote.php/dav/files/user/Photos/b.jpg",
+                false,
+            ),
+        ];
+        tree.merge_from_resources(prefix, &partial);
+
+        assert!(tree.contains("/Photos/a.jpg"));
+        assert!(tree.contains("/Photos/b.jpg"));
     }
 }
