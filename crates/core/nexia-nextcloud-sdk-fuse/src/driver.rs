@@ -203,6 +203,12 @@ impl Drop for DownloadGuard {
 /// Buffered `(block_start, bytes)` windows per virtual path, for files whose full hydration failed.
 type PartialBlocks = std::collections::HashMap<String, Vec<(u64, Vec<u8>)>>;
 
+/// One in-flight range request, shared by every reader that asked for the same bytes.
+type InflightRange = std::sync::Arc<tokio::sync::OnceCell<Option<Vec<u8>>>>;
+
+/// Identifies a range request: virtual path, start offset and length.
+type InflightKey = (String, u64, u32);
+
 /// Core filesystem driver bridging a [`VirtualTree`] and [`InodeTable`] to FUSE operations.
 pub struct FuseDriver {
     tree: Arc<RwLock<VirtualTree>>,
@@ -224,6 +230,14 @@ pub struct FuseDriver {
     /// Without that check every first touch of every file prefetches four extra windows, and a file
     /// manager building thumbnails for hundreds of photos pays for megabytes it will never read.
     readahead_cursor: Arc<RwLock<std::collections::HashMap<String, (u64, u64)>>>,
+    /// Range requests currently in flight, keyed by path, start and length.
+    ///
+    /// A cold sequential read is a pipeline: the kernel issues overlapping reads, so two FUSE
+    /// threads ask for the same window at the same moment. Both used to fetch it independently,
+    /// which doubled both the latency and the transferred bytes of opening a cold file (measured:
+    /// every window after the first was downloaded twice). Joining the flight that is already
+    /// running makes the second reader wait for those bytes instead of paying for them again.
+    inflight_ranges: Arc<std::sync::Mutex<std::collections::HashMap<InflightKey, InflightRange>>>,
     /// Distinguishes a file manager browsing a directory from a real bulk read.
     ///
     /// A directory sweep touches many files with small speculative reads, each costing a full
@@ -285,6 +299,7 @@ impl FuseDriver {
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
             readahead_cursor: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            inflight_ranges: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             read_intent: Arc::new(crate::intent::ReadIntent::default()),
         }
     }
@@ -758,8 +773,8 @@ impl FuseDriver {
             // Wait for a download slot before touching the network, so a burst of reads cannot
             // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
             let Some(bytes) = self
-                .fetch_range(vfs_path, span_start, extend as u32)
-                .await?
+                .fetch_range_shared(vfs_path, span_start, extend as u32)
+                .await
             else {
                 // Nothing was fetched. Answering with a short/empty read here would look like
                 // end-of-file and get cached as such by the kernel, so a transient network error
@@ -802,6 +817,55 @@ impl FuseDriver {
 
         out.truncate(filled);
         Ok(out)
+    }
+
+    /// Fetches a range, joining an identical request that is already in flight.
+    ///
+    /// Two readers of the same cold file always reach a window boundary at slightly different
+    /// moments, and the kernel issues overlapping reads, so the same window would otherwise be
+    /// downloaded once per reader. The first reader publishes its request here; the rest await the
+    /// same bytes. Returns `None` when the fetch failed, exactly like [`Self::fetch_range`].
+    async fn fetch_range_shared(&self, vfs_path: &str, start: u64, len: u32) -> Option<Vec<u8>> {
+        let key: InflightKey = (vfs_path.to_string(), start, len);
+        let (cell, joined) = {
+            let Ok(mut flights) = self.inflight_ranges.lock() else {
+                return self.fetch_range(vfs_path, start, len).await.ok().flatten();
+            };
+            match flights.get(&key) {
+                Some(existing) => (existing.clone(), true),
+                None => {
+                    let cell: InflightRange = Arc::new(tokio::sync::OnceCell::new());
+                    flights.insert(key.clone(), cell.clone());
+                    (cell, false)
+                }
+            }
+        };
+
+        let value = cell
+            .get_or_init(|| async { self.fetch_range(vfs_path, start, len).await.ok().flatten() })
+            .await
+            .clone();
+
+        if joined {
+            tracing::debug!(
+                vfs_path,
+                start,
+                len,
+                got = value.as_ref().map_or(0, Vec::len),
+                "joined in-flight range fetch"
+            );
+        }
+
+        // Only the flight that is still registered may clear the key: a later request for the same
+        // window may already have installed a fresh one after this one completed.
+        if let Ok(mut flights) = self.inflight_ranges.lock()
+            && let Some(registered) = flights.get(&key)
+            && Arc::ptr_eq(registered, &cell)
+        {
+            flights.remove(&key);
+        }
+
+        value
     }
 
     /// Calls the hydrator for `len` bytes at `start`, returning `None` when it fails.
@@ -1348,6 +1412,90 @@ mod tests {
             let slice = self.payload[start..end].to_vec();
             Box::pin(async move { Ok(slice) })
         }
+    }
+
+    /// A hydrator whose ranged reads take long enough for two readers to overlap.
+    struct SlowRangeHydrator {
+        payload: Vec<u8>,
+        calls: Arc<RwLock<Vec<(u64, u32)>>>,
+        delay: std::time::Duration,
+    }
+
+    impl AsyncHydrator for SlowRangeHydrator {
+        fn hydrate(
+            &self,
+            canonical_path: &str,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            let path = canonical_path.to_string();
+            Box::pin(async move { Err(VfsError::NotFound(path)) })
+        }
+
+        fn hydrate_range(
+            &self,
+            _canonical_path: &str,
+            offset: u64,
+            size: u32,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            self.calls.write().unwrap().push((offset, size));
+            let start = (offset as usize).min(self.payload.len());
+            let end = (start + size as usize).min(self.payload.len());
+            let slice = self.payload[start..end].to_vec();
+            let delay = self.delay;
+            Box::pin(async move {
+                // Deliberately a blocking sleep: the crate does not enable `tokio/time`, and this
+                // test needs a guaranteed overlap window rather than a scheduler-dependent one.
+                std::thread::sleep(delay);
+                Ok(slice)
+            })
+        }
+    }
+
+    /// Two concurrent readers of one cold file must share a single range request.
+    ///
+    /// A cold sequential read is a pipeline: the kernel issues overlapping reads, so two FUSE
+    /// threads reach the same window at almost the same moment. Each used to fetch that window
+    /// independently — measured on a real mount, every window after the first was downloaded
+    /// twice — which doubled both the transferred bytes and the time to open a cold file.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_readers_share_one_range_request() {
+        let size = 4 * RANGED_WINDOW_SIZE;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+        let calls = Arc::new(RwLock::new(Vec::new()));
+        let hydrator = Arc::new(SlowRangeHydrator {
+            payload: payload.clone(),
+            calls: calls.clone(),
+            delay: std::time::Duration::from_millis(200),
+        });
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/big.jpg").with_size(size),
+        ));
+        let driver = Arc::new(FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator));
+        let attr = driver.lookup(FUSE_ROOT_INODE, "big.jpg").unwrap();
+
+        let first = {
+            let driver = driver.clone();
+            tokio::spawn(async move { driver.read(attr.ino, 0, 4096).await })
+        };
+        let second = {
+            let driver = driver.clone();
+            tokio::spawn(async move { driver.read(attr.ino, 0, 4096).await })
+        };
+
+        let got_first = first.await.unwrap().unwrap();
+        let got_second = second.await.unwrap().unwrap();
+        assert_eq!(got_first, payload[..4096]);
+        assert_eq!(got_second, payload[..4096]);
+
+        let recorded = calls.read().unwrap().clone();
+        assert_eq!(
+            recorded.len(),
+            1,
+            "an identical in-flight range must be shared, not fetched twice: {recorded:?}"
+        );
     }
 
     /// A failed full hydration must fall back to ranged hydration rather than failing the read.

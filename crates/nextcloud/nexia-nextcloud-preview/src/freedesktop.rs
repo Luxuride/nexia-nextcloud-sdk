@@ -705,8 +705,11 @@ mod tests {
         );
         for dir in &dirs {
             for uri in &uris {
-                std::fs::write(dir.join(format!("{}.png", md5_hex(uri.as_bytes()))), b"thumb")
-                    .expect("write thumbnail");
+                std::fs::write(
+                    dir.join(format!("{}.png", md5_hex(uri.as_bytes()))),
+                    b"thumb",
+                )
+                .expect("write thumbnail");
             }
         }
         assert!(
