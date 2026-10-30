@@ -12,7 +12,8 @@
 # honouring the retry time it reports when it gives one.
 #
 # In GitHub Actions the upload is authorised by crates.io trusted publishing: the
-# workflow needs `id-token: write` and no token at all.
+# release workflow redeems the job's OIDC token for a short-lived crates.io
+# credential and passes it as CARGO_REGISTRY_TOKEN.
 #
 # Usage:
 #   scripts/publish-crates.sh            # publish everything, skipping what exists

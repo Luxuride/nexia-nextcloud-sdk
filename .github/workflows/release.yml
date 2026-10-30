@@ -2,12 +2,19 @@ name: Release
 
 # Publishes every workspace crate to crates.io in dependency order.
 #
-# Authorisation is crates.io trusted publishing, not a stored secret: the job
-# requests an OIDC token (`id-token: write`) and cargo exchanges it for a
-# short-lived publishing token. Each crate is registered on crates.io to trust
-# this repository (Luxuride/nexia-nextcloud-sdk) and this workflow file, so no
-# CARGO_REGISTRY_TOKEN exists anywhere. scripts/sync-trusted-publishing.py
-# creates those registrations and is safe to re-run after adding a crate.
+# Authorisation is crates.io trusted publishing, not a stored secret. The
+# crates-io-auth-action step redeems the job's OIDC token for a short-lived
+# crates.io credential, which cargo then receives as CARGO_REGISTRY_TOKEN. The
+# credential never exists outside the job, so there is no long-lived token in
+# the repository to steal. cargo does not perform this exchange on its own: a
+# workflow with only `id-token: write` fails with "no token found, please run
+# `cargo login`".
+#
+# Each crate is registered on crates.io to trust this repository
+# (Luxuride/nexia-nextcloud-sdk) and this workflow file, so a copy of this
+# workflow in another repository cannot publish.
+# scripts/sync-trusted-publishing.py creates those registrations and is safe to
+# re-run after adding a crate.
 #
 # The run is manual on purpose: the version in Cargo.toml is the thing being
 # released, so it has to be reviewed and committed before anyone presses the
@@ -53,5 +60,13 @@ jobs:
           echo "commit: $(git rev-parse HEAD)"
           echo "version: $(grep -m1 '^version' Cargo.toml)"
 
+      # Redeems the workflow's OIDC identity for a crates.io token that expires
+      # when the job ends. This is the only credential the publish step sees.
+      - name: Authenticate to crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@v1
+
       - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
         run: bash scripts/publish-crates.sh ${{ inputs.dry_run && '--dry-run' || '' }}

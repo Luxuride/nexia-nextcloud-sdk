@@ -101,10 +101,13 @@ Publishing runs in GitHub Actions and needs no stored secret.
    the registry, so a re-run after a failure resumes instead of duplicating.
 
 The workflow authenticates with [crates.io trusted
-publishing](https://crates.io/docs/trusted-publishing): it requests an OIDC token
-(`id-token: write`) and cargo exchanges it for a short-lived publishing token.
-Each crate on crates.io is registered to trust this repository and the
-`release.yml` workflow file. Adding a crate therefore needs that registration
+publishing](https://crates.io/docs/trusted-publishing). `cargo publish` cannot do
+that exchange itself — a job with only `id-token: write` fails with "no token
+found" — so the workflow uses `rust-lang/crates-io-auth-action` to redeem its OIDC
+identity for a credential that expires when the job ends, and hands that to cargo.
+No crates.io token is stored in the repository. Each crate on crates.io is
+registered to trust this repository and the `release.yml` workflow file, so the
+same workflow copied elsewhere cannot publish. Adding a crate therefore needs that registration
 created once:
 
 ```sh
