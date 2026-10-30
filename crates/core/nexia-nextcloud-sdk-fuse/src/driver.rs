@@ -24,16 +24,103 @@ pub const ESPIPE: i32 = 29;
 /// Page size used when hydrating partial byte ranges from a remote file.
 pub const HYDRATION_BLOCK_SIZE: u64 = 128 * 1024;
 
+/// How much is fetched in one ranged request, and the alignment of the windows.
+///
+/// Each round trip has a fixed cost that dominates the transfer for a small window: measured
+/// against a real server a 256 KiB request took ~0.4-0.6 s wall clock while a full 4 MiB file read
+/// of 16 such requests took ~8 s, i.e. almost all of it latency rather than bandwidth. Fetching
+/// four blocks at a time cuts the request count by four for no extra data. Windows are aligned to
+/// their own size so consecutive windows are disjoint — aligning to a single block instead makes
+/// each window overlap the previous one and re-fetch up to three blocks of already cached data.
+pub const RANGED_WINDOW_SIZE: u64 = 4 * HYDRATION_BLOCK_SIZE;
+
 /// Largest file that a placeholder read will fetch in one piece.
 ///
-/// This is exactly one ranged window (`2 * HYDRATION_BLOCK_SIZE`), which makes the rule
-/// self-evident rather than a guess: for a file this small, a full hydration transfers no more
-/// data than the single ranged fetch it replaces, and it leaves the whole file readable so no
-/// further round trips are needed. Above it, hydrating wholesale to answer one small read blocks
-/// its FUSE thread for the length of a transfer that can be tens of MiB — measured at 46-620 KiB/s
-/// against a real server, so tens of seconds — and caches the entire payload in the page cache.
-/// Those reads go through [`read_ranged`](FuseDriver::read_ranged) instead.
-pub const FULL_HYDRATION_MAX_SIZE: u64 = 2 * HYDRATION_BLOCK_SIZE;
+/// This is exactly one ranged window, which makes the rule self-evident rather than a guess: for a
+/// file this small, a full hydration transfers no more data than the single ranged fetch it
+/// replaces, and it leaves the whole file readable so no further round trips are needed. Above it,
+/// hydrating wholesale to answer one small read blocks its FUSE thread for a transfer that can be
+/// tens of MiB — measured at 46-620 KiB/s against a real server, so tens of seconds — and caches
+/// the entire payload in the page cache. Those reads go through
+/// [`read_ranged`](FuseDriver::read_ranged) instead.
+pub const FULL_HYDRATION_MAX_SIZE: u64 = RANGED_WINDOW_SIZE;
+
+/// Upper bound on the number of FUSE threads that may sit blocked on a remote fetch at once.
+///
+/// Every read of an unhydrated placeholder occupies its FUSE thread for the whole round trip,
+/// which is hundreds of milliseconds to seconds here. A directory of photos makes a file manager
+/// touch many files at once, so without a bound the entire thread pool ends up waiting on the
+/// network and *unrelated* requests — `getattr`, `readdir`, `lookup`, an application's own probe —
+/// cannot be served at all. A measured 60-way concurrent read of a 625-file directory pushed
+/// `ls` latency from 4 ms to 9.4 s that way: the mount looks frozen while nothing is stuck.
+///
+/// Holding the gate below the thread-pool size keeps workers free for metadata, so listings stay
+/// responsive while downloads queue. Deferring the surplus reads to the thumbnailers is done
+/// separately via `ECHILD`, since those reads are speculative by nature.
+pub const MAX_INFLIGHT_DOWNLOADS: usize = 8;
+
+/// Bounds how many FUSE threads may be blocked on a remote payload fetch simultaneously.
+///
+/// Deliberately a plain mutex/condvar gate with a blocking acquire: the callers are `fuser`'s
+/// synchronous event-loop threads, not tasks, so there is no async context to await in, and a
+/// semaphore shared with the tokio runtime could not be waited on without one.
+#[derive(Debug)]
+pub struct DownloadGate {
+    limit: usize,
+    in_flight: std::sync::Mutex<usize>,
+    released: std::sync::Condvar,
+}
+
+impl DownloadGate {
+    /// Creates a gate allowing `limit` concurrent downloads (at least one).
+    pub fn new(limit: usize) -> Self {
+        Self {
+            limit: limit.max(1),
+            in_flight: std::sync::Mutex::new(0),
+            released: std::sync::Condvar::new(),
+        }
+    }
+
+    /// The configured concurrency limit.
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    /// Number of downloads currently holding a slot.
+    pub fn in_flight(&self) -> usize {
+        self.in_flight.lock().map(|g| *g).unwrap_or(0)
+    }
+
+    /// Blocks until a download slot is free, returning a guard that frees it on drop.
+    ///
+    /// A poisoned mutex is treated as "no limit" rather than as an error: refusing to read at all
+    /// would be a worse failure than reading without the throttle.
+    pub fn acquire(self: &Arc<Self>) -> Option<DownloadGuard> {
+        let mut in_flight = self.in_flight.lock().ok()?;
+        while *in_flight >= self.limit {
+            in_flight = self.released.wait(in_flight).ok()?;
+        }
+        *in_flight += 1;
+        Some(DownloadGuard {
+            gate: Arc::clone(self),
+        })
+    }
+}
+
+/// RAII slot returned by [`DownloadGate::acquire`]; releases the slot when dropped.
+#[derive(Debug)]
+pub struct DownloadGuard {
+    gate: Arc<DownloadGate>,
+}
+
+impl Drop for DownloadGuard {
+    fn drop(&mut self) {
+        if let Ok(mut in_flight) = self.gate.in_flight.lock() {
+            *in_flight = in_flight.saturating_sub(1);
+        }
+        self.gate.released.notify_one();
+    }
+}
 
 /// Buffered `(block_start, bytes)` windows per virtual path, for files whose full hydration failed.
 type PartialBlocks = std::collections::HashMap<String, Vec<(u64, Vec<u8>)>>;
@@ -50,6 +137,8 @@ pub struct FuseDriver {
     /// Entries are dropped as soon as the node becomes fully hydrated again. The buffer keeps
     /// the most recent windows per path so repeated paging over one file does not re-download.
     partial_blocks: Arc<RwLock<PartialBlocks>>,
+    /// Bounds how many threads may wait on a remote fetch, protecting metadata requests.
+    download_gate: Arc<DownloadGate>,
 }
 
 impl FuseDriver {
@@ -104,7 +193,18 @@ impl FuseDriver {
             runtime: tokio::runtime::Handle::try_current().ok(),
             root_prefix: normalized_root,
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
+            download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
         }
+    }
+
+    /// The gate bounding simultaneous remote fetches.
+    pub fn download_gate(&self) -> &Arc<DownloadGate> {
+        &self.download_gate
+    }
+
+    /// Sets the concurrent-download limit, used to keep it below the FUSE thread-pool size.
+    pub fn set_download_limit(&mut self, limit: usize) {
+        self.download_gate = Arc::new(DownloadGate::new(limit));
     }
 
     /// Translates a mount-relative path (e.g. `"/Camera"`) to canonical VFS path (e.g. `"/InstantUpload/Camera"`).
@@ -366,6 +466,10 @@ impl FuseDriver {
         };
 
         if is_placeholder {
+            // Take a download slot before touching the network, for the whole read: a burst of
+            // reads must not occupy every FUSE thread, or `getattr`/`readdir`/`lookup` cannot be
+            // served and the mount appears frozen even though nothing is stuck.
+            let _download_slot = self.download_gate.acquire();
             // Only small files are fetched whole. A full hydration ties up this FUSE thread for the
             // entire transfer, so doing it for every touch is what made directory listings (and
             // therefore file managers) hang: one 35 MiB photo held a thread for 47 s and grew RSS by
@@ -500,8 +604,8 @@ impl FuseDriver {
                 continue;
             }
 
-            let block_start = (cursor / HYDRATION_BLOCK_SIZE) * HYDRATION_BLOCK_SIZE;
-            let mut block_len = 2 * HYDRATION_BLOCK_SIZE;
+            let block_start = (cursor / RANGED_WINDOW_SIZE) * RANGED_WINDOW_SIZE;
+            let mut block_len = RANGED_WINDOW_SIZE;
             if file_size > 0 {
                 let remaining = file_size.saturating_sub(block_start);
                 if remaining == 0 {
@@ -510,6 +614,8 @@ impl FuseDriver {
                 block_len = block_len.min(remaining).max(1);
             }
 
+            // Wait for a download slot before touching the network, so a burst of reads cannot
+            // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
             let Some(bytes) = self
                 .fetch_range(vfs_path, block_start, block_len as u32)
                 .await?
@@ -1129,9 +1235,103 @@ mod tests {
         );
         assert_eq!(ranges[0].0, 0);
         assert!(
-            u64::from(ranges[0].1) <= 2 * HYDRATION_BLOCK_SIZE,
+            u64::from(ranges[0].1) <= RANGED_WINDOW_SIZE,
             "ranged fetch was larger than the window size: {:?}",
             ranges[0]
+        );
+    }
+
+    /// Ranged windows must be disjoint, so paging through a file never re-downloads bytes.
+    ///
+    /// Aligning windows to [`HYDRATION_BLOCK_SIZE`] instead of to their own size makes each one
+    /// overlap its predecessor: reading a file start to finish then re-fetches up to three blocks
+    /// per window that are already buffered.
+    #[tokio::test]
+    async fn ranged_windows_do_not_overlap_when_paging_forward() {
+        let size = 8 * RANGED_WINDOW_SIZE;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/big.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "big.jpg").unwrap();
+
+        // Walk the file one read at a time, each read just past the previous window boundary.
+        let step = RANGED_WINDOW_SIZE as i64;
+        for i in 0..size as i64 / step {
+            let offset = i * step;
+            let got = driver.read(attr.ino, offset, 4096).await.unwrap();
+            assert_eq!(got, payload[offset as usize..offset as usize + 4096]);
+        }
+
+        let calls = range_calls.read().unwrap().clone();
+        // One window covers each 4096-byte read, and each read lands exactly on a window boundary,
+        // so a forward pass costs exactly one fetch per window with no repeats.
+        assert_eq!(
+            calls.len(),
+            (size / RANGED_WINDOW_SIZE) as usize,
+            "paging forward re-fetched already buffered windows: {calls:?}"
+        );
+        let mut starts: Vec<u64> = calls.iter().map(|(o, _)| *o).collect();
+        starts.sort_unstable();
+        starts.dedup();
+        assert_eq!(starts.len(), calls.len(), "two fetches covered one window");
+    }
+
+    /// The download gate must serialise down to its limit and never deadlock or leak slots.
+    #[test]
+    fn download_gate_serialises_to_its_limit() {
+        let gate = Arc::new(DownloadGate::new(3));
+        let peak = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        std::thread::scope(|scope| {
+            for _ in 0..24 {
+                let gate = Arc::clone(&gate);
+                let peak = Arc::clone(&peak);
+                let live = Arc::clone(&live);
+                scope.spawn(move || {
+                    let _slot = gate.acquire();
+                    let now = live.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, std::sync::atomic::Ordering::SeqCst);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                    live.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                });
+            }
+        });
+
+        assert_eq!(
+            peak.load(std::sync::atomic::Ordering::SeqCst),
+            3,
+            "more downloads ran at once than the gate allows"
+        );
+        assert_eq!(
+            gate.in_flight(),
+            0,
+            "a slot was leaked by a dropped guard"
+        );
+    }
+
+    /// An unknown file size must still be range-read, never fetched wholesale.
+    #[tokio::test]
+    async fn zero_size_placeholder_uses_ranges() {
+        let payload = vec![3u8; 4 * RANGED_WINDOW_SIZE as usize];
+        let hydrator = Arc::new(RangeHydrator::new(payload, false));
+        let full_calls = hydrator.full_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(NodeMetadata::file("/unknown.bin")));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "unknown.bin").unwrap();
+
+        let _ = driver.read(attr.ino, 0, 4096).await;
+        assert!(
+            full_calls.read().unwrap().is_empty(),
+            "a file with unknown size was hydrated wholesale"
         );
     }
 

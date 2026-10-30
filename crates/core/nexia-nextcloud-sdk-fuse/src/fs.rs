@@ -190,13 +190,19 @@ impl Filesystem for FuseDriver {
         // triggering a full remote hydration for a preview they will throw away. Ordinary readers
         // (file managers, image viewers) are never denied: hydration is their only way to work.
         if is_background_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
+            // `ECHILD` rather than `EAGAIN`. On a page-cache-backed read the kernel reserves
+            // `EAGAIN` for its own internal retry and converts it into `EIO` before it reaches
+            // userspace, so an `EAGAIN` here is reported to the thumbnailer as an I/O error and
+            // the whole file is permanently marked unreadable (`~/.cache/thumbnails/fail`)
+            // instead of being retried once it is hydrated. `ECHILD` is passed through verbatim,
+            // which is what a thumbnailer can actually act on.
             debug!(
                 pid = req.pid(),
                 ino = ino.0,
                 offset,
                 "Deferring thumbnailer read on unhydrated placeholder"
             );
-            reply.error(Errno::EAGAIN);
+            reply.error(Errno::ECHILD);
             return;
         }
         let result = if let Some(rt) = self.runtime_handle() {
@@ -271,7 +277,7 @@ impl Filesystem for FuseDriver {
 
 /// Mounts the [`FuseDriver`] at `mountpoint` in the background with customizable mount options.
 pub fn mount_virtual_fs_with_options(
-    driver: FuseDriver,
+    mut driver: FuseDriver,
     mountpoint: impl AsRef<Path>,
     options: Vec<MountOption>,
 ) -> Result<BackgroundSession, std::io::Error> {
@@ -290,6 +296,18 @@ pub fn mount_virtual_fs_with_options(
         .clamp(4, 16);
     config.n_threads = Some(threads);
     config.clone_fd = true;
+
+    // Keep payload downloads strictly below the thread-pool size so a burst of them can never
+    // occupy every worker: metadata (`getattr`/`readdir`/`lookup`) then always has a thread free,
+    // which is what keeps a directory listing responsive while photos download. With the clamp
+    // above this leaves at least half the pool for metadata.
+    let download_limit = (threads / 2).max(2);
+    driver.set_download_limit(download_limit);
+    debug!(
+        threads,
+        download_limit,
+        "Bounding concurrent payload downloads below the FUSE thread-pool size"
+    );
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");
     fuser::spawn_mount(driver, mp, &config)

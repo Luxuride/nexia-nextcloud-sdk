@@ -20,7 +20,10 @@ pub mod hydrator;
 pub mod inode;
 
 pub use attr::{FileAttr, FileType};
-pub use driver::{FULL_HYDRATION_MAX_SIZE, FuseDriver, parse_date_to_unix_secs};
+pub use driver::{
+    DownloadGate, DownloadGuard, FULL_HYDRATION_MAX_SIZE, FuseDriver, HYDRATION_BLOCK_SIZE,
+    MAX_INFLIGHT_DOWNLOADS, RANGED_WINDOW_SIZE, parse_date_to_unix_secs,
+};
 pub use entry::DirEntry;
 #[cfg(target_os = "linux")]
 pub use fs::{mount_virtual_fs, mount_virtual_fs_with_options};
