@@ -42,7 +42,16 @@ nexia-nextcloud-sdk-orchestrator = { path = "crates/core/nexia-nextcloud-sdk-orc
 
 base64 = "0.23"
 getrandom = { version = "0.3", features = ["std"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# `gif` and `webp` are required, not optional: the FreeDesktop thumbnail cache stores PNG, and
+# `ensure_png_bytes` decodes whatever the preview endpoint returned. Without these decoders it
+# falls through to returning the input bytes unchanged, so a GIF/WebP thumbnail was written to the
+# cache as non-PNG data and never rendered.
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+] }
 notify = "8.0"
 oo7 = "0.6"
 reqwest = { version = "0.13", features = ["stream"] }

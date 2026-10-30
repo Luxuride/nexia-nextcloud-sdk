@@ -548,4 +548,80 @@ mod tests {
         assert!(tagged_str.contains("Thumb::MTime"));
         assert!(tagged_str.contains("1700000000"));
     }
+
+    /// Encodes `img` in the requested format and returns the raw bytes.
+    fn encode(img: &image::DynamicImage, format: image::ImageFormat) -> Vec<u8> {
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, format)
+            .unwrap_or_else(|err| panic!("failed to encode {format:?}: {err}"));
+        out.into_inner()
+    }
+
+    fn sample_image() -> image::DynamicImage {
+        image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(48, 32, |x, y| {
+            image::Rgb([(x * 5) as u8, (y * 7) as u8, 128])
+        }))
+    }
+
+    /// The thumbnail cache stores PNG, so every format `ensure_png_bytes` accepts must come back
+    /// as PNG. This is the regression that made GIF and WebP thumbnails silently disappear: the
+    /// `image` crate was built without those decoders, `load_from_memory` failed, and the function
+    /// returned the original non-PNG bytes, which the cache then served as an unreadable
+    /// thumbnail.
+    #[test]
+    fn ensure_png_bytes_converts_every_supported_format() {
+        const PNG_SIG: &[u8] = b"\x89PNG\r\n\x1a\n";
+
+        for (label, format) in [
+            ("png", image::ImageFormat::Png),
+            ("jpeg", image::ImageFormat::Jpeg),
+            ("gif", image::ImageFormat::Gif),
+            ("webp", image::ImageFormat::WebP),
+        ] {
+            let encoded = encode(&sample_image(), format);
+            let converted = ensure_png_bytes(&encoded);
+
+            assert!(
+                converted.starts_with(PNG_SIG),
+                "{label} input was not converted to PNG — the {label} decoder is missing from the \
+                 `image` feature list in the workspace Cargo.toml"
+            );
+            // A conversion that produced PNG-looking bytes but no decodable image is no better.
+            let decoded = image::load_from_memory(&converted).unwrap_or_else(|err| {
+                panic!("{label} conversion produced undecodable bytes: {err}")
+            });
+            assert_eq!((decoded.width(), decoded.height()), (48, 32));
+        }
+    }
+
+    /// A PNG input is passed through unchanged rather than re-encoded, which keeps its metadata.
+    #[test]
+    fn ensure_png_bytes_passes_png_through_unchanged() {
+        let encoded = encode(&sample_image(), image::ImageFormat::Png);
+        assert_eq!(ensure_png_bytes(&encoded), encoded);
+    }
+
+    /// Unknown payloads must not panic or be mangled; returning them unchanged is the documented
+    /// fallback for callers that pass something that is not an image at all.
+    #[test]
+    fn ensure_png_bytes_passes_non_image_bytes_through() {
+        let garbage = b"definitely not an image".to_vec();
+        assert_eq!(ensure_png_bytes(&garbage), garbage);
+    }
+
+    /// Downscaling keeps large previews within the cache's expected bounds.
+    #[test]
+    fn ensure_png_bytes_downscales_oversized_previews() {
+        let big = image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(1200, 900, |_, _| {
+            image::Rgb([10, 20, 30])
+        }));
+        let converted = ensure_png_bytes(&encode(&big, image::ImageFormat::Png));
+        let decoded = image::load_from_memory(&converted).expect("downscaled PNG must decode");
+        assert!(
+            decoded.width() <= 512 && decoded.height() <= 512,
+            "expected a preview within 512px, got {}x{}",
+            decoded.width(),
+            decoded.height()
+        );
+    }
 }

@@ -24,6 +24,14 @@ pub const ESPIPE: i32 = 29;
 /// Page size used when hydrating partial byte ranges from a remote file.
 pub const HYDRATION_BLOCK_SIZE: u64 = 128 * 1024;
 
+/// Largest file that a placeholder read will fetch in one piece.
+///
+/// Below this, a full hydration is a single round trip and makes the whole file readable, which
+/// is what small images want. Above it, hydrating the whole file to answer one small read blocks
+/// its FUSE thread for the length of the transfer and caches the entire payload, so reads go
+/// through [`read_ranged`](FuseDriver::read_ranged) instead and fetch only what is asked for.
+pub const FULL_HYDRATION_MAX_SIZE: u64 = 4 * 1024 * 1024;
+
 /// Buffered `(block_start, bytes)` windows per virtual path, for files whose full hydration failed.
 type PartialBlocks = std::collections::HashMap<String, Vec<(u64, Vec<u8>)>>;
 
@@ -355,17 +363,39 @@ impl FuseDriver {
         };
 
         if is_placeholder {
-            tracing::info!(ino, vfs_path = %vfs_path, "FUSE triggering on-demand file hydration");
-            match self.hydrator.hydrate(&vfs_path).await {
-                Ok(bytes) => {
-                    let mut tree = self.tree.write().map_err(|_| EINVAL)?;
-                    tree.hydrate(&vfs_path, bytes).map_err(|_| EINVAL)?;
-                    self.clear_partial_ranges(&vfs_path);
+            // Only small files are fetched whole. A full hydration ties up this FUSE thread for the
+            // entire transfer, so doing it for every touch is what made directory listings (and
+            // therefore file managers) hang: one 35 MiB photo held a thread for 47 s and grew RSS by
+            // 274 MiB to serve a 4 KiB read, and the page cache keeps every byte afterwards. Large
+            // files go straight to the ranged path, which fetches only the windows actually read.
+            if file_size > 0 && file_size <= FULL_HYDRATION_MAX_SIZE {
+                tracing::info!(
+                    ino,
+                    vfs_path = %vfs_path,
+                    file_size,
+                    "FUSE triggering on-demand full file hydration"
+                );
+                match self.hydrator.hydrate(&vfs_path).await {
+                    Ok(bytes) => {
+                        let mut tree = self.tree.write().map_err(|_| EINVAL)?;
+                        tree.hydrate(&vfs_path, bytes).map_err(|_| EINVAL)?;
+                        self.clear_partial_ranges(&vfs_path);
+                    }
+                    Err(err) => {
+                        tracing::warn!(vfs_path = %vfs_path, error = %err, "full hydration failed, falling back to ranged read");
+                        return self.read_ranged(&vfs_path, file_size, offset, size).await;
+                    }
                 }
-                Err(err) => {
-                    tracing::warn!(vfs_path = %vfs_path, error = %err, "full hydration failed, falling back to ranged read");
-                    return self.read_ranged(&vfs_path, file_size, offset, size).await;
-                }
+            } else {
+                tracing::debug!(
+                    ino,
+                    vfs_path = %vfs_path,
+                    file_size,
+                    offset,
+                    size,
+                    "Serving large placeholder via ranged hydration"
+                );
+                return self.read_ranged(&vfs_path, file_size, offset, size).await;
             }
         }
 
@@ -969,6 +999,20 @@ mod tests {
         payload: Vec<u8>,
         full_fails: bool,
         range_calls: Arc<RwLock<Vec<(u64, u32)>>>,
+        /// Number of times the *whole file* was requested, which is what must not happen for a
+        /// large file.
+        full_calls: Arc<RwLock<Vec<String>>>,
+    }
+
+    impl RangeHydrator {
+        fn new(payload: Vec<u8>, full_fails: bool) -> Self {
+            Self {
+                payload,
+                full_fails,
+                range_calls: Arc::new(RwLock::new(Vec::new())),
+                full_calls: Arc::new(RwLock::new(Vec::new())),
+            }
+        }
     }
 
     impl AsyncHydrator for RangeHydrator {
@@ -977,13 +1021,18 @@ mod tests {
             canonical_path: &str,
         ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
         {
+            self.full_calls
+                .write()
+                .unwrap()
+                .push(canonical_path.to_string());
             let fail = self.full_fails;
             let path = canonical_path.to_string();
+            let payload = self.payload.clone();
             Box::pin(async move {
                 if fail {
                     Err(VfsError::NotFound(path))
                 } else {
-                    Ok(Vec::new())
+                    Ok(payload)
                 }
             })
         }
@@ -1012,6 +1061,7 @@ mod tests {
             payload: payload.clone(),
             full_fails: true,
             range_calls: calls.clone(),
+            full_calls: Arc::new(RwLock::new(Vec::new())),
         });
 
         let mut tree = VirtualTree::new("root");
@@ -1038,6 +1088,91 @@ mod tests {
 
         // The node stays a placeholder: ranged reads do not pretend to be a full hydration.
         assert!(driver.read(attr.ino, 0, 16).await.is_ok());
+    }
+
+    /// A large placeholder must never be fetched whole to answer a small read.
+    ///
+    /// This is the freeze that made a file manager hang on a photo directory: every touch of a
+    /// large file pulled the entire payload, holding one FUSE thread for the whole transfer, so a
+    /// handful of concurrent reads exhausted the thread pool and no request could complete. The
+    /// read must stay ranged.
+    #[tokio::test]
+    async fn large_placeholder_is_read_in_ranges_not_wholesale() {
+        let size = FULL_HYDRATION_MAX_SIZE * 4;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let full_calls = hydrator.full_calls.clone();
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/big.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "big.jpg").unwrap();
+
+        let got = driver.read(attr.ino, 0, 4096).await.unwrap();
+        assert_eq!(got, payload[..4096]);
+
+        assert!(
+            full_calls.read().unwrap().is_empty(),
+            "a {size}-byte file was hydrated wholesale to serve 4 KiB"
+        );
+        let ranges = range_calls.read().unwrap().clone();
+        assert_eq!(
+            ranges.len(),
+            1,
+            "expected exactly one ranged fetch: {ranges:?}"
+        );
+        assert_eq!(ranges[0].0, 0);
+        assert!(
+            u64::from(ranges[0].1) <= 2 * HYDRATION_BLOCK_SIZE,
+            "ranged fetch was larger than the window size: {:?}",
+            ranges[0]
+        );
+    }
+
+    /// A small placeholder still hydrates in one piece, which is the cheap case for thumbnails.
+    #[tokio::test]
+    async fn small_placeholder_is_hydrated_wholesale() {
+        let payload = vec![7u8; 32 * 1024];
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), true));
+        let full_calls = hydrator.full_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/small.png").with_size(payload.len() as u64),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "small.png").unwrap();
+
+        let got = driver.read(attr.ino, 0, 4096).await.unwrap();
+        assert_eq!(got, payload[..4096]);
+        assert_eq!(
+            full_calls.read().unwrap().len(),
+            1,
+            "a small file should hydrate in a single round trip"
+        );
+    }
+
+    /// A large file whose reported size is 0 (unknown) must also avoid a wholesale fetch.
+    #[tokio::test]
+    async fn unknown_size_placeholder_avoids_wholesale_fetch() {
+        let payload: Vec<u8> = (0..=255u8).cycle().take(256 * 1024).collect();
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let full_calls = hydrator.full_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        // No `.with_size(...)`: size stays 0, i.e. unknown.
+        tree.insert(VirtualNode::new_file(NodeMetadata::file("/nosize.bin")));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "nosize.bin").unwrap();
+
+        assert!(driver.read(attr.ino, 0, 1024).await.is_ok());
+        assert!(
+            full_calls.read().unwrap().is_empty(),
+            "an unknown-size file must not be fetched wholesale"
+        );
     }
 
     /// A failing fetch must surface as `EIO`, never as a short read.
