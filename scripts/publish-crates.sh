@@ -5,10 +5,14 @@
 # package whose dependencies do not already resolve from the registry, so a
 # `publish = false` dependency makes its dependents unpublishable.
 #
-# crates.io allows five brand-new crates in a burst, then one every ten minutes,
-# per user. A workspace of thirty new crates therefore takes hours, not minutes.
-# This script waits and retries on 429 instead of failing the run, so a full
-# publish completes unattended.
+# crates.io rate limits are a leaky bucket per user: five brand-new crates as a
+# burst then one every ten minutes, while a new version of an existing crate is
+# one per minute with a burst of thirty. Rather than assume which regime applies,
+# this script publishes back to back and waits only when crates.io says to —
+# honouring the retry time it reports when it gives one.
+#
+# In GitHub Actions the upload is authorised by crates.io trusted publishing: the
+# workflow needs `id-token: write` and no token at all.
 #
 # Usage:
 #   scripts/publish-crates.sh            # publish everything, skipping what exists
@@ -34,11 +38,29 @@ else
     rm -f target/.publish-write-test
 fi
 
+# Parse the moment crates.io says publishing may resume, so a ten-minute new-crate
+# refill is waited out exactly once instead of being rediscovered by retries.
+retry_after_seconds() {
+    local output=$1
+    local when
+    when=$(sed -nE 's/.*[Pp]lease try again after ([^.]*GMT).*/\1/p' <<<"$output" | head -1)
+    if [[ -n "$when" ]] && target=$(date -u -d "$when" +%s 2>/dev/null); then
+        local wait=$(( target - $(date -u +%s) ))
+        if (( wait > 0 )); then
+            # Cap it so a bogus far-future timestamp cannot stall the job.
+            (( wait > 1200 )) && wait=1200
+            printf '%s\n' "$wait"
+            return 0
+        fi
+    fi
+    printf '%s\n' 60
+}
+
 retry_publish() {
     local crate=$1
     local attempt=1
-    # A 429 means the bucket is empty; one crate is earned back every 10 minutes,
-    # so allow enough attempts to sit out several refills without giving up.
+    # Each attempt may wait out a full refill, so a low cap still covers the
+    # whole workspace; the cap only stops an endless loop on a broken response.
     local max_attempts=40
 
     while (( attempt <= max_attempts )); do
@@ -56,8 +78,10 @@ retry_publish() {
         fi
 
         if grep -qE "429|too many (crates|requests)|Please try again" <<<"$output"; then
-            echo "  rate limited on $crate, waiting 300s (attempt $attempt/$max_attempts)"
-            sleep 300
+            local wait
+            wait=$(retry_after_seconds "$output")
+            echo "  rate limited on $crate, waiting ${wait}s (attempt $attempt/$max_attempts)"
+            sleep "$wait"
             attempt=$((attempt + 1))
             continue
         fi
@@ -82,11 +106,6 @@ for crate in "${order[@]}"; do
     if (( status == 2 )); then
         status=0
         continue
-    fi
-    # New-crate allowance refills one per ten minutes; waiting the full interval
-    # avoids spending retry attempts on a bucket that cannot have refilled.
-    if [[ -z "${dry_run[*]:-}" ]]; then
-        sleep 600
     fi
 done
 

@@ -2,6 +2,28 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
+## 0.2.2
+
+### Fixed
+
+- `nexia-nextcloud-sdk-fuse`: reads no longer hydrate a large file wholesale when
+  only a small range was asked for. Hydration is bounded to the requested window,
+  a large read is fetched in one request rather than one per window, readahead
+  only happens when the reader is provably sequential, and a directory sweep no
+  longer triggers speculative reads of files that were merely listed.
+- `nexia-nextcloud-sdk-fuse`: a burst of concurrent reads no longer starves the
+  shared worker pool, so metadata stays answerable while a mount is busy.
+- `nexia-nextcloud-sdk-fuse`: preview passes decline instead of downloading the
+  original, so a thumbnail request cannot pull a full-size body over the network.
+
+### Changed
+
+- Publishing runs in GitHub Actions authenticated by crates.io trusted
+  publishing, so no `CARGO_REGISTRY_TOKEN` secret is stored. The workflow
+  publishes in dependency order and waits out crates.io rate limits itself.
+- `release-plz` is no longer used; a release is an explicit `version` bump plus a
+  manual workflow run. `CONTRIBUTING.md` documents the flow.
+
 ## 0.2.1
 
 ### Changed

@@ -389,7 +389,7 @@ pub fn mount_virtual_fs_with_options(
 /// Builds the mount options for the read-only virtual filesystem.
 ///
 /// Deliberately does **not** include [`MountOption::AutoUnmount`]. `fuser` rejects that option
-/// unless the session ACL is something other than [`SessionACL::Owner`]
+/// unless the session ACL is something other than `fuser::SessionACL::Owner`
 /// (`fuser-0.18.0/src/session.rs:163`, "auto_unmount requires acl != Owner"), and both
 /// non-owner ACLs map to `allow_other`, which `fusermount3` refuses unless the host has opted in
 /// with `user_allow_other` in `/etc/fuse.conf`. Adding it back therefore makes every mount fail

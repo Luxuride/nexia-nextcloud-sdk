@@ -88,16 +88,32 @@ Autonomous AI agents and contributors using LLMs (Claude, Gemini, GPT, etc.) are
 
 ## 5. Releasing
 
-Releases are automated via [release-plz](https://github.com/release-plz/release-plz).
+Publishing runs in GitHub Actions and needs no stored secret.
 
-1. Follow **Conventional Commits** (`feat:`, `fix:`, `chore:`, etc.) for all changes.
-2. When changes land on `main`, the `Release` workflow runs `release-plz`:
-   - Evaluates conventional commits and computes the next semantic version.
-   - Automatically maintains and updates an open **Release PR** containing version bumps in `Cargo.toml` and updates to `CHANGELOG.md`.
-3. When the Release PR is reviewed and merged into `main`:
-   - `release-plz` detects the version bump.
-   - Creates the git tag (`v<version>`).
-   - Publishes each workspace crate to crates.io in topological dependency order.
-   - Generates the GitHub Release with changelog notes.
+1. Write **Conventional Commits** (`feat:`, `fix:`, `chore:`, ...); they become the
+   changelog entry for the release.
+2. Bump `version` under `[workspace.package]` in the root `Cargo.toml`. Every
+   crate inherits it, so one number releases the whole workspace. Add the
+   matching `CHANGELOG.md` section in the same commit.
+3. Push to `main`.
+4. Run the **Release** workflow (Actions → Release → Run workflow). It publishes
+   every crate in topological dependency order, skipping any version already on
+   the registry, so a re-run after a failure resumes instead of duplicating.
 
-The workflow requires `CARGO_REGISTRY_TOKEN` configured as a repository secret and GitHub Actions workflow write permissions for contents and pull requests.
+The workflow authenticates with [crates.io trusted
+publishing](https://crates.io/docs/trusted-publishing): it requests an OIDC token
+(`id-token: write`) and cargo exchanges it for a short-lived publishing token.
+Each crate on crates.io is registered to trust this repository and the
+`release.yml` workflow file. Adding a crate therefore needs that registration
+created once:
+
+```sh
+scripts/sync-trusted-publishing.py --until-complete
+```
+
+That script is safe to re-run; it skips crates that are already registered.
+
+crates.io rate-limits publishes per user — a burst for brand-new crates, then
+roughly one per ten minutes. `scripts/publish-crates.sh` publishes back to back
+and waits only when crates.io reports a limit, honouring the retry time it gives,
+so a large first release completes unattended.

@@ -20,9 +20,9 @@ from pathlib import Path
 
 REGISTRY = "https://crates.io"
 OWNER = "Luxuride"
-REPOSITORY = "nextcloud-rust-sdk"
+REPOSITORY = "nexia-nextcloud-sdk"
 WORKFLOW = "release.yml"
-USER_AGENT = "nextcloud-rust-sdk-release-setup"
+USER_AGENT = "nexia-nextcloud-sdk-release-setup"
 CREDENTIALS = Path("/usr/local/cargo/credentials.toml")
 
 

@@ -42,7 +42,7 @@ pub const RANGED_WINDOW_SIZE: u64 = 4 * HYDRATION_BLOCK_SIZE;
 /// hydrating wholesale to answer one small read blocks its FUSE thread for a transfer that can be
 /// tens of MiB — measured at 46-620 KiB/s against a real server, so tens of seconds — and caches
 /// the entire payload in the page cache. Those reads go through
-/// [`read_ranged`](FuseDriver::read_ranged) instead.
+/// `FuseDriver::read_ranged` instead.
 pub const FULL_HYDRATION_MAX_SIZE: u64 = RANGED_WINDOW_SIZE;
 
 /// How many windows of readahead a sequential reader gets after the window it just touched.
@@ -53,7 +53,7 @@ pub const FULL_HYDRATION_MAX_SIZE: u64 = RANGED_WINDOW_SIZE;
 /// could have had almost free. Prefetching a few windows ahead converts a page-by-page walk into
 /// one paid round trip per group of windows.
 ///
-/// Four is a deliberate ceiling: [`FuseDriver::store_block`] keeps only the most recent 16 blocks
+/// Four is a deliberate ceiling: `FuseDriver::store_block` keeps only the most recent 16 blocks
 /// per file, so prefetching much further would evict the very data it just fetched, and each
 /// prefetch also competes for the download gate with real reads.
 pub const READAHEAD_WINDOWS: u64 = 4;
