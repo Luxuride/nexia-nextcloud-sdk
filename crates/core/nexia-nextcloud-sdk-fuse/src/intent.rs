@@ -33,18 +33,20 @@ pub const SWEEP_DISTINCT_FILES: usize = 3;
 /// therefore lets bulk transfers through untouched while catching exactly the speculative reads.
 pub const PEEK_MAX_SIZE: u32 = 64 * 1024;
 
-/// How many non-continuing reads of one file are served before refusals begin.
-///
-/// A process that is *only* browsing still gets to make its first couple of attempts on each file,
-/// so opening a single photo from a file manager keeps working; only a sustained sweep gets cut
-/// off. This also keeps the rule from firing on a program that happens to touch a few files.
-pub const PEEK_GRACE_READS: u32 = 2;
-
 /// Consecutive continuing reads of one file that prove the process is streaming it.
 ///
 /// Once a reader has walked the same file this many times in a row it is copying, not browsing, and
 /// its reads are served no matter how small they are or how many other files it touched before.
 pub const SEQUENTIAL_TRUST: u32 = 4;
+
+/// How many times one file may be refused before the read is served regardless.
+///
+/// A directory sweep touches each entry once and moves on, so it never returns to the same file. A
+/// process that keeps retrying the *same* file is asking for its content, not sampling a
+/// directory, and must be served — otherwise a legitimate read inside a process that happened to
+/// browse a folder first would fail forever, which is the kind of silent breakage this guard exists
+/// to prevent. The bound also caps how much a sweep can pull if it does retry.
+pub const MAX_REFUSALS_PER_FILE: u32 = 3;
 
 /// What should happen to a read request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,8 +69,8 @@ struct ProcessState {
 /// Progress through one file.
 #[derive(Debug, Default, Clone, Copy)]
 struct FileProbe {
-    /// Reads that did not continue the previous one.
-    disjoint_reads: u32,
+    /// How many reads of this file have been refused so far.
+    refusals: u32,
     /// Length of the run of reads that each continued the previous one.
     sequential_run: u32,
     /// Offset just past the last byte read.
@@ -103,14 +105,7 @@ impl ReadIntent {
     }
 
     /// [`Self::classify`] with an explicit clock, so tests can advance time deterministically.
-    fn classify_at(
-        &self,
-        pid: u32,
-        ino: u64,
-        offset: u64,
-        size: u32,
-        now: Instant,
-    ) -> ReadVerdict {
+    fn classify_at(&self, pid: u32, ino: u64, offset: u64, size: u32, now: Instant) -> ReadVerdict {
         let Ok(mut processes) = self.processes.lock() else {
             // Losing the lock must never break reads: an unclassifiable request is served.
             return ReadVerdict::Allow;
@@ -132,7 +127,6 @@ impl ReadIntent {
             probe.sequential_run += 1;
         } else {
             probe.sequential_run = 0;
-            probe.disjoint_reads += 1;
             // Record breadth only on the read that starts a file, not on every chunk of it, so one
             // long copy does not look like a sweep through hundreds of files.
             if !state.files.iter().any(|(existing, _)| *existing == ino) {
@@ -142,26 +136,35 @@ impl ReadIntent {
         probe.last_end = offset.saturating_add(u64::from(size));
         probe.last_at = Some(now);
 
-        // A steady run of continuing reads is a copy or a stream: always serve it.
-        if probe.sequential_run >= SEQUENTIAL_TRUST {
-            return ReadVerdict::Allow;
-        }
-
-        // Nothing suggests browsing yet.
-        if state.files.len() < SWEEP_DISTINCT_FILES {
-            return ReadVerdict::Allow;
-        }
-
-        // Bulk transfers are not peeks, whatever else the process has been doing.
+        // Bulk transfers are not peeks, whatever else the process has been doing. This is what
+        // keeps `cp` and friends working: the kernel hands them 128 KiB at a time, far above the
+        // little a preview needs, so the size alone proves the read is wanted.
         if size > PEEK_MAX_SIZE {
             return ReadVerdict::Allow;
         }
 
-        // Let the first attempts on each file through, so opening one photo still works.
-        if probe.disjoint_reads <= PEEK_GRACE_READS {
+        // A steady run of continuing reads on one file is a stream or a copy: always serve it, no
+        // matter how many other files the process touched first.
+        if probe.sequential_run >= SEQUENTIAL_TRUST {
             return ReadVerdict::Allow;
         }
 
+        // Nothing suggests browsing yet: opening one file, or a couple, is ordinary use.
+        if state.files.len() < SWEEP_DISTINCT_FILES {
+            return ReadVerdict::Allow;
+        }
+
+        // Past this point the process is demonstrably walking a directory. Serve it when either
+        // the read continues the run it is already making on this same file — a reader working
+        // through content it has committed to — or the process has insisted on this file enough
+        // times that it clearly wants the content rather than sampling it.
+        if continues {
+            return ReadVerdict::Allow;
+        }
+        if probe.refusals >= MAX_REFUSALS_PER_FILE {
+            return ReadVerdict::Allow;
+        }
+        probe.refusals += 1;
         ReadVerdict::Refuse
     }
 
@@ -175,10 +178,11 @@ impl ReadIntent {
             return;
         };
         processes.retain(|_, state| {
-            state
-                .probes
-                .values()
-                .any(|probe| probe.last_at.is_some_and(|at| now.duration_since(at) <= SWEEP_WINDOW))
+            state.probes.values().any(|probe| {
+                probe
+                    .last_at
+                    .is_some_and(|at| now.duration_since(at) <= SWEEP_WINDOW)
+            })
         });
     }
 }
@@ -236,23 +240,37 @@ mod tests {
         );
     }
 
-    /// The grace period must let the first attempts through so a single open still works.
+    /// Opening a few files is ordinary use and must never be refused, however the reads look.
     #[test]
-    fn first_attempts_on_each_file_are_served() {
+    fn opening_a_few_files_is_served() {
         let intent = ReadIntent::default();
         let now = Instant::now();
-        // Touch several files to enter sweeping state.
+        for ino in 0..(SWEEP_DISTINCT_FILES as u64 - 1) {
+            for _ in 0..10 {
+                assert_eq!(
+                    intent.classify_at(1, ino, 0, 4096, now),
+                    ReadVerdict::Allow,
+                    "opening file {ino} was refused before any sweep was established"
+                );
+            }
+        }
+    }
+
+    /// Once a sweep is established, peeking at a *new* file must be refused, or the guard does
+    /// nothing: a file manager reads every entry exactly once, so a per-file grace of even one read
+    /// lets a whole directory of originals through.
+    #[test]
+    fn peeking_a_new_file_during_a_sweep_is_refused() {
+        let intent = ReadIntent::default();
+        let now = Instant::now();
         for ino in 0..SWEEP_DISTINCT_FILES as u64 {
             intent.classify_at(1, ino, 0, 4096, now);
         }
-        // A new file's first reads are still served.
-        for attempt in 1..=PEEK_GRACE_READS {
-            assert_eq!(
-                intent.classify_at(1, 999, 0, 4096, now),
-                ReadVerdict::Allow,
-                "attempt {attempt} on a fresh file should be served"
-            );
-        }
+        assert_eq!(
+            intent.classify_at(1, 999, 0, 4096, now),
+            ReadVerdict::Refuse,
+            "a new file peeked mid-sweep was served, so a directory sweep still downloads everything"
+        );
     }
 
     /// A large read is a bulk transfer and must pass even mid-sweep.
@@ -269,9 +287,10 @@ mod tests {
         );
     }
 
-    /// Once a process starts streaming one file, its reads must be served again.
+    /// A process that insists on one file after sweeping must eventually be served, or a genuine
+    /// read that follows a browse would fail forever.
     #[test]
-    fn streaming_one_file_clears_the_sweep_classification() {
+    fn persistent_reads_after_a_sweep_are_served() {
         let intent = ReadIntent::default();
         let now = Instant::now();
         for ino in 10..20u64 {
@@ -279,20 +298,45 @@ mod tests {
                 intent.classify_at(1, ino, 0, 4096, now);
             }
         }
-        // Now read one file straight through, with reads small enough to look like peeks.
-        let mut offset = 0u64;
-        let mut allowed_after_trust = 0;
-        for _ in 0..10 {
-            let verdict = intent.classify_at(1, 777, offset, 4096, now);
-            offset += 4096;
-            if offset > u64::from(SEQUENTIAL_TRUST + 1) * 4096 && verdict == ReadVerdict::Allow {
-                allowed_after_trust += 1;
+        // The process keeps coming back to the same file, restarting from offset zero each time.
+        let mut served_after = None;
+        for attempt in 0..10 {
+            if intent.classify_at(1, 777, 0, 4096, now) == ReadVerdict::Allow {
+                served_after = Some(attempt);
+                break;
             }
         }
-        assert!(
-            allowed_after_trust > 0,
-            "a continuing sequential read was still refused after proving itself"
+        assert_eq!(
+            served_after,
+            Some(MAX_REFUSALS_PER_FILE),
+            "a persistent read was not served after the refusal budget"
         );
+    }
+
+    /// Once served, a continuing read of that same file must keep working.
+    #[test]
+    fn a_served_file_streams_from_there_on() {
+        let intent = ReadIntent::default();
+        let now = Instant::now();
+        for ino in 10..20u64 {
+            for _ in 0..4 {
+                intent.classify_at(1, ino, 0, 4096, now);
+            }
+        }
+        // Exhaust the refusal budget on one file, then read it straight through.
+        let mut offset = 0u64;
+        for _ in 0..=MAX_REFUSALS_PER_FILE {
+            offset += 4096;
+            intent.classify_at(1, 777, 0, 4096, now);
+        }
+        for read in 0..10 {
+            assert_eq!(
+                intent.classify_at(1, 777, offset, 4096, now),
+                ReadVerdict::Allow,
+                "continuing read #{read} of an already-served file was refused"
+            );
+            offset += 4096;
+        }
     }
 
     /// Different processes must be classified independently.

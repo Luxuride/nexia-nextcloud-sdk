@@ -600,7 +600,9 @@ fn metadata_stays_responsive_while_reads_are_blocked_on_the_server() {
         mp: created,
     };
     let dir = mounted.path().to_path_buf();
-    assert!(wait_until(ENTRY_TIMEOUT, || dir.join("photo0.bin").exists()));
+    assert!(wait_until(ENTRY_TIMEOUT, || dir
+        .join("photo0.bin")
+        .exists()));
 
     // Launch a burst of reads that each block for `delay` on the server.
     // (no stop flag: the readers are joined below)

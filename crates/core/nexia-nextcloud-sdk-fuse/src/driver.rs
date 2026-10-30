@@ -272,10 +272,15 @@ impl FuseDriver {
     ///
     /// `pid` is the calling process; the inode is used as the file identity because it is stable
     /// for the lifetime of the mount and needs no path resolution here.
-    pub fn classify_read(&self, pid: u32, ino: u64, offset: u64, size: u32) -> crate::intent::ReadVerdict {
+    pub fn classify_read(
+        &self,
+        pid: u32,
+        ino: u64,
+        offset: u64,
+        size: u32,
+    ) -> crate::intent::ReadVerdict {
         self.read_intent.classify(pid, ino, offset, size)
     }
-
 
     /// The gate bounding simultaneous remote fetches.
     pub fn download_gate(&self) -> &Arc<DownloadGate> {
