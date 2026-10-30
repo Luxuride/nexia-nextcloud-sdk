@@ -661,9 +661,26 @@ impl FuseDriver {
             }
         };
 
-        // Hydrated through a local cache file: serve the range from disk.
+        // Hydrated through a local cache file: serve the range from disk. A node can point at a file
+        // that no longer exists — the cache may be cleared or deleted behind our back, and the tree
+        // now persists hydration as a path — so an unreadable cache file falls back to hydrating
+        // again instead of failing every read for the rest of the session.
         if let Some(path) = cached_path {
-            return Self::read_local_range(&path, offset, size).await;
+            match Self::read_local_range(&path, offset, size).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(err) if err == EIO => {
+                    tracing::warn!(
+                        vfs_path = %vfs_path,
+                        cached = %path.display(),
+                        "hydrated cache file is unreadable, hydrating again"
+                    );
+                    if let Ok(mut tree) = self.tree.write() {
+                        let _ = tree.dehydrate(&vfs_path);
+                    }
+                    return self.read_ranged(&vfs_path, file_size, offset, size).await;
+                }
+                Err(err) => return Err(err),
+            }
         }
 
         // Partially hydrated (or hydration state vanished under us): merge ranges.
@@ -1424,6 +1441,35 @@ mod tests {
         assert!(driver.read(attr.ino, 4096, 128).await.unwrap().is_empty());
 
         let _ = std::fs::remove_file(&cached);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// Regression: a node left pointing at a cache file that was deleted must hydrate again.
+    ///
+    /// The tree persists hydration as a path, so the file can be gone after the cache directory was
+    /// cleared or deleted. Answering `EIO` forever made the file unreadable until a restart.
+    #[tokio::test]
+    async fn missing_cache_file_hydrates_again() {
+        let payload: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+
+        let dir = std::env::temp_dir().join(format!("nexia-fuse-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join("photo.jpg");
+        std::fs::write(&cached, &payload).unwrap();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/photo.jpg").with_size(payload.len() as u64),
+        ));
+        tree.hydrate_path("/photo.jpg", cached.clone()).unwrap();
+        std::fs::remove_file(&cached).unwrap();
+
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "photo.jpg").unwrap();
+
+        assert_eq!(driver.read(attr.ino, 0, 256).await.unwrap(), payload[..256]);
+
         let _ = std::fs::remove_dir(&dir);
     }
 
