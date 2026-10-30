@@ -226,15 +226,15 @@ impl Filesystem for FuseDriver {
             return;
         }
 
-        // A file manager opening a directory touches every entry in it: small speculative reads
-        // spread across hundreds of files, each one a full round trip. That is what makes the
-        // folder look hung, and it is not something the user asked for — the preview it wants
-        // either already exists in the thumbnail cache or can be built from the thumbnail we
-        // serve. A process that keeps reading one file (a copy, an archive, a video player) is
-        // streaming, not browsing, and is always served.
+        // A file manager opening a directory touches every entry in it: it samples each file once,
+        // each sample a full round trip, which is what makes the folder look hung for minutes. The
+        // preview it wants either already exists in the thumbnail cache or can be built from the
+        // thumbnail we serve, so downloading the original buys nothing.
         //
-        // Only unhydrated placeholders are subject to this: once the bytes are local the read
-        // costs nothing and there is no reason to refuse it.
+        // The guard is confined to file managers (see [`crate::intent::BROWSER_COMMS`]) and to
+        // files that are not local yet; it always serves a read that continues through one file, so
+        // copies, viewers and archivers are unaffected, and its per-file refusal budget means no
+        // file can become permanently unreadable.
         if self.is_placeholder(ino.0)
             && self.classify_read(req.pid(), ino.0, offset, size) == ReadVerdict::Refuse
         {

@@ -270,8 +270,15 @@ impl FuseDriver {
 
     /// Classifies a read as browsing or streaming, so `fs::read` can refuse speculative sweeps.
     ///
-    /// `pid` is the calling process; the inode is used as the file identity because it is stable
-    /// for the lifetime of the mount and needs no path resolution here.
+    /// Decides whether this read belongs to a file manager's directory sweep.
+    ///
+    /// Returns [`crate::intent::ReadVerdict::Allow`] for every process that is not one of the file
+    /// managers in [`crate::intent::BROWSER_COMMS`], so copies, archivers, viewers and scripts are
+    /// never throttled. The process name is read from `/proc/{pid}/comm`, the one name a process
+    /// cannot forge.
+    ///
+    /// `pid` is the calling process; the inode is the file identity, which is stable for the
+    /// lifetime of the mount and needs no path resolution here.
     pub fn classify_read(
         &self,
         pid: u32,
@@ -279,7 +286,8 @@ impl FuseDriver {
         offset: u64,
         size: u32,
     ) -> crate::intent::ReadVerdict {
-        self.read_intent.classify(pid, ino, offset, size)
+        let browser = crate::intent::is_browser_process(pid);
+        self.read_intent.classify(pid, browser, ino, offset, size)
     }
 
     /// The gate bounding simultaneous remote fetches.

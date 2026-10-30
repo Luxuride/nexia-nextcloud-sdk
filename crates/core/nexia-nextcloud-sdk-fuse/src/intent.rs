@@ -1,51 +1,70 @@
-//! Distinguishes a file manager browsing a directory from a real bulk read.
+//! Prevents a file manager's directory sweep from downloading every original.
 //!
-//! A file manager lists a directory in milliseconds and then touches every entry in it: it stats
-//! them, and for anything it wants to preview it reads a few kilobytes. On a network-backed mount
-//! each of those touches can cost a full round trip, so browsing a directory of photos turns into
-//! minutes of an apparently-hung application while nothing is actually stuck.
+//! Listing a directory is cheap — `readdir` answers 625 entries in a few milliseconds — but a file
+//! manager then touches every entry it lists, and on a network-backed mount every touch of a file
+//! whose bytes are not local is a full round trip. A sweep of a photo directory therefore turns
+//! into minutes of an apparently-hung window while nothing is actually stuck.
 //!
-//! The distinction this module draws is between *breadth* and *depth*. A process that reads many
-//! different files in quick succession is browsing; one that keeps reading the same file is
-//! streaming it, which is what a copy does. Browsing reads are refused (the caller retries later,
-//! once the file is hydrated or the preview it wanted exists); streaming reads are always served.
+//! Two facts drive the design, both measured against a live mount:
+//!
+//! * Read size cannot separate a sweep from a copy. The kernel coalesced a file manager's previews
+//!   and an ordinary `cp` into identical 128 KiB reads, so no size threshold can tell them apart.
+//! * Only some processes browse. `cp`, an archiver, an editor or a script reads what it wants and
+//!   stops; it is the GUI file manager that samples a whole directory. So the guard is confined to
+//!   processes named in [`BROWSER_COMMS`] and never applies to anything else.
+//!
+//! Within a browsing process, a read is refused only when it is *not* reading content through:
+//!
+//! * a read that continues the run already in progress on the same file is served, which is what a
+//!   copy or a viewer does once it has committed to a file;
+//! * a refusal budget per file guarantees the bytes are served after a bounded number of retries,
+//!   so no file can ever become permanently unreadable, and a copy inside the file manager still
+//!   completes;
+//! * evidence of sweeping expires, so browsing and then copying in the same process works.
+//!
+//! The guard is also only consulted for files whose bytes are not local yet. Once a file is
+//! hydrated a read costs nothing and is always served.
 
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-/// How long a file access keeps counting as evidence of a directory sweep.
+/// Process names whose speculative reads are subject to the guard.
 ///
-/// Long enough to cover one pass over a directory, short enough that a process which browsed
-/// minutes ago and now copies a file is not still treated as browsing.
+/// Matched against `/proc/{pid}/comm`, exactly as [`crate::fs`] does for thumbnailers, because that
+/// is the only name a process cannot forge and the only one that does not require walking
+/// ancestors (which previously misclassified unrelated processes).
+///
+/// Confined to the GUI file managers that sweep directories. Nothing here ever matches `cp`,
+/// `rsync`, `tar`, a viewer or a script, so those are never throttled.
+pub const BROWSER_COMMS: &[&str] = &[
+    // GNOME Files. The one that sweeps a photo directory to build a grid of previews.
+    "nautilus",
+    // Thunar and Nemo are the same shape of program and would behave identically.
+    "thunar", "nemo", // KDE's file manager.
+    "dolphin",
+];
+
+/// How long a read run stays valid as evidence that a reader is working through one file.
+///
+/// A copy reads continuously, so its next read follows almost immediately. The window only has to
+/// absorb scheduling delays, not a user's thinking time.
+pub const RUN_WINDOW: Duration = Duration::from_secs(5);
+
+/// How long a file access keeps counting as evidence of a directory sweep.
 pub const SWEEP_WINDOW: Duration = Duration::from_secs(3);
 
-/// How many *different* files a process must touch inside [`SWEEP_WINDOW`] to count as sweeping.
+/// How many *different* files a browsing process must touch inside [`SWEEP_WINDOW`] to count as
+/// sweeping.
 ///
-/// A program opening one file touches one; a viewer that reads a file and its sidecar touches two.
-/// Three in three seconds is already a directory walk, and every additional file makes the
-/// classification more certain.
+/// A single preview touches one file. Three in three seconds is already a directory walk.
 pub const SWEEP_DISTINCT_FILES: usize = 3;
-
-/// Largest read still considered a peek while a process is sweeping.
-///
-/// A browser asks for 4-16 KiB to decode a preview. A copy asks the kernel for far more: `cp` on
-/// Linux issues 128 KiB reads because that is the kernel's readahead chunk. Classifying on size
-/// therefore lets bulk transfers through untouched while catching exactly the speculative reads.
-pub const PEEK_MAX_SIZE: u32 = 64 * 1024;
-
-/// Consecutive continuing reads of one file that prove the process is streaming it.
-///
-/// Once a reader has walked the same file this many times in a row it is copying, not browsing, and
-/// its reads are served no matter how small they are or how many other files it touched before.
-pub const SEQUENTIAL_TRUST: u32 = 4;
 
 /// How many times one file may be refused before the read is served regardless.
 ///
-/// A directory sweep touches each entry once and moves on, so it never returns to the same file. A
-/// process that keeps retrying the *same* file is asking for its content, not sampling a
-/// directory, and must be served — otherwise a legitimate read inside a process that happened to
-/// browse a folder first would fail forever, which is the kind of silent breakage this guard exists
-/// to prevent. The bound also caps how much a sweep can pull if it does retry.
+/// A sweep samples each entry once and never returns to it, so this bound costs a sweep nothing: it
+/// never collects on it. A caller that genuinely wants the bytes gets them after this many retries,
+/// which is what guarantees no file can become permanently unreadable and that a copy started from
+/// inside the file manager still finishes.
 pub const MAX_REFUSALS_PER_FILE: u32 = 3;
 
 /// What should happen to a read request.
@@ -53,8 +72,52 @@ pub const MAX_REFUSALS_PER_FILE: u32 = 3;
 pub enum ReadVerdict {
     /// Serve the read.
     Allow,
-    /// Refuse the read; the caller is browsing, not copying.
+    /// Refuse the read: the caller is sampling a directory, not reading content.
     Refuse,
+}
+
+/// Returns `true` when `pid` is one of the file managers listed in [`BROWSER_COMMS`].
+pub fn is_browser_process(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) else {
+            return false;
+        };
+        let comm = comm.trim();
+        if comm.is_empty() {
+            return false;
+        }
+        BROWSER_COMMS.contains(&comm)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+/// Progress through one file, per reading process.
+#[derive(Debug, Default, Clone, Copy)]
+struct FileProbe {
+    /// Where the current run of continuing reads has reached.
+    last_end: u64,
+    /// When that run last advanced.
+    last_at: Option<Instant>,
+    /// How many reads of this file have been refused.
+    refusals: u32,
+}
+
+impl FileProbe {
+    /// Whether `offset` continues straight on from the previous read of this file.
+    ///
+    /// This is the "reading content through" signal: a copy and an unarchiver walk a file forward,
+    /// while a sweep reads offset zero of each file once and never continues anything.
+    fn continues(&self, offset: u64, now: Instant) -> bool {
+        let Some(last_at) = self.last_at else {
+            return false;
+        };
+        offset == self.last_end && now.duration_since(last_at) <= RUN_WINDOW
+    }
 }
 
 /// What one process has been doing recently.
@@ -66,46 +129,45 @@ struct ProcessState {
     probes: HashMap<u64, FileProbe>,
 }
 
-/// Progress through one file.
-#[derive(Debug, Default, Clone, Copy)]
-struct FileProbe {
-    /// How many reads of this file have been refused so far.
-    refusals: u32,
-    /// Length of the run of reads that each continued the previous one.
-    sequential_run: u32,
-    /// Offset just past the last byte read.
-    last_end: u64,
-    /// When the last read happened.
-    last_at: Option<Instant>,
-}
-
-impl FileProbe {
-    /// Whether `offset` continues straight on from the previous read of this file.
-    ///
-    /// A reader that restarts from the beginning, or jumps ahead, breaks the run: `cp` walks
-    /// forward, while a file manager's peek at offset zero of every file never continues anything.
-    fn continues(&self, offset: u64, now: Instant) -> bool {
-        let Some(last_at) = self.last_at else {
-            return false;
-        };
-        offset == self.last_end && now.duration_since(last_at) <= SWEEP_WINDOW
-    }
-}
-
-/// Tracks per-process access patterns to tell browsing from bulk reading.
+/// Decides whether a browsing process's read of an unhydrated file belongs to a directory sweep.
+///
+/// Only consulted for processes in [`BROWSER_COMMS`], and only for files whose bytes are not local.
 #[derive(Debug, Default)]
 pub struct ReadIntent {
     processes: std::sync::Mutex<HashMap<u32, ProcessState>>,
 }
 
 impl ReadIntent {
-    /// Classifies a read of `ino` at `offset` for `size` bytes issued by process `pid`.
-    pub fn classify(&self, pid: u32, ino: u64, offset: u64, size: u32) -> ReadVerdict {
-        self.classify_at(pid, ino, offset, size, Instant::now())
+    /// Classifies a read of `ino` by `pid` at `offset` for `size` bytes.
+    ///
+    /// `browser` must come from [`is_browser_process`]; a process that is not a file manager is
+    /// never throttled, so callers that know their reader is not one may skip the lookup.
+    pub fn classify(
+        &self,
+        pid: u32,
+        browser: bool,
+        ino: u64,
+        offset: u64,
+        size: u32,
+    ) -> ReadVerdict {
+        self.classify_at(pid, browser, ino, offset, size, Instant::now())
     }
 
     /// [`Self::classify`] with an explicit clock, so tests can advance time deterministically.
-    fn classify_at(&self, pid: u32, ino: u64, offset: u64, size: u32, now: Instant) -> ReadVerdict {
+    fn classify_at(
+        &self,
+        pid: u32,
+        browser: bool,
+        ino: u64,
+        offset: u64,
+        size: u32,
+        now: Instant,
+    ) -> ReadVerdict {
+        // Nothing but a file manager is ever subject to this rule.
+        if !browser {
+            return ReadVerdict::Allow;
+        }
+
         let Ok(mut processes) = self.processes.lock() else {
             // Losing the lock must never break reads: an unclassifiable request is served.
             return ReadVerdict::Allow;
@@ -123,55 +185,45 @@ impl ReadIntent {
 
         let probe = state.probes.entry(ino).or_default();
         let continues = probe.continues(offset, now);
-        if continues {
-            probe.sequential_run += 1;
-        } else {
-            probe.sequential_run = 0;
-            // Record breadth only on the read that starts a file, not on every chunk of it, so one
-            // long copy does not look like a sweep through hundreds of files.
-            if !state.files.iter().any(|(existing, _)| *existing == ino) {
-                state.files.push_back((ino, now));
-            }
+        if !continues && !state.files.iter().any(|(seen, _)| *seen == ino) {
+            // Record breadth only when a file is first touched, never on every chunk of it, so one
+            // long copy does not look like a sweep.
+            state.files.push_back((ino, now));
         }
         probe.last_end = offset.saturating_add(u64::from(size));
         probe.last_at = Some(now);
 
-        // Bulk transfers are not peeks, whatever else the process has been doing. This is what
-        // keeps `cp` and friends working: the kernel hands them 128 KiB at a time, far above the
-        // little a preview needs, so the size alone proves the read is wanted.
-        if size > PEEK_MAX_SIZE {
+        // A refusal can never be permanent: after the budget the bytes are served no matter how
+        // the read looks, so a copy inside the file manager also completes.
+        if probe.refusals >= MAX_REFUSALS_PER_FILE {
             return ReadVerdict::Allow;
         }
 
-        // A steady run of continuing reads on one file is a stream or a copy: always serve it, no
-        // matter how many other files the process touched first.
-        if probe.sequential_run >= SEQUENTIAL_TRUST {
+        // Reading one file through is content access, not sampling: always serve it.
+        if continues {
             return ReadVerdict::Allow;
         }
 
-        // Nothing suggests browsing yet: opening one file, or a couple, is ordinary use.
+        // Nothing suggests browsing yet: a single preview or a two-file look is ordinary use.
         if state.files.len() < SWEEP_DISTINCT_FILES {
             return ReadVerdict::Allow;
         }
 
-        // Past this point the process is demonstrably walking a directory. Serve it when either
-        // the read continues the run it is already making on this same file — a reader working
-        // through content it has committed to — or the process has insisted on this file enough
-        // times that it clearly wants the content rather than sampling it.
-        if continues {
-            return ReadVerdict::Allow;
-        }
-        if probe.refusals >= MAX_REFUSALS_PER_FILE {
-            return ReadVerdict::Allow;
-        }
         probe.refusals += 1;
         ReadVerdict::Refuse
     }
 
-    /// Drops state for processes that have been idle beyond the window.
+    /// Drops all bookkeeping for one process, e.g. once it exits.
+    pub fn forget(&self, pid: u32) {
+        let Ok(mut processes) = self.processes.lock() else {
+            return;
+        };
+        processes.remove(&pid);
+    }
+
+    /// Drops bookkeeping for processes that have been idle beyond the window.
     ///
-    /// Called opportunistically so the bookkeeping cannot grow without bound as short-lived
-    /// processes come and go.
+    /// Called opportunistically so the map cannot grow without bound as processes come and go.
     pub fn prune(&self) {
         let now = Instant::now();
         let Ok(mut processes) = self.processes.lock() else {
@@ -191,192 +243,193 @@ impl ReadIntent {
 mod tests {
     use super::*;
 
-    /// A single file opened once must never be refused, whatever its read shape.
+    /// Nothing but a file manager may ever be throttled.
     #[test]
-    fn single_file_is_always_served() {
+    fn non_browser_processes_are_never_refused() {
         let intent = ReadIntent::default();
         let now = Instant::now();
-        for _ in 0..20 {
+        for ino in 0..200u64 {
             assert_eq!(
-                intent.classify_at(1, 10, 0, 4096, now),
+                intent.classify_at(1, false, ino, 0, 131_072, now),
                 ReadVerdict::Allow,
-                "a repeated read of one file must not be treated as browsing"
+                "a process that is not a file manager was refused"
             );
         }
     }
 
-    /// A copy walks forward through many reads of one file and must always be served.
+    /// The sweep this guard exists for: one sample of each of many files, never continuing.
     #[test]
-    fn sequential_copy_is_always_served() {
+    fn sampling_a_directory_is_refused() {
         let intent = ReadIntent::default();
         let now = Instant::now();
+        // The first two files establish the sweep.
+        for ino in 0..SWEEP_DISTINCT_FILES as u64 - 1 {
+            intent.classify_at(1, true, ino, 0, 131_072, now);
+        }
+        let mut refused = 0;
+        for ino in 10..40u64 {
+            if intent.classify_at(1, true, ino, 0, 131_072, now) == ReadVerdict::Refuse {
+                refused += 1;
+            }
+        }
+        assert_eq!(
+            refused, 30,
+            "a sweep of 30 files was not refused, so it would still download every original"
+        );
+    }
+
+    /// A copy walks a file forward and must be served on every read after the first.
+    #[test]
+    fn sequential_copy_is_served_throughout() {
+        let intent = ReadIntent::default();
+        let now = Instant::now();
+        // Establish a sweep first, the worst case for a copy.
+        for ino in 0..10u64 {
+            intent.classify_at(1, true, ino, 0, 131_072, now);
+        }
         let mut offset = 0u64;
-        for _ in 0..50 {
+        // The first read may be refused; it is retried. Everything after must be served.
+        for _ in 0..=MAX_REFUSALS_PER_FILE {
+            if intent.classify_at(1, true, 777, 0, 131_072, now) == ReadVerdict::Allow {
+                offset = 131_072;
+                break;
+            }
+        }
+        assert_eq!(offset, 131_072, "the copy's first read was never served");
+        for read in 0..40 {
             assert_eq!(
-                intent.classify_at(1, 10, offset, 131_072, now),
-                ReadVerdict::Allow
+                intent.classify_at(1, true, 777, offset, 131_072, now),
+                ReadVerdict::Allow,
+                "sequential read #{read} of an in-progress copy was refused"
             );
             offset += 131_072;
         }
     }
 
-    /// Small reads spread over many files is what a file manager does, and must be cut off.
+    /// A copy must never fail permanently, however it reads: the budget always releases the bytes.
     #[test]
-    fn sweeping_a_directory_is_refused() {
+    fn no_file_can_be_refused_forever() {
         let intent = ReadIntent::default();
         let now = Instant::now();
-        let mut refused = 0;
-        for ino in 10..40u64 {
-            // Each file is peeked at several times, always at offset zero, never continuing.
-            for _ in 0..5 {
-                if intent.classify_at(1, ino, 0, 4096, now) == ReadVerdict::Refuse {
-                    refused += 1;
-                }
+        for ino in 0..10u64 {
+            intent.classify_at(1, true, ino, 0, 131_072, now);
+        }
+        // A caller that restarts from zero every single time still gets through.
+        let mut served = false;
+        for attempt in 0..=MAX_REFUSALS_PER_FILE {
+            if intent.classify_at(1, true, 999, 0, 131_072, now) == ReadVerdict::Allow {
+                served = true;
+                assert_eq!(
+                    attempt, MAX_REFUSALS_PER_FILE,
+                    "the read was served before the refusal budget was spent"
+                );
+                break;
             }
         }
-        assert!(
-            refused > 0,
-            "a sweep of 30 files at 4 KiB was never refused"
-        );
+        assert!(served, "a file was refused more than the budget allows");
     }
 
-    /// Opening a few files is ordinary use and must never be refused, however the reads look.
+    /// Opening a single preview must work: one or two files is not a sweep.
     #[test]
     fn opening_a_few_files_is_served() {
         let intent = ReadIntent::default();
         let now = Instant::now();
-        for ino in 0..(SWEEP_DISTINCT_FILES as u64 - 1) {
+        for ino in 0..SWEEP_DISTINCT_FILES as u64 - 1 {
             for _ in 0..10 {
                 assert_eq!(
-                    intent.classify_at(1, ino, 0, 4096, now),
+                    intent.classify_at(1, true, ino, 0, 131_072, now),
                     ReadVerdict::Allow,
-                    "opening file {ino} was refused before any sweep was established"
+                    "opening file {ino} was refused before a sweep was established"
                 );
             }
         }
     }
 
-    /// Once a sweep is established, peeking at a *new* file must be refused, or the guard does
-    /// nothing: a file manager reads every entry exactly once, so a per-file grace of even one read
-    /// lets a whole directory of originals through.
+    /// Read size must play no part: the kernel coalesces a sweep and a copy to the same size.
     #[test]
-    fn peeking_a_new_file_during_a_sweep_is_refused() {
-        let intent = ReadIntent::default();
-        let now = Instant::now();
-        for ino in 0..SWEEP_DISTINCT_FILES as u64 {
-            intent.classify_at(1, ino, 0, 4096, now);
-        }
-        assert_eq!(
-            intent.classify_at(1, 999, 0, 4096, now),
-            ReadVerdict::Refuse,
-            "a new file peeked mid-sweep was served, so a directory sweep still downloads everything"
-        );
-    }
-
-    /// A large read is a bulk transfer and must pass even mid-sweep.
-    #[test]
-    fn bulk_reads_pass_during_a_sweep() {
-        let intent = ReadIntent::default();
-        let now = Instant::now();
-        for ino in 0..10u64 {
-            intent.classify_at(1, ino, 0, 4096, now);
-        }
-        assert_eq!(
-            intent.classify_at(1, 999, 0, PEEK_MAX_SIZE + 1, now),
-            ReadVerdict::Allow
-        );
-    }
-
-    /// A process that insists on one file after sweeping must eventually be served, or a genuine
-    /// read that follows a browse would fail forever.
-    #[test]
-    fn persistent_reads_after_a_sweep_are_served() {
-        let intent = ReadIntent::default();
-        let now = Instant::now();
-        for ino in 10..20u64 {
-            for _ in 0..4 {
-                intent.classify_at(1, ino, 0, 4096, now);
+    fn verdict_does_not_depend_on_read_size() {
+        for size in [4096u32, 16 * 1024, 64 * 1024, 131_072, 1024 * 1024] {
+            let intent = ReadIntent::default();
+            let now = Instant::now();
+            for ino in 0..10u64 {
+                intent.classify_at(1, true, ino, 0, size, now);
             }
-        }
-        // The process keeps coming back to the same file, restarting from offset zero each time.
-        let mut served_after = None;
-        for attempt in 0..10 {
-            if intent.classify_at(1, 777, 0, 4096, now) == ReadVerdict::Allow {
-                served_after = Some(attempt);
-                break;
-            }
-        }
-        assert_eq!(
-            served_after,
-            Some(MAX_REFUSALS_PER_FILE),
-            "a persistent read was not served after the refusal budget"
-        );
-    }
-
-    /// Once served, a continuing read of that same file must keep working.
-    #[test]
-    fn a_served_file_streams_from_there_on() {
-        let intent = ReadIntent::default();
-        let now = Instant::now();
-        for ino in 10..20u64 {
-            for _ in 0..4 {
-                intent.classify_at(1, ino, 0, 4096, now);
-            }
-        }
-        // Exhaust the refusal budget on one file, then read it straight through.
-        let mut offset = 0u64;
-        for _ in 0..=MAX_REFUSALS_PER_FILE {
-            offset += 4096;
-            intent.classify_at(1, 777, 0, 4096, now);
-        }
-        for read in 0..10 {
             assert_eq!(
-                intent.classify_at(1, 777, offset, 4096, now),
-                ReadVerdict::Allow,
-                "continuing read #{read} of an already-served file was refused"
+                intent.classify_at(1, true, 999, 0, size, now),
+                ReadVerdict::Refuse,
+                "a mid-sweep read of {size} bytes was not refused"
             );
-            offset += 4096;
         }
     }
 
-    /// Different processes must be classified independently.
+    /// Processes must be classified independently.
     #[test]
     fn processes_are_tracked_separately() {
         let intent = ReadIntent::default();
         let now = Instant::now();
         for ino in 0..20u64 {
-            for _ in 0..4 {
-                intent.classify_at(1, ino, 0, 4096, now);
-            }
+            intent.classify_at(1, true, ino, 0, 131_072, now);
         }
-        // A different process opening one file must not inherit the sweep classification.
-        for _ in 0..10 {
-            assert_eq!(
-                intent.classify_at(2, 500, 0, 4096, now),
-                ReadVerdict::Allow,
-                "an unrelated process inherited another process's browsing behaviour"
-            );
-        }
+        // A second file manager has its own history, so a single open is still ordinary use.
+        assert_eq!(
+            intent.classify_at(2, true, 500, 0, 131_072, now),
+            ReadVerdict::Allow,
+            "one process inherited another's sweep history"
+        );
     }
 
-    /// Evidence must expire, so a process that browsed minutes ago can copy freely.
+    /// A stale run must not let a later sample through as if it continued anything.
+    ///
+    /// Tested on the probe directly, because `classify` cannot express it: [`RUN_WINDOW`] is
+    /// longer than [`SWEEP_WINDOW`], so by the time a run has gone stale the sweep evidence that
+    /// made the process subject to the guard has expired as well, and the read is served as
+    /// ordinary use rather than as a continuing read.
+    #[test]
+    fn run_evidence_expires() {
+        let start = Instant::now();
+        let probe = FileProbe {
+            last_end: 131_072,
+            last_at: Some(start),
+            refusals: 0,
+        };
+        assert!(
+            probe.continues(131_072, start),
+            "an immediately continuing read was not recognised"
+        );
+        assert!(
+            probe.continues(131_072, start + RUN_WINDOW),
+            "a read at the edge of the window was not recognised"
+        );
+        let stale = start + RUN_WINDOW + Duration::from_millis(1);
+        assert!(
+            !probe.continues(131_072, stale),
+            "a run that ended long ago still counted as continuing"
+        );
+        assert!(
+            !probe.continues(262_144, start),
+            "a forward jump was treated as continuing the run"
+        );
+        assert!(
+            !probe.continues(0, start),
+            "a restart from zero was treated as continuing the run"
+        );
+    }
+
+    /// Evidence of a sweep must expire, so browsing and then copying in one process works.
     #[test]
     fn sweep_evidence_expires() {
         let intent = ReadIntent::default();
         let start = Instant::now();
         for ino in 0..20u64 {
             for _ in 0..4 {
-                intent.classify_at(1, ino, 0, 4096, start);
+                intent.classify_at(1, true, ino, 0, 131_072, start);
             }
         }
         let later = start + SWEEP_WINDOW + Duration::from_millis(1);
-        // A fresh file, long after the sweep, keeps its full grace budget.
-        for _ in 0..10 {
-            assert_eq!(
-                intent.classify_at(1, 999, 0, 4096, later),
-                ReadVerdict::Allow,
-                "stale sweep evidence still caused a refusal"
-            );
-        }
+        assert_eq!(
+            intent.classify_at(1, true, 999, 0, 131_072, later),
+            ReadVerdict::Allow,
+            "stale sweep evidence still caused a refusal"
+        );
     }
 }
