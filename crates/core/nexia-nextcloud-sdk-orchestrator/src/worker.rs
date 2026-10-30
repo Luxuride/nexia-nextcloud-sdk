@@ -501,28 +501,27 @@ async fn run_orchestrator_actor(
                         .join("mounts")
                         .join(mount_id.as_str())
                         .join("vfs");
-                    let (hydrated_count, local_bytes) =
-                        if desc.local_target.exists() && desc.local_target != vfs_dir {
+                    let (hydrated_count, local_bytes) = {
+                        // A FUSE mount's local target *is* the mount, so walking it reports the
+                        // server-side size of every placeholder rather than what is hydrated, and
+                        // the walk itself issues a readdir plus a getattr over the whole tree.
+                        let walkable = desc.mode != crate::mount::MountMode::Fuse
+                            && desc.local_target.exists()
+                            && desc.local_target != vfs_dir;
+                        let from_vfs = vfs_managers
+                            .get(&mount_id)
+                            .map(VfsManager::calculate_hydrated_storage);
+                        if walkable {
                             let (count, bytes) = scan_dir_usage(&desc.local_target);
                             if count > 0 || bytes > 0 {
                                 (count, bytes)
-                            } else if let Some(vfs) = vfs_managers.get(&mount_id) {
-                                vfs.calculate_hydrated_storage()
                             } else {
-                                (0, 0)
+                                from_vfs.unwrap_or((0, 0))
                             }
-                        } else if let Some(vfs) = vfs_managers.get(&mount_id) {
-                            let (vfs_count, vfs_bytes) = vfs.calculate_hydrated_storage();
-                            if (vfs_count > 0 || vfs_bytes > 0) || !desc.local_target.exists() {
-                                (vfs_count, vfs_bytes)
-                            } else {
-                                scan_dir_usage(&desc.local_target)
-                            }
-                        } else if desc.local_target.exists() {
-                            scan_dir_usage(&desc.local_target)
                         } else {
-                            (0, 0)
-                        };
+                            from_vfs.unwrap_or((0, 0))
+                        }
+                    };
 
                     let shared_thumbnail_bytes =
                         calculate_dir_bytes(&config.base_cache_dir.join("thumbnails"));

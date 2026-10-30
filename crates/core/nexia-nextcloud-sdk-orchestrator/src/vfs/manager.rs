@@ -177,10 +177,11 @@ impl VfsManager {
                     nexia_nextcloud_sdk_vfs::HydrationState::Hydrated(
                         nexia_nextcloud_sdk_vfs::HydratedContent::Path(p),
                     ) => {
+                        // Only bytes actually present in the cache file count. Falling back to
+                        // `node.metadata.size` would report the server-side size of a file that is
+                        // not on disk, which is exactly the number users compare with `du`.
                         if let Ok(meta) = fs::metadata(p) {
                             total_bytes += meta.len();
-                        } else {
-                            total_bytes += node.metadata.size;
                         }
                     }
                     nexia_nextcloud_sdk_vfs::HydrationState::Hydrated(
@@ -219,8 +220,6 @@ impl VfsManager {
             {
                 if let Ok(meta) = fs::metadata(p) {
                     freed += meta.len();
-                } else {
-                    freed += node.metadata.size;
                 }
                 let _ = fs::remove_file(p);
             }
