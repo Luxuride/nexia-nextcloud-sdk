@@ -928,4 +928,162 @@ mod tests {
         assert!(attr.is_file());
         assert_eq!(attr.size, 10);
     }
+
+    /// Regression: a node hydrated through a local cache file must serve bytes from that file.
+    ///
+    /// It used to fall through to `Ok(Vec::new())`, which the kernel cached as end-of-file: the
+    /// image looked readable but empty, and only a client restart appeared to fix it.
+    #[tokio::test]
+    async fn path_backed_hydration_serves_bytes_from_cache_file() {
+        let payload: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+
+        let dir = std::env::temp_dir().join(format!("nexia-fuse-path-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join("photo.jpg");
+        std::fs::write(&cached, &payload).unwrap();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/photo.jpg").with_size(payload.len() as u64),
+        ));
+        tree.hydrate_path("/photo.jpg", cached.clone()).unwrap();
+
+        // A hydrator that must never be reached: the payload is already local.
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), Arc::new(NoopHydrator));
+        let attr = driver.lookup(FUSE_ROOT_INODE, "photo.jpg").unwrap();
+
+        assert_eq!(driver.read(attr.ino, 0, 512).await.unwrap(), payload[..512]);
+        assert_eq!(
+            driver.read(attr.ino, 1024, 256).await.unwrap(),
+            payload[1024..1280]
+        );
+        // Past the end of the file is a legitimate empty read, not an error.
+        assert!(driver.read(attr.ino, 4096, 128).await.unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&cached);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// Records what `hydrate_range` was asked for and serves from an in-memory buffer.
+    struct RangeHydrator {
+        payload: Vec<u8>,
+        full_fails: bool,
+        range_calls: Arc<RwLock<Vec<(u64, u32)>>>,
+    }
+
+    impl AsyncHydrator for RangeHydrator {
+        fn hydrate(
+            &self,
+            canonical_path: &str,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            let fail = self.full_fails;
+            let path = canonical_path.to_string();
+            Box::pin(async move {
+                if fail {
+                    Err(VfsError::NotFound(path))
+                } else {
+                    Ok(Vec::new())
+                }
+            })
+        }
+
+        fn hydrate_range(
+            &self,
+            _canonical_path: &str,
+            offset: u64,
+            size: u32,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            self.range_calls.write().unwrap().push((offset, size));
+            let start = (offset as usize).min(self.payload.len());
+            let end = (start + size as usize).min(self.payload.len());
+            let slice = self.payload[start..end].to_vec();
+            Box::pin(async move { Ok(slice) })
+        }
+    }
+
+    /// A failed full hydration must fall back to ranged hydration rather than failing the read.
+    #[tokio::test]
+    async fn read_falls_back_to_ranged_hydration() {
+        let payload: Vec<u8> = (0..=255u8).cycle().take(512 * 1024).collect();
+        let calls = Arc::new(RwLock::new(Vec::new()));
+        let hydrator = Arc::new(RangeHydrator {
+            payload: payload.clone(),
+            full_fails: true,
+            range_calls: calls.clone(),
+        });
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/big.bin").with_size(payload.len() as u64),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "big.bin").unwrap();
+
+        // A read straddling two 128 KiB hydration blocks must stitch them together.
+        let offset = HYDRATION_BLOCK_SIZE as usize - 1024;
+        let got = driver.read(attr.ino, offset as i64, 4096).await.unwrap();
+        assert_eq!(got, payload[offset..offset + 4096]);
+
+        // The second read inside an already fetched block must not hit the network again.
+        let calls_before = calls.read().unwrap().len();
+        let again = driver.read(attr.ino, offset as i64, 4096).await.unwrap();
+        assert_eq!(again, got);
+        assert_eq!(
+            calls.read().unwrap().len(),
+            calls_before,
+            "a buffered block must be reused instead of refetched"
+        );
+
+        // The node stays a placeholder: ranged reads do not pretend to be a full hydration.
+        assert!(driver.read(attr.ino, 0, 16).await.is_ok());
+    }
+
+    /// A failing fetch must surface as `EIO`, never as a short read.
+    ///
+    /// An empty buffer is indistinguishable from end-of-file, and the kernel caches it against the
+    /// inode, so a transient network error would permanently truncate the file.
+    #[tokio::test]
+    async fn failed_hydration_reports_eio_not_eof() {
+        let calls = Arc::new(RwLock::new(Vec::new()));
+        let hydrator = Arc::new(FailingRangeHydrator { calls });
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/broken.bin").with_size(10_000),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "broken.bin").unwrap();
+
+        assert_eq!(driver.read(attr.ino, 0, 4096).await, Err(EIO));
+    }
+
+    /// Hydrator whose full and ranged fetches both fail.
+    struct FailingRangeHydrator {
+        calls: Arc<RwLock<Vec<(u64, u32)>>>,
+    }
+
+    impl AsyncHydrator for FailingRangeHydrator {
+        fn hydrate(
+            &self,
+            canonical_path: &str,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            let err = VfsError::NotFound(canonical_path.to_string());
+            Box::pin(async move { Err(err) })
+        }
+
+        fn hydrate_range(
+            &self,
+            canonical_path: &str,
+            offset: u64,
+            size: u32,
+        ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+        {
+            self.calls.write().unwrap().push((offset, size));
+            let err = VfsError::NotFound(canonical_path.to_string());
+            Box::pin(async move { Err(err) })
+        }
+    }
 }
