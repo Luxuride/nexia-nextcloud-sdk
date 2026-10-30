@@ -2,7 +2,7 @@
 
 > Bidirectional synchronization engine, reconciliation logic, persistent sync journal, and observable download queue for Nextcloud.
 
-Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nexia-nextcloud-sdk) workspace.
 
 ## Installation
 

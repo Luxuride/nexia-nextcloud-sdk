@@ -1,5 +1,5 @@
 {
-  "name": "nextcloud-rust-sdk",
+  "name": "nexia-nextcloud-sdk",
   "image": "mcr.microsoft.com/devcontainers/rust:1",
   "mounts": [
     {

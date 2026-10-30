@@ -2,7 +2,7 @@
 
 > Dynamic bandwidth rate limiting, token-bucket traffic shaping, and transfer progress tracking for the Nextcloud Rust SDK.
 
-Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nexia-nextcloud-sdk) workspace.
 
 ## Installation
 

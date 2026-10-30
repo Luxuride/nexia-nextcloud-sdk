@@ -2,7 +2,7 @@
 
 > Pure state machine for Nextcloud session lifecycles and Login Flow v2.
 
-Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nexia-nextcloud-sdk) workspace.
 
 ## Installation
 

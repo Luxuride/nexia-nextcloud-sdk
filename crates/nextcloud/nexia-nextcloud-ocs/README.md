@@ -2,7 +2,7 @@
 
 > Nextcloud OCS v1/v2 API envelope parser and query engine.
 
-Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nexia-nextcloud-sdk) workspace.
 
 ## Installation
 

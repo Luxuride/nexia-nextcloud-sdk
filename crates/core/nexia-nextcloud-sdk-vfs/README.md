@@ -2,7 +2,7 @@
 
 > Transient virtual filesystem tree with on-demand hydration and thumbnail caching.
 
-Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nextcloud-rust-sdk) workspace.
+Part of the [`nexia-nextcloud-sdk`](https://github.com/Luxuride/nexia-nextcloud-sdk) workspace.
 
 ## Installation
 

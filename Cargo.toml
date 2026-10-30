@@ -6,7 +6,7 @@ members = ["crates/*/*"]
 version = "0.2.1"
 edition = "2024"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/Luxuride/nextcloud-rust-sdk"
+repository = "https://github.com/Luxuride/nexia-nextcloud-sdk"
 authors = ["Luxuride"]
 
 [workspace.dependencies]

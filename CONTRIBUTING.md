@@ -1,4 +1,4 @@
-# Contributing to nextcloud-rust-sdk
+# Contributing to nexia-nextcloud-sdk
 
 Thank you for your interest in contributing to the Nextcloud Rust SDK!
 
