@@ -192,8 +192,13 @@ pub struct FuseDriver {
     partial_blocks: Arc<RwLock<PartialBlocks>>,
     /// Bounds how many threads may wait on a remote fetch, protecting metadata requests.
     download_gate: Arc<DownloadGate>,
-    /// Windows already prefetched ahead of a sequential reader, per file.
-    readahead_inflight: Arc<RwLock<std::collections::HashSet<String>>>,
+    /// Where readahead last reached, per file: `(end_of_requested_span, end_of_prefetched)`.
+    ///
+    /// A reader is treated as sequential only when its next access begins within the range
+    /// prefetched for it, which is the only evidence those prefetched bytes will be consumed.
+    /// Without that check every first touch of every file prefetches four extra windows, and a file
+    /// manager building thumbnails for hundreds of photos pays for megabytes it will never read.
+    readahead_cursor: Arc<RwLock<std::collections::HashMap<String, (u64, u64)>>>,
 }
 
 impl FuseDriver {
@@ -249,7 +254,7 @@ impl FuseDriver {
             root_prefix: normalized_root,
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
-            readahead_inflight: Arc::new(RwLock::new(std::collections::HashSet::new())),
+            readahead_cursor: Arc::new(RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -672,15 +677,21 @@ impl FuseDriver {
                 break;
             };
 
-            // Extend a sequential walk one step further than this read needs.
+            // Extend a *continuing* sequential walk one step further than this read needs.
             //
             // A range request costs a fixed ~300 ms plus ~0.1 ms/KiB, so the marginal byte is
             // nearly free while every fresh request pays that fixed cost again. Fetching the next
             // few windows in the same request turns a start-to-finish walk into roughly one paid
             // round trip per group of windows instead of one per window.
+            //
+            // Gated on `sequential`, because the saving only exists if the prefetched bytes are
+            // actually consumed. A file manager reading 4-16 KiB of each of 625 photos would
+            // otherwise transfer megabytes per file that nothing ever reads.
+            let sequential = self.is_sequential(vfs_path, span_start);
+            let ahead_windows = if sequential { READAHEAD_WINDOWS } else { 0 };
             let readahead_end = span_start
                 .saturating_add(span_len)
-                .saturating_add(READAHEAD_WINDOWS * RANGED_WINDOW_SIZE);
+                .saturating_add(ahead_windows * RANGED_WINDOW_SIZE);
             let extend = readahead_end.min(if file_size > 0 {
                 file_size
             } else {
@@ -718,6 +729,8 @@ impl FuseDriver {
             // Judged against `span_len`, not the readahead-extended `extend`: a response that
             // covers the requested span is complete even though it stops short of the extra
             // readahead bytes, which merely means the server/path had nothing more to give.
+            self.record_readahead(vfs_path, span_start, span_len, bytes.len() as u64);
+
             let short = (bytes.len() as u64) < span_len;
             self.store_block(vfs_path, span_start, bytes.clone());
 
@@ -752,6 +765,38 @@ impl FuseDriver {
                 Ok(None)
             }
         }
+    }
+
+    /// Whether an access at `cursor` continues the walk readahead previously prefetched for.
+    ///
+    /// True when `cursor` lies inside the range that was prefetched last time, which is what makes
+    /// prefetching worthwhile: those bytes are about to be consumed. A jump backwards, or past the
+    /// prefetched end, is a different access pattern and gets no readahead.
+    fn is_sequential(&self, vfs_path: &str, cursor: u64) -> bool {
+        let Ok(cursors) = self.readahead_cursor.read() else {
+            return false;
+        };
+        let Some(&(requested_end, prefetched_end)) = cursors.get(vfs_path) else {
+            return false;
+        };
+        // `<=` on the upper bound matters: when the previous fetch covered exactly one window
+        // (no readahead yet), the next sequential access begins precisely at `prefetched_end`.
+        // Excluding that boundary would mean readahead never engages at all.
+        cursor >= requested_end.saturating_sub(RANGED_WINDOW_SIZE) && cursor <= prefetched_end
+    }
+
+    /// Records how far the last fetch for `vfs_path` reached.
+    ///
+    /// Stores both the end of what the caller needed and the end of what was actually fetched, so
+    /// the next access can tell "still consuming the prefetch" from "started somewhere new".
+    fn record_readahead(&self, vfs_path: &str, span_start: u64, span_len: u64, got: u64) {
+        let Ok(mut cursors) = self.readahead_cursor.write() else {
+            return;
+        };
+        cursors.insert(
+            vfs_path.to_string(),
+            (span_start.saturating_add(span_len), span_start.saturating_add(got)),
+        );
     }
 
     /// Returns the buffered block that already covers `cursor`, as `(block_start, bytes)`.
@@ -1487,6 +1532,71 @@ mod tests {
                 "range request {offset}+{len} reads past the {size}-byte file"
             );
         }
+    }
+
+    /// A first touch of a large file must not prefetch, because nothing proves the bytes are wanted.
+    ///
+    /// A file manager building thumbnails for a photo directory reads a few KiB of each file and
+    /// moves on. Prefetching four windows on every first touch would transfer megabytes per photo
+    /// that nothing ever reads, which is worse than the latency it saves.
+    #[tokio::test]
+    async fn first_touch_of_a_large_file_does_not_readahead() {
+        let size = 32 * 1024 * 1024;
+        let hydrator = Arc::new(RangeHydrator::new(vec![1u8; size as usize], false));
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/photo.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "photo.jpg").unwrap();
+
+        driver.read(attr.ino, 0, 4096).await.unwrap();
+
+        let calls = range_calls.read().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            u64::from(calls[0].1),
+            RANGED_WINDOW_SIZE,
+            "a first touch prefetched beyond its own window: {calls:?}"
+        );
+    }
+
+    /// Once a reader is demonstrably sequential, the following accesses must prefetch.
+    #[tokio::test]
+    async fn a_sequential_walk_reads_ahead_after_the_first_window() {
+        let size = 16 * RANGED_WINDOW_SIZE;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/walk.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "walk.jpg").unwrap();
+
+        // Walk forward in 4 KiB steps, as a reader streaming the file would.
+        let mut offset = 0i64;
+        while (offset as u64) < size {
+            let got = driver.read(attr.ino, offset, 4096).await.unwrap();
+            assert_eq!(got, payload[offset as usize..offset as usize + 4096]);
+            offset += 4096;
+        }
+
+        let calls = range_calls.read().unwrap().clone();
+        let windows = (size / RANGED_WINDOW_SIZE) as usize;
+        assert!(
+            calls.len() < windows,
+            "a sequential walk made {} requests for {windows} windows, so readahead never engaged",
+            calls.len()
+        );
+        assert!(
+            calls.iter().any(|(_, len)| u64::from(*len) > RANGED_WINDOW_SIZE),
+            "no request ever exceeded one window: {calls:?}"
+        );
     }
 
     /// The download gate must serialise down to its limit and never deadlock or leak slots.
