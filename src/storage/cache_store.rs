@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nexia_nextcloud_core::ServerUrl;
-use nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
+use nexia_nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 
 use super::cache_entry::CachedDavEntry;
 

@@ -1,5 +1,5 @@
 use nexia_nextcloud_core::ServerUrl;
-use nextcloud_sdk_keyring::SecretString;
+use nexia_nextcloud_sdk_keyring::SecretString;
 
 /// The origin or desktop subsystem where a Nextcloud account was discovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

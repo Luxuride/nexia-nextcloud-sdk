@@ -1,0 +1,13 @@
+[package]
+name = "nexia-nextcloud-dav"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+description = "WebDAV client foundation for the Nextcloud Rust SDK"
+
+[dependencies]
+nexia-nextcloud-core.workspace = true
+tracing.workspace = true

@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
+use nexia_nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 use serde::{Deserialize, Serialize};
 
 fn query_err(operation: &'static str, source: rusqlite::Error) -> StorageError {

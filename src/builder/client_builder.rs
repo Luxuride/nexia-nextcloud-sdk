@@ -4,12 +4,14 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use nexia_nextcloud_auth::SecretString;
 use nexia_nextcloud_core::ServerUrl;
-use nextcloud_auth::SecretString;
-use nextcloud_sdk_request::RetryPolicy;
-use nextcloud_sdk_session::{Account, SessionMachine, SessionState};
-use nextcloud_sdk_storage::{KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey};
-use nextcloud_transport::{
+use nexia_nextcloud_sdk_request::RetryPolicy;
+use nexia_nextcloud_sdk_session::{Account, SessionMachine, SessionState};
+use nexia_nextcloud_sdk_storage::{
+    KeyStore, KeychainKeyStore, StorageError, StoragePaths, StoreKey,
+};
+use nexia_nextcloud_transport::{
     BandwidthLimit, ProgressCallback, ReqwestTransport, TimeoutConfig, TransferProgress,
     TransportBuilder,
 };
@@ -42,7 +44,7 @@ pub struct ClientBuilder {
     download_limit: Option<BandwidthLimit>,
     download_progress: Option<ProgressCallback>,
     upload_progress: Option<ProgressCallback>,
-    branding: Option<nextcloud_theming::CustomBranding>,
+    branding: Option<nexia_nextcloud_theming::CustomBranding>,
 }
 
 impl Default for ClientBuilder {
@@ -71,7 +73,7 @@ impl ClientBuilder {
     }
 
     /// Configures client application custom branding metadata.
-    pub fn branding(mut self, branding: nextcloud_theming::CustomBranding) -> Self {
+    pub fn branding(mut self, branding: nexia_nextcloud_theming::CustomBranding) -> Self {
         self.branding = Some(branding);
         self
     }
@@ -441,7 +443,7 @@ mod tests {
         let cache = temp_path("branding_cache");
         let key = StoreKey::generate().unwrap();
 
-        let branding = nextcloud_theming::CustomBranding::new("Enterprise Nextcloud")
+        let branding = nexia_nextcloud_theming::CustomBranding::new("Enterprise Nextcloud")
             .with_app_version("3.0.0")
             .with_vendor("Enterprise Corp")
             .with_primary_color("#123456");

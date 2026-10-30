@@ -29,7 +29,7 @@ the caller passes in a descriptor or config struct.
               | commands (mpsc)                     ^ events (broadcast)
               v                                     |
 +----------------------------------------------------------------------------------+
-| nextcloud-sdk-orchestrator  (stateful runtime, dedicated OS thread)               |
+| nexia-nextcloud-sdk-orchestrator  (stateful runtime, dedicated OS thread)               |
 |   NextcloudOrchestrator                                                          |
 |   mount manager | folder sync runner | filesystem watcher | download queue |     |
 |   VFS manager   | thumbnail cache    | sync status classification                |
@@ -38,28 +38,28 @@ the caller passes in a descriptor or config struct.
               v
 +----------------------------------------------------------------------------------+
 | Engine crates (stateful, non-runtime)                                            |
-|   nextcloud-sync      reconcile / SyncAction / SyncJournal / scanner / queue      |
-|   nextcloud-sdk-vfs   VirtualTree / VirtualNode / HydrationState / ThumbnailCache |
-|   nextcloud-sdk-fuse  FuseDriver over a VirtualTree + AsyncHydrator               |
-|   nextcloud-sdk-storage  auth.db / cache.db / config.db (SQLCipher)               |
-|   nextcloud-sdk-keyring  StoreKey persistence per platform                        |
-|   nextcloud-sdk-ratelimit  token bucket + progress callbacks                      |
-|   nextcloud-sdk-session    Login Flow v2 state machine                            |
-|   nextcloud-sdk-request    per-call retry state machine                           |
+|   nexia-nextcloud-sync      reconcile / SyncAction / SyncJournal / scanner / queue      |
+|   nexia-nextcloud-sdk-vfs   VirtualTree / VirtualNode / HydrationState / ThumbnailCache |
+|   nexia-nextcloud-sdk-fuse  FuseDriver over a VirtualTree + AsyncHydrator               |
+|   nexia-nextcloud-sdk-storage  auth.db / cache.db / config.db (SQLCipher)               |
+|   nexia-nextcloud-sdk-keyring  StoreKey persistence per platform                        |
+|   nexia-nextcloud-sdk-ratelimit  token bucket + progress callbacks                      |
+|   nexia-nextcloud-sdk-session    Login Flow v2 state machine                            |
+|   nexia-nextcloud-sdk-request    per-call retry state machine                           |
 +----------------------------------------------------------------------------------+
               | uses
               v
 +----------------------------------------------------------------------------------+
 | Protocol crates (stateless)                                                      |
-|   nextcloud-dav | nextcloud-ocs | nextcloud-shares | nextcloud-users | ...        |
-|   nextcloud-goa | nextcloud-kaccounts | nextcloud-client-config | nextcloud-theming |
-|   nextcloud-trashbin | nextcloud-versions | nextcloud-uploads | nextcloud-preview  |
-|   nextcloud-deck | nextcloud-talk | nexia-nextcloud-search | nextcloud-activity          |
+|   nexia-nextcloud-dav | nexia-nextcloud-ocs | nexia-nextcloud-shares | nexia-nextcloud-users | ...        |
+|   nexia-nextcloud-goa | nexia-nextcloud-kaccounts | nexia-nextcloud-client-config | nexia-nextcloud-theming |
+|   nexia-nextcloud-trashbin | nexia-nextcloud-versions | nexia-nextcloud-uploads | nexia-nextcloud-preview  |
+|   nexia-nextcloud-deck | nexia-nextcloud-talk | nexia-nextcloud-search | nexia-nextcloud-activity          |
 +----------------------------------------------------------------------------------+
               | Transport + AuthProvider seams
               v
 +----------------------------------------------------------------------------------+
-| nextcloud-transport (reqwest)  /  nextcloud-auth (Basic, Bearer, Anonymous)       |
+| nexia-nextcloud-transport (reqwest)  /  nexia-nextcloud-auth (Basic, Bearer, Anonymous)       |
 | nexia-nextcloud-core (ServerUrl, ApiPath, Header, Transport, AuthProvider, Error)   |
 +----------------------------------------------------------------------------------+
 ```
@@ -67,7 +67,7 @@ the caller passes in a descriptor or config struct.
 The rule that keeps this honest: **protocol crates are stateless and borrow
 their seams; runtime state lives only in the orchestrator.** A `DavClient` holds
 no connection, token or lock. Anything that must remember something across calls
-lives in `nextcloud-sdk-storage` or in the orchestrator worker.
+lives in `nexia-nextcloud-sdk-storage` or in the orchestrator worker.
 
 ---
 
@@ -127,13 +127,13 @@ nexia-nextcloud-sdk/
 
 ## 3. The orchestrator: the stateful core
 
-`nextcloud-sdk-orchestrator` is where the SDK stops being a library and becomes a
+`nexia-nextcloud-sdk-orchestrator` is where the SDK stops being a library and becomes a
 runtime. It is the only crate that owns an OS thread.
 
 ### 3.1 Lifecycle
 
 ```rust
-use nextcloud_sdk_orchestrator::{NextcloudOrchestrator, OrchestratorConfig};
+use nexia_nextcloud_sdk_orchestrator::{NextcloudOrchestrator, OrchestratorConfig};
 
 let orch = NextcloudOrchestrator::start(OrchestratorConfig::new(cache_dir))?;
 let handle = orch.handle();               // cloneable, Send + Sync
@@ -238,9 +238,9 @@ are the queries a UI needs for breadcrumbs.
 | --- | --- |
 | `VirtualVfs` (default) | Placeholder tree in the cache; payloads arrive only on hydration |
 | `BidirectionalSync` | Mirrors local target against the remote path; local edits flow back |
-| `Fuse` | Presents the hierarchy as a real filesystem through `nextcloud-sdk-fuse` |
+| `Fuse` | Presents the hierarchy as a real filesystem through `nexia-nextcloud-sdk-fuse` |
 
-**`mode` is carried, not acted on.** Inside `nextcloud-sdk-orchestrator` the field
+**`mode` is carried, not acted on.** Inside `nexia-nextcloud-sdk-orchestrator` the field
 is only ever stored and echoed back: `mode` appears in `mount/descriptor.rs:24`
 (the field), `:40`/`:54` (the constructor), and `mount/mod.rs:6`/`:14` (the module
 and re-export). No branch in `worker.rs` or the mount manager reads it, and
@@ -287,7 +287,7 @@ A UI subscribes once, translates these into widgets, and never polls.
 
 ## 4. VFS and hydration model
 
-`nextcloud-sdk-vfs` defines the data a file browser renders, independent of any UI
+`nexia-nextcloud-sdk-vfs` defines the data a file browser renders, independent of any UI
 toolkit.
 
 | Type | Module | Purpose |
@@ -312,7 +312,7 @@ keeping metadata.
 
 ## 5. FUSE presentation
 
-`nextcloud-sdk-fuse` turns a `VirtualTree` into a real mount point, for
+`nexia-nextcloud-sdk-fuse` turns a `VirtualTree` into a real mount point, for
 applications and tools that cannot speak WebDAV:
 
 - `mount_virtual_fs(driver, mountpoint)` / `mount_virtual_fs_with_options(driver,
@@ -407,7 +407,7 @@ handles and events.
 | App keeps a mount registry beside `ConfigStore` | Two sources of truth; mounts drift and vanish |
 | App re-implements ETag/mtime reconciliation | `nextcloud-sync::reconcile` + `SyncJournal` exist for this |
 | App polls progress on a timer | `MountProgress`, `DownloadProgress`, `TransferProgress` events |
-| App depends on `nextcloud-dav` / `nexia-nextcloud-core` directly | Wire types leak into the app; depend on the facade re-exports |
+| App depends on `nexia-nextcloud-dav` / `nexia-nextcloud-core` directly | Wire types leak into the app; depend on the facade re-exports |
 
 ---
 
@@ -423,8 +423,8 @@ handles and events.
    (`src/builder/client_builder.rs:268`). A lagging consumer sees
    `RecvError::Lagged` and should re-read state via a handle, never assume it can
    replay.
-4. **Pure state machines stay pure.** `nextcloud-sdk-session` and
-   `nextcloud-sdk-request` perform no I/O, hold no timers and log nothing, so they
+4. **Pure state machines stay pure.** `nexia-nextcloud-sdk-session` and
+   `nexia-nextcloud-sdk-request` perform no I/O, hold no timers and log nothing, so they
    are unit-testable without a server.
 5. **`#![forbid(unsafe_code)]` and `#![deny(missing_docs)]`** across the
    workspace; credentials redact through `SecretString` and header redaction (see

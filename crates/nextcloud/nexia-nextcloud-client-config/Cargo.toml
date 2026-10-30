@@ -1,0 +1,22 @@
+[package]
+name = "nexia-nextcloud-client-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+description = "Desktop configuration and account discovery for the official Nextcloud desktop client across Linux, macOS, and Windows"
+
+[features]
+default = ["keyring"]
+keyring = ["dep:nexia-nextcloud-sdk-keyring"]
+
+[dependencies]
+nexia-nextcloud-core.workspace = true
+nexia-nextcloud-sdk-keyring = { workspace = true, optional = true }
+serde.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

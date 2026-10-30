@@ -5,7 +5,7 @@ use std::task::{Context, Poll, Waker};
 use nexia_nextcloud_core::{
     AuthProvider, Error, Headers, Request, Response, StatusCode, Transport,
 };
-use nextcloud_ocs::OcsClient;
+use nexia_nextcloud_ocs::OcsClient;
 
 use super::SearchClient;
 

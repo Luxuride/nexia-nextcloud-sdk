@@ -1,0 +1,15 @@
+[package]
+name = "nexia-nextcloud-uploads"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+description = "WebDAV Chunked Upload v2 client for the Nextcloud Rust SDK"
+
+[dependencies]
+nexia-nextcloud-core.workspace = true
+nexia-nextcloud-auth.workspace = true
+nexia-nextcloud-dav.workspace = true
+tracing.workspace = true

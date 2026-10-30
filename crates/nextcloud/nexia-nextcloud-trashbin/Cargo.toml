@@ -1,0 +1,15 @@
+[package]
+name = "nexia-nextcloud-trashbin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+description = "Nextcloud Trashbin WebDAV API client and domain types"
+
+[dependencies]
+nexia-nextcloud-auth.workspace = true
+nexia-nextcloud-dav.workspace = true
+nexia-nextcloud-core.workspace = true
+tracing.workspace = true

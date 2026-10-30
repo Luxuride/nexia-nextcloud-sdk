@@ -2,6 +2,19 @@
 
 All notable changes to the Nextcloud Rust SDK workspace.
 
+## 0.2.1
+
+### Changed
+
+- Every crate in the workspace now carries the `nexia-nextcloud-` prefix. The 27
+  crates that were still named `nextcloud-*` are `nexia-nextcloud-dav`,
+  `nexia-nextcloud-ocs`, `nexia-nextcloud-sync` and so on, so no package on the
+  registry reads as if it were published by Nextcloud GmbH. Import paths change
+  accordingly (`nexia_nextcloud_dav::`, `nexia_nextcloud_ocs::`, ...).
+- The 0.2.0 releases of the four crates that shipped before this rename
+  (`nexia-nextcloud-core`, `nexia-nextcloud-search`, `nextcloud-ocs`,
+  `nextcloud-activity`) are yanked; depend on 0.2.1 instead.
+
 ## 0.2.0
 
 ### Breaking
@@ -15,7 +28,7 @@ All notable changes to the Nextcloud Rust SDK workspace.
   the default keyring service and the transport `User-Agent` are all
   `nexia-nextcloud-sdk`. Credentials stored under the old service name are not
   found and must be re-authenticated.
-- `nextcloud-preview`: the FreeDesktop `Software` PNG chunk is no longer
+- `nexia-nextcloud-preview`: the FreeDesktop `Software` PNG chunk is no longer
   hardcoded to a fixed product string. The generating program is caller
   knowledge under the Thumbnail Managing Standard, so it is now a parameter:
   `install_freedesktop_thumbnail[_with_mtime]()`, `create_freedesktop_png()` and
@@ -42,10 +55,10 @@ All notable changes to the Nextcloud Rust SDK workspace.
 ### Added
 
 - Zero-cost structured logging with `tracing` across all workspace crates and the facade client (`trace!`, `debug!`, `info!`, `warn!`, `error!`), with zero credential leakage.
-- `nextcloud-theming`: theming metadata, custom client branding overrides, and unauthenticated server status endpoint (`/status.php`).
-- `nextcloud-sdk-vfs`: recursive directory rename and move, recursive directory size and item count aggregation (`DirectorySizeSummary`), and typed WebDAV permissions parser (`NextcloudPermissions`).
-- `nextcloud-sync`: 3-way reconciliation engine, persistent synchronization journal (`SyncJournal`), and thread-safe observable download queue (`SyncDownloadQueue`) with per-task progress metrics and snapshot streaming.
-- `nextcloud-shares`: public link helpers (`create_public_link`, `get_public_link`, `get_or_create_public_link`, `delete_public_link`, and `Share::public_url`).
+- `nexia-nextcloud-theming`: theming metadata, custom client branding overrides, and unauthenticated server status endpoint (`/status.php`).
+- `nexia-nextcloud-sdk-vfs`: recursive directory rename and move, recursive directory size and item count aggregation (`DirectorySizeSummary`), and typed WebDAV permissions parser (`NextcloudPermissions`).
+- `nexia-nextcloud-sync`: 3-way reconciliation engine, persistent synchronization journal (`SyncJournal`), and thread-safe observable download queue (`SyncDownloadQueue`) with per-task progress metrics and snapshot streaming.
+- `nexia-nextcloud-shares`: public link helpers (`create_public_link`, `get_public_link`, `get_or_create_public_link`, `delete_public_link`, and `Share::public_url`).
 
 ### Fixed
 
@@ -63,12 +76,12 @@ First release covering the whole workspace.
 ### Breaking
 
 - The generic `sdk-*` crates moved under the Nextcloud namespace:
-  `sdk-core` → `nextcloud-sdk-core`, `sdk-session` → `nextcloud-sdk-session`,
-  `sdk-request` → `nextcloud-sdk-request`, `sdk-storage` → `nextcloud-sdk-storage`,
-  `sdk-keyring` → `nextcloud-sdk-keyring`, `sdk-ratelimit` → `nextcloud-sdk-ratelimit`,
-  `sdk-vfs` → `nextcloud-sdk-vfs`, `sdk-fuse` → `nextcloud-sdk-fuse`.
+  `sdk-core` → `nextcloud-sdk-core`, `sdk-session` → `nexia-nextcloud-sdk-session`,
+  `sdk-request` → `nexia-nextcloud-sdk-request`, `sdk-storage` → `nexia-nextcloud-sdk-storage`,
+  `sdk-keyring` → `nexia-nextcloud-sdk-keyring`, `sdk-ratelimit` → `nexia-nextcloud-sdk-ratelimit`,
+  `sdk-vfs` → `nexia-nextcloud-sdk-vfs`, `sdk-fuse` → `nexia-nextcloud-sdk-fuse`.
   Rust import paths change from `sdk_core::…` to `nextcloud_sdk_core::…`.
-- The superseded `sdk-*` versions and `nextcloud-auth` 0.1.0 are yanked.
+- The superseded `sdk-*` versions and `nexia-nextcloud-auth` 0.1.0 are yanked.
 
 ### Added
 

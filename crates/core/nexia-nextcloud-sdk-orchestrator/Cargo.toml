@@ -1,0 +1,24 @@
+[package]
+name = "nexia-nextcloud-sdk-orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "High-level background orchestrator, actor runtime, and multi-mount synchronization engine for Nextcloud"
+
+[dependencies]
+nexia-nextcloud-core.workspace = true
+nexia-nextcloud-sdk-storage.workspace = true
+nexia-nextcloud-sdk-vfs.workspace = true
+nexia-nextcloud-sync.workspace = true
+nexia-nextcloud-dav.workspace = true
+nexia-nextcloud-shares.workspace = true
+nexia-nextcloud-preview.workspace = true
+nexia-nextcloud-theming.workspace = true
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros", "time", "fs", "io-util"] }
+tracing.workspace = true
+

@@ -2,24 +2,26 @@
 
 use std::fmt;
 
+use nexia_nextcloud_activity::ActivityClient;
+use nexia_nextcloud_auth::BasicAuth;
 use nexia_nextcloud_core::ServerUrl;
+use nexia_nextcloud_dav::DavClient;
+use nexia_nextcloud_deck::DeckClient;
+use nexia_nextcloud_notifications::NotificationClient;
+use nexia_nextcloud_ocs::OcsClient;
+use nexia_nextcloud_preview::PreviewClient;
+use nexia_nextcloud_sdk_session::{LoginStart, SessionState};
+use nexia_nextcloud_sdk_vfs::VirtualTree;
 use nexia_nextcloud_search::SearchClient;
-use nextcloud_activity::ActivityClient;
-use nextcloud_auth::BasicAuth;
-use nextcloud_dav::DavClient;
-use nextcloud_deck::DeckClient;
-use nextcloud_notifications::NotificationClient;
-use nextcloud_ocs::OcsClient;
-use nextcloud_preview::PreviewClient;
-use nextcloud_sdk_session::{LoginStart, SessionState};
-use nextcloud_sdk_vfs::VirtualTree;
-use nextcloud_shares::ShareClient;
-use nextcloud_talk::TalkClient;
-use nextcloud_transport::{BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport};
-use nextcloud_trashbin::TrashClient;
-use nextcloud_uploads::UploadClient;
-use nextcloud_users::UserClient;
-use nextcloud_versions::VersionsClient;
+use nexia_nextcloud_shares::ShareClient;
+use nexia_nextcloud_talk::TalkClient;
+use nexia_nextcloud_transport::{
+    BandwidthLimit, BandwidthLimiter, ProgressCallback, ReqwestTransport,
+};
+use nexia_nextcloud_trashbin::TrashClient;
+use nexia_nextcloud_uploads::UploadClient;
+use nexia_nextcloud_users::UserClient;
+use nexia_nextcloud_versions::VersionsClient;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 
 use crate::builder::ClientBuilder;
@@ -30,7 +32,7 @@ use crate::worker::WorkerTask;
 /// A stateful, cloneable handle to the Nextcloud client.
 ///
 /// Communicates with an internal background actor driving the session lifecycle
-/// state machine ([`nextcloud_sdk_session::SessionMachine`]), persistent credential storage,
+/// state machine ([`nexia_nextcloud_sdk_session::SessionMachine`]), persistent credential storage,
 /// and local encrypted cache.
 #[derive(Clone)]
 pub struct Client {
@@ -38,7 +40,7 @@ pub struct Client {
     transport: ReqwestTransport,
     task_tx: mpsc::Sender<WorkerTask>,
     state_rx: watch::Receiver<SessionState>,
-    branding: Option<nextcloud_theming::CustomBranding>,
+    branding: Option<nexia_nextcloud_theming::CustomBranding>,
     event_tx: broadcast::Sender<ClientEvent>,
 }
 
@@ -53,7 +55,7 @@ impl Client {
         transport: ReqwestTransport,
         task_tx: mpsc::Sender<WorkerTask>,
         state_rx: watch::Receiver<SessionState>,
-        branding: Option<nextcloud_theming::CustomBranding>,
+        branding: Option<nexia_nextcloud_theming::CustomBranding>,
         event_tx: broadcast::Sender<ClientEvent>,
     ) -> Self {
         Self {
@@ -72,7 +74,7 @@ impl Client {
     }
 
     /// Client application custom branding metadata, if configured.
-    pub fn branding(&self) -> Option<&nextcloud_theming::CustomBranding> {
+    pub fn branding(&self) -> Option<&nexia_nextcloud_theming::CustomBranding> {
         self.branding.as_ref()
     }
 
@@ -312,25 +314,30 @@ impl Client {
         VirtualTree::new(root_name)
     }
 
-    /// Constructs a [`ThemingClient`](nextcloud_theming::ThemingClient) using authenticated credentials.
+    /// Constructs a [`ThemingClient`](nexia_nextcloud_theming::ThemingClient) using authenticated credentials.
     pub fn theming<'a>(
         &'a self,
         auth: &'a BasicAuth,
-    ) -> nextcloud_theming::ThemingClient<'a, ReqwestTransport, BasicAuth> {
-        nextcloud_theming::ThemingClient::new(&self.transport, auth)
+    ) -> nexia_nextcloud_theming::ThemingClient<'a, ReqwestTransport, BasicAuth> {
+        nexia_nextcloud_theming::ThemingClient::new(&self.transport, auth)
     }
 
-    /// Constructs an unauthenticated [`ThemingClient`](nextcloud_theming::ThemingClient).
+    /// Constructs an unauthenticated [`ThemingClient`](nexia_nextcloud_theming::ThemingClient).
     pub fn anonymous_theming(
         &self,
-    ) -> nextcloud_theming::ThemingClient<'_, ReqwestTransport, nextcloud_auth::Anonymous> {
-        nextcloud_theming::ThemingClient::new(&self.transport, &nextcloud_auth::Anonymous)
+    ) -> nexia_nextcloud_theming::ThemingClient<'_, ReqwestTransport, nexia_nextcloud_auth::Anonymous>
+    {
+        nexia_nextcloud_theming::ThemingClient::new(
+            &self.transport,
+            &nexia_nextcloud_auth::Anonymous,
+        )
     }
 
     /// Fetches unauthenticated server status from `/status.php`.
     pub async fn server_status(
         &self,
-    ) -> Result<nextcloud_theming::ServerStatusInfo, nextcloud_theming::ThemingError> {
+    ) -> Result<nexia_nextcloud_theming::ServerStatusInfo, nexia_nextcloud_theming::ThemingError>
+    {
         self.anonymous_theming().server_status().await
     }
 
@@ -479,7 +486,7 @@ impl fmt::Debug for Client {
 mod tests {
     use super::*;
     use nexia_nextcloud_core::ServerUrl;
-    use nextcloud_transport::TransportBuilder;
+    use nexia_nextcloud_transport::TransportBuilder;
 
     #[tokio::test]
     async fn client_accessors_and_debug_format() {
@@ -507,7 +514,7 @@ mod tests {
         assert!(client.credentials().is_none());
         assert!(matches!(client.ocs(), Err(ClientError::NotAuthenticated)));
 
-        let auth = BasicAuth::new("alice", nextcloud_auth::SecretString::new("secret"));
+        let auth = BasicAuth::new("alice", nexia_nextcloud_auth::SecretString::new("secret"));
         let _dav = client.dav(&auth);
         let _trash = client.trashbin(&auth);
         let _versions = client.versions(&auth);

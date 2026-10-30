@@ -1,14 +1,14 @@
 use std::fmt;
 
+use nexia_nextcloud_auth::{BasicAuth, SecretString};
 use nexia_nextcloud_core::{ApiPath, Error, HttpMethod, Request, ServerUrl, Transport};
-use nextcloud_auth::{BasicAuth, SecretString};
-use nextcloud_ocs::OcsClient;
-use nextcloud_sdk_session::{
+use nexia_nextcloud_ocs::OcsClient;
+use nexia_nextcloud_sdk_session::{
     Account, LoginFlow, LoginStart, LoginSuccess, PollToken, SessionError, SessionEvent,
     SessionMachine, SessionState,
 };
-use nextcloud_transport::ReqwestTransport;
-use nextcloud_users::UserClient;
+use nexia_nextcloud_transport::ReqwestTransport;
+use nexia_nextcloud_users::UserClient;
 use tokio::sync::{broadcast, mpsc, watch};
 
 use crate::error::ClientError;
@@ -397,8 +397,8 @@ impl fmt::Debug for WorkerActor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nextcloud_sdk_storage::StoreKey;
-    use nextcloud_transport::TransportBuilder;
+    use nexia_nextcloud_sdk_storage::StoreKey;
+    use nexia_nextcloud_transport::TransportBuilder;
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(

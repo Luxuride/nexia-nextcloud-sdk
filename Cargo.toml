@@ -3,42 +3,42 @@ resolver = "3"
 members = ["crates/*/*"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Luxuride/nextcloud-rust-sdk"
 authors = ["Luxuride"]
 
 [workspace.dependencies]
-nexia-nextcloud-core = { path = "crates/core/nexia-nextcloud-core", version = "0.2.0" }
-nextcloud-auth = { path = "crates/nextcloud/nextcloud-auth", version = "0.2.0" }
-nextcloud-transport = { path = "crates/nextcloud/nextcloud-transport", version = "0.2.0" }
-nextcloud-ocs = { path = "crates/nextcloud/nextcloud-ocs", version = "0.2.0" }
-nextcloud-dav = { path = "crates/nextcloud/nextcloud-dav", version = "0.2.0" }
-nextcloud-notifications = { path = "crates/nextcloud/nextcloud-notifications", version = "0.2.0" }
-nextcloud-shares = { path = "crates/nextcloud/nextcloud-shares", version = "0.2.0" }
-nextcloud-users = { path = "crates/nextcloud/nextcloud-users", version = "0.2.0" }
-nextcloud-activity = { path = "crates/nextcloud/nextcloud-activity", version = "0.2.0" }
-nextcloud-trashbin = { path = "crates/nextcloud/nextcloud-trashbin", version = "0.2.0" }
-nextcloud-preview = { path = "crates/nextcloud/nextcloud-preview", version = "0.2.0" }
-nextcloud-goa = { path = "crates/nextcloud/nextcloud-goa", version = "0.2.0" }
-nextcloud-versions = { path = "crates/nextcloud/nextcloud-versions", version = "0.2.0" }
-nextcloud-uploads = { path = "crates/nextcloud/nextcloud-uploads", version = "0.2.0" }
-nextcloud-deck = { path = "crates/nextcloud/nextcloud-deck", version = "0.2.0" }
-nextcloud-talk = { path = "crates/nextcloud/nextcloud-talk", version = "0.2.0" }
-nextcloud-client-config = { path = "crates/nextcloud/nextcloud-client-config", version = "0.2.0" }
-nextcloud-kaccounts = { path = "crates/nextcloud/nextcloud-kaccounts", version = "0.2.0" }
-nextcloud-sdk-session = { path = "crates/core/nextcloud-sdk-session", version = "0.2.0" }
-nextcloud-sdk-request = { path = "crates/core/nextcloud-sdk-request", version = "0.2.0" }
-nextcloud-sdk-storage = { path = "crates/core/nextcloud-sdk-storage", version = "0.2.0" }
-nextcloud-sdk-keyring = { path = "crates/core/nextcloud-sdk-keyring", version = "0.2.0" }
-nextcloud-sdk-ratelimit = { path = "crates/core/nextcloud-sdk-ratelimit", version = "0.2.0" }
-nextcloud-sdk-vfs = { path = "crates/core/nextcloud-sdk-vfs", version = "0.2.0" }
-nextcloud-sdk-fuse = { path = "crates/core/nextcloud-sdk-fuse", version = "0.2.0" }
-nextcloud-theming = { path = "crates/nextcloud/nextcloud-theming", version = "0.2.0" }
-nextcloud-sync = { path = "crates/nextcloud/nextcloud-sync", version = "0.2.0" }
-nexia-nextcloud-search = { path = "crates/nextcloud/nexia-nextcloud-search", version = "0.2.0" }
-nextcloud-sdk-orchestrator = { path = "crates/core/nextcloud-sdk-orchestrator", version = "0.2.0" }
+nexia-nextcloud-core = { path = "crates/core/nexia-nextcloud-core", version = "0.2.1" }
+nexia-nextcloud-auth = { path = "crates/nextcloud/nexia-nextcloud-auth", version = "0.2.1" }
+nexia-nextcloud-transport = { path = "crates/nextcloud/nexia-nextcloud-transport", version = "0.2.1" }
+nexia-nextcloud-ocs = { path = "crates/nextcloud/nexia-nextcloud-ocs", version = "0.2.1" }
+nexia-nextcloud-dav = { path = "crates/nextcloud/nexia-nextcloud-dav", version = "0.2.1" }
+nexia-nextcloud-notifications = { path = "crates/nextcloud/nexia-nextcloud-notifications", version = "0.2.1" }
+nexia-nextcloud-shares = { path = "crates/nextcloud/nexia-nextcloud-shares", version = "0.2.1" }
+nexia-nextcloud-users = { path = "crates/nextcloud/nexia-nextcloud-users", version = "0.2.1" }
+nexia-nextcloud-activity = { path = "crates/nextcloud/nexia-nextcloud-activity", version = "0.2.1" }
+nexia-nextcloud-trashbin = { path = "crates/nextcloud/nexia-nextcloud-trashbin", version = "0.2.1" }
+nexia-nextcloud-preview = { path = "crates/nextcloud/nexia-nextcloud-preview", version = "0.2.1" }
+nexia-nextcloud-goa = { path = "crates/nextcloud/nexia-nextcloud-goa", version = "0.2.1" }
+nexia-nextcloud-versions = { path = "crates/nextcloud/nexia-nextcloud-versions", version = "0.2.1" }
+nexia-nextcloud-uploads = { path = "crates/nextcloud/nexia-nextcloud-uploads", version = "0.2.1" }
+nexia-nextcloud-deck = { path = "crates/nextcloud/nexia-nextcloud-deck", version = "0.2.1" }
+nexia-nextcloud-talk = { path = "crates/nextcloud/nexia-nextcloud-talk", version = "0.2.1" }
+nexia-nextcloud-client-config = { path = "crates/nextcloud/nexia-nextcloud-client-config", version = "0.2.1" }
+nexia-nextcloud-kaccounts = { path = "crates/nextcloud/nexia-nextcloud-kaccounts", version = "0.2.1" }
+nexia-nextcloud-sdk-session = { path = "crates/core/nexia-nextcloud-sdk-session", version = "0.2.1" }
+nexia-nextcloud-sdk-request = { path = "crates/core/nexia-nextcloud-sdk-request", version = "0.2.1" }
+nexia-nextcloud-sdk-storage = { path = "crates/core/nexia-nextcloud-sdk-storage", version = "0.2.1" }
+nexia-nextcloud-sdk-keyring = { path = "crates/core/nexia-nextcloud-sdk-keyring", version = "0.2.1" }
+nexia-nextcloud-sdk-ratelimit = { path = "crates/core/nexia-nextcloud-sdk-ratelimit", version = "0.2.1" }
+nexia-nextcloud-sdk-vfs = { path = "crates/core/nexia-nextcloud-sdk-vfs", version = "0.2.1" }
+nexia-nextcloud-sdk-fuse = { path = "crates/core/nexia-nextcloud-sdk-fuse", version = "0.2.1" }
+nexia-nextcloud-theming = { path = "crates/nextcloud/nexia-nextcloud-theming", version = "0.2.1" }
+nexia-nextcloud-sync = { path = "crates/nextcloud/nexia-nextcloud-sync", version = "0.2.1" }
+nexia-nextcloud-search = { path = "crates/nextcloud/nexia-nextcloud-search", version = "0.2.1" }
+nexia-nextcloud-sdk-orchestrator = { path = "crates/core/nexia-nextcloud-sdk-orchestrator", version = "0.2.1" }
 
 base64 = "0.23"
 getrandom = { version = "0.3", features = ["std"] }
@@ -64,34 +64,34 @@ readme = "README.md"
 
 [dependencies]
 nexia-nextcloud-core.workspace = true
-nextcloud-auth.workspace = true
-nextcloud-transport.workspace = true
-nextcloud-ocs.workspace = true
-nextcloud-dav.workspace = true
-nextcloud-users.workspace = true
-nextcloud-shares.workspace = true
-nextcloud-notifications.workspace = true
-nextcloud-activity.workspace = true
-nextcloud-trashbin.workspace = true
-nextcloud-preview.workspace = true
-nextcloud-versions.workspace = true
-nextcloud-uploads.workspace = true
-nextcloud-deck.workspace = true
-nextcloud-talk.workspace = true
-nextcloud-client-config.workspace = true
-nextcloud-kaccounts.workspace = true
-nextcloud-sdk-vfs.workspace = true
-nextcloud-sdk-fuse.workspace = true
-nextcloud-theming.workspace = true
+nexia-nextcloud-auth.workspace = true
+nexia-nextcloud-transport.workspace = true
+nexia-nextcloud-ocs.workspace = true
+nexia-nextcloud-dav.workspace = true
+nexia-nextcloud-users.workspace = true
+nexia-nextcloud-shares.workspace = true
+nexia-nextcloud-notifications.workspace = true
+nexia-nextcloud-activity.workspace = true
+nexia-nextcloud-trashbin.workspace = true
+nexia-nextcloud-preview.workspace = true
+nexia-nextcloud-versions.workspace = true
+nexia-nextcloud-uploads.workspace = true
+nexia-nextcloud-deck.workspace = true
+nexia-nextcloud-talk.workspace = true
+nexia-nextcloud-client-config.workspace = true
+nexia-nextcloud-kaccounts.workspace = true
+nexia-nextcloud-sdk-vfs.workspace = true
+nexia-nextcloud-sdk-fuse.workspace = true
+nexia-nextcloud-theming.workspace = true
 nexia-nextcloud-search.workspace = true
-nextcloud-sync.workspace = true
-nextcloud-sdk-orchestrator.workspace = true
-nextcloud-goa.workspace = true
-nextcloud-sdk-session.workspace = true
-nextcloud-sdk-request.workspace = true
-nextcloud-sdk-storage.workspace = true
-nextcloud-sdk-keyring.workspace = true
-nextcloud-sdk-ratelimit.workspace = true
+nexia-nextcloud-sync.workspace = true
+nexia-nextcloud-sdk-orchestrator.workspace = true
+nexia-nextcloud-goa.workspace = true
+nexia-nextcloud-sdk-session.workspace = true
+nexia-nextcloud-sdk-request.workspace = true
+nexia-nextcloud-sdk-storage.workspace = true
+nexia-nextcloud-sdk-keyring.workspace = true
+nexia-nextcloud-sdk-ratelimit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

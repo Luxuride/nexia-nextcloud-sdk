@@ -2,10 +2,10 @@ use std::fmt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use nexia_nextcloud_auth::SecretString;
 use nexia_nextcloud_core::ServerUrl;
-use nextcloud_auth::SecretString;
-use nextcloud_sdk_session::{Account, LoginFlow, PollToken};
-use nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
+use nexia_nextcloud_sdk_session::{Account, LoginFlow, PollToken};
+use nexia_nextcloud_sdk_storage::{EncryptedDatabase, StorageError, StoreKey};
 
 fn query_err(operation: &'static str, source: rusqlite::Error) -> StorageError {
     StorageError::Query {

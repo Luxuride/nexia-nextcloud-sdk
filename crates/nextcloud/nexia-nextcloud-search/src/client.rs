@@ -1,7 +1,7 @@
 //! Nextcloud Unified Search API client.
 
 use nexia_nextcloud_core::{ApiPath, AuthProvider, Error, Transport};
-use nextcloud_ocs::{OcsClient, OcsFormat, Query};
+use nexia_nextcloud_ocs::{OcsClient, OcsFormat, Query};
 
 use crate::provider::SearchProvider;
 use crate::result::SearchResultSet;

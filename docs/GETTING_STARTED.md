@@ -44,9 +44,9 @@ must not carry the runtime (for example a CLI that only reads capabilities):
 ```toml
 [dependencies]
 nexia-nextcloud-core = "0.1.3"
-nextcloud-auth = "0.1.3"
-nextcloud-transport = "0.1.3"
-nextcloud-dav = "0.1.3"
+nexia-nextcloud-auth = "0.1.3"
+nexia-nextcloud-transport = "0.1.3"
+nexia-nextcloud-dav = "0.1.3"
 ```
 
 ---
@@ -503,7 +503,7 @@ let key: StoreKey = keystore.load_or_create().await?;
 
 A thin integration satisfies all of these. Use it as a review checklist:
 
-- [ ] Reconciliation is not hand-written: `nextcloud_sync::reconcile` /
+- [ ] Reconciliation is not hand-written: `nexia_nextcloud_sync::reconcile` /
       `SyncJournal` decide what changed. A timer that merely *calls*
       `FolderSyncRunner::execute_sync_cycle` is expected — the SDK ships no
       cadence.

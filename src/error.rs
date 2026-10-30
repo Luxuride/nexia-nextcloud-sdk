@@ -3,9 +3,9 @@
 use std::fmt;
 
 use nexia_nextcloud_core::Error;
-use nextcloud_sdk_session::SessionError;
-use nextcloud_sdk_storage::StorageError;
-use nextcloud_transport::TransportBuildError;
+use nexia_nextcloud_sdk_session::SessionError;
+use nexia_nextcloud_sdk_storage::StorageError;
+use nexia_nextcloud_transport::TransportBuildError;
 
 /// Errors that can occur when configuring or operating the client.
 #[derive(Debug)]

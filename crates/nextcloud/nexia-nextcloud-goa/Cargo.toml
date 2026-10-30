@@ -1,0 +1,16 @@
+[package]
+name = "nexia-nextcloud-goa"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+description = "GNOME Online Accounts integration for the Nextcloud Rust SDK"
+
+[dependencies]
+nexia-nextcloud-core.workspace = true
+nexia-nextcloud-auth.workspace = true
+zbus = "5.19"
+serde.workspace = true
+tracing.workspace = true

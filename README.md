@@ -23,7 +23,7 @@ fix belongs here, not in a downstream application.
 
 | Use | Start at | What you get |
 | --- | --- | --- |
-| **Managed runtime** | `Client` + `nextcloud-sdk-orchestrator` | A background actor thread owning mounts, sync cycles, VFS trees, a download queue, thumbnails and a broadcast event stream. The app sends commands and renders events. |
+| **Managed runtime** | `Client` + `nexia-nextcloud-sdk-orchestrator` | A background actor thread owning mounts, sync cycles, VFS trees, a download queue, thumbnails and a broadcast event stream. The app sends commands and renders events. |
 | **Stateless protocol access** | `DavClient`, `OcsClient`, `ShareClient`, … | Thin, borrow-only clients over a `Transport` + `AuthProvider` seam, for one-off requests and tests. |
 
 A consumer uses both at different moments: the managed runtime for everything
@@ -44,39 +44,39 @@ holds everything that knows Nextcloud's wire format.
 | Crate | Responsibility |
 | --- | --- |
 | `nexia-nextcloud-core` | HTTP methods and status codes, redacting headers, `ServerUrl`/`ApiPath`, the `Transport` and `AuthProvider` seams, the staged `Error` type |
-| `nextcloud-sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
-| `nextcloud-sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
-| `nextcloud-sdk-storage` | Encrypted SQLCipher SQLite stores: credentials (`auth.db`), response cache (`cache.db`) and configuration (`config.db`); `StoreKey` handling and migrations |
-| `nextcloud-sdk-keyring` | Multi-platform secure keyring abstraction (Linux FreeDesktop + Flatpak portal via `oo7`, macOS Keychain, Windows Credential Manager, Memory store) |
-| `nextcloud-sdk-ratelimit` | Token-bucket bandwidth limiting, upload/download progress reporting |
-| `nextcloud-sdk-vfs` | Virtual tree, node metadata, permissions, categories, sorting, navigation history, hydration states, multi-resolution thumbnail cache |
-| `nextcloud-sdk-fuse` | `fuser`-based driver presenting a `VirtualTree` as a real filesystem, with on-demand hydration through an `AsyncHydrator` |
-| `nextcloud-sdk-orchestrator` | The background runtime: `NextcloudOrchestrator` on a dedicated OS thread, `MountsHandle`/`VfsHandle` command surface, mount manager, folder-sync runner, filesystem watcher, download queue, `OrchestratorEvent` stream |
+| `nexia-nextcloud-sdk-session` | Session lifecycle state machine: login, grant, authenticated, re-authentication |
+| `nexia-nextcloud-sdk-request` | Per-call lifecycle state machine, retry policy and failure classification |
+| `nexia-nextcloud-sdk-storage` | Encrypted SQLCipher SQLite stores: credentials (`auth.db`), response cache (`cache.db`) and configuration (`config.db`); `StoreKey` handling and migrations |
+| `nexia-nextcloud-sdk-keyring` | Multi-platform secure keyring abstraction (Linux FreeDesktop + Flatpak portal via `oo7`, macOS Keychain, Windows Credential Manager, Memory store) |
+| `nexia-nextcloud-sdk-ratelimit` | Token-bucket bandwidth limiting, upload/download progress reporting |
+| `nexia-nextcloud-sdk-vfs` | Virtual tree, node metadata, permissions, categories, sorting, navigation history, hydration states, multi-resolution thumbnail cache |
+| `nexia-nextcloud-sdk-fuse` | `fuser`-based driver presenting a `VirtualTree` as a real filesystem, with on-demand hydration through an `AsyncHydrator` |
+| `nexia-nextcloud-sdk-orchestrator` | The background runtime: `NextcloudOrchestrator` on a dedicated OS thread, `MountsHandle`/`VfsHandle` command surface, mount manager, folder-sync runner, filesystem watcher, download queue, `OrchestratorEvent` stream |
 
 ### Nextcloud layer (`crates/nextcloud/`)
 
 | Crate | Responsibility |
 | --- | --- |
-| `nextcloud-auth` | App password, bearer token and anonymous credentials |
-| `nextcloud-transport` | `reqwest`-backed implementation of `nexia_nextcloud_core::Transport` |
-| `nextcloud-ocs` | OCS envelope (`meta`/`data`), mutations (POST, PUT, DELETE), and generic client |
-| `nextcloud-dav` | WebDAV paths, file & collection CRUD operations (`get`, `put`, `mkcol`, `delete`, `move_`, `copy`), PROPFIND bodies and multistatus decoding |
-| `nextcloud-users` | Server capabilities and user profile data |
-| `nextcloud-shares` | OCS file sharing API, public links, share types, and permissions bitflags |
-| `nextcloud-notifications` | Nextcloud Notifications v2 API and notification actions |
-| `nextcloud-activity` | Nextcloud Activity v2 API streams and filter queries |
-| `nextcloud-trashbin` | WebDAV trashbin client: listing, restoring, and permanently deleting items |
-| `nextcloud-versions` | WebDAV file versioning client: revision history listing, downloading, and restoring revisions |
-| `nextcloud-uploads` | WebDAV chunked upload streaming v2 client (`/remote.php/dav/uploads/{user}/...`) |
-| `nextcloud-deck` | Nextcloud Deck Kanban boards, stacks, cards, and labels (`/index.php/apps/deck/api/v1.0/...`) |
-| `nextcloud-talk` | Nextcloud Talk (Spreed) conversations, chat messages, and rooms (`/ocs/v2.php/apps/spreed/api/v4/room`, `/ocs/v2.php/apps/spreed/api/v1/chat`) |
-| `nextcloud-preview` | Nextcloud thumbnail and preview generation client (`/index.php/core/preview.png`) plus the FreeDesktop thumbnail protocol |
-| `nextcloud-theming` | Theming and custom branding (`/ocs/v2.php/apps/theming/api/v1/theme`), unauthenticated `/status.php` probing, `CustomBranding` overrides merged into `EffectiveBranding` |
+| `nexia-nextcloud-auth` | App password, bearer token and anonymous credentials |
+| `nexia-nextcloud-transport` | `reqwest`-backed implementation of `nexia_nextcloud_core::Transport` |
+| `nexia-nextcloud-ocs` | OCS envelope (`meta`/`data`), mutations (POST, PUT, DELETE), and generic client |
+| `nexia-nextcloud-dav` | WebDAV paths, file & collection CRUD operations (`get`, `put`, `mkcol`, `delete`, `move_`, `copy`), PROPFIND bodies and multistatus decoding |
+| `nexia-nextcloud-users` | Server capabilities and user profile data |
+| `nexia-nextcloud-shares` | OCS file sharing API, public links, share types, and permissions bitflags |
+| `nexia-nextcloud-notifications` | Nextcloud Notifications v2 API and notification actions |
+| `nexia-nextcloud-activity` | Nextcloud Activity v2 API streams and filter queries |
+| `nexia-nextcloud-trashbin` | WebDAV trashbin client: listing, restoring, and permanently deleting items |
+| `nexia-nextcloud-versions` | WebDAV file versioning client: revision history listing, downloading, and restoring revisions |
+| `nexia-nextcloud-uploads` | WebDAV chunked upload streaming v2 client (`/remote.php/dav/uploads/{user}/...`) |
+| `nexia-nextcloud-deck` | Nextcloud Deck Kanban boards, stacks, cards, and labels (`/index.php/apps/deck/api/v1.0/...`) |
+| `nexia-nextcloud-talk` | Nextcloud Talk (Spreed) conversations, chat messages, and rooms (`/ocs/v2.php/apps/spreed/api/v4/room`, `/ocs/v2.php/apps/spreed/api/v1/chat`) |
+| `nexia-nextcloud-preview` | Nextcloud thumbnail and preview generation client (`/index.php/core/preview.png`) plus the FreeDesktop thumbnail protocol |
+| `nexia-nextcloud-theming` | Theming and custom branding (`/ocs/v2.php/apps/theming/api/v1/theme`), unauthenticated `/status.php` probing, `CustomBranding` overrides merged into `EffectiveBranding` |
 | `nexia-nextcloud-search` | Unified Search providers and queries (`/ocs/v2.php/search/providers`) |
-| `nextcloud-sync` | Bidirectional sync engine internals: 3-way `reconcile`, `SyncAction`, `SyncJournal`, local scanner, remote item metadata, download queue |
-| `nextcloud-goa` | Direct GNOME Online Accounts (`org.gnome.OnlineAccounts`) D-Bus client via `zbus` |
-| `nextcloud-kaccounts` | KDE Plasma Online Accounts (KAccounts / Accounts-SSO) reader for Nextcloud system accounts |
-| `nextcloud-client-config` | `nextcloud.cfg` profile discovery and parser across Linux, macOS, and Windows, for adopt-on-first-run and migration flows |
+| `nexia-nextcloud-sync` | Bidirectional sync engine internals: 3-way `reconcile`, `SyncAction`, `SyncJournal`, local scanner, remote item metadata, download queue |
+| `nexia-nextcloud-goa` | Direct GNOME Online Accounts (`org.gnome.OnlineAccounts`) D-Bus client via `zbus` |
+| `nexia-nextcloud-kaccounts` | KDE Plasma Online Accounts (KAccounts / Accounts-SSO) reader for Nextcloud system accounts |
+| `nexia-nextcloud-client-config` | `nextcloud.cfg` profile discovery and parser across Linux, macOS, and Windows, for adopt-on-first-run and migration flows |
 
 ### Facade (`src/`)
 
@@ -154,7 +154,7 @@ user action, a filesystem watcher) drives
 ### What an app should never do
 
 * Implement its own PROPFIND crawl, reconciliation, journal or retry loop — that
-  is `nextcloud-sync` + `nextcloud-sdk-orchestrator`.
+  is `nexia-nextcloud-sync` + `nexia-nextcloud-sdk-orchestrator`.
 * Keep a parallel mount/account registry that disagrees with `ConfigStore` and
   `MountsHandle`.
 * Poll for progress with its own timers — subscribe to `OrchestratorEvent` and

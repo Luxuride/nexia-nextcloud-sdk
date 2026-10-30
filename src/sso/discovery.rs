@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use nextcloud_sdk_keyring::{KeyringBackend, SecretString};
+use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString};
 
 use crate::sso::account::{AccountSource, DiscoveredAccount};
 use crate::sso::error::SsoError;
@@ -40,7 +40,7 @@ impl DesktopSso {
         let mut seen = HashSet::new();
 
         // 1. GNOME Online Accounts (via D-Bus session bus)
-        if let Ok(goa) = nextcloud_goa::GnomeOnlineAccounts::connect().await
+        if let Ok(goa) = nexia_nextcloud_goa::GnomeOnlineAccounts::connect().await
             && let Ok(accounts) = goa.list_accounts().await
         {
             for a in accounts {
@@ -66,7 +66,7 @@ impl DesktopSso {
         }
 
         // 2. KDE Plasma KAccounts (Accounts-SSO SQLite database)
-        if let Ok(db) = nextcloud_kaccounts::KAccountsDatabase::open_default()
+        if let Ok(db) = nexia_nextcloud_kaccounts::KAccountsDatabase::open_default()
             && let Ok(accounts) = db.list_accounts()
         {
             for a in accounts {
@@ -85,9 +85,10 @@ impl DesktopSso {
         }
 
         // 3. Upstream desktop client configurations
-        for path in nextcloud_client_config::discover_config_paths() {
+        for path in nexia_nextcloud_client_config::discover_config_paths() {
             if path.is_file()
-                && let Ok(accounts) = nextcloud_client_config::ClientConfigParser::parse_file(&path)
+                && let Ok(accounts) =
+                    nexia_nextcloud_client_config::ClientConfigParser::parse_file(&path)
             {
                 for a in accounts {
                     let key = canonical_key(&a.server_url, &a.username);
@@ -145,7 +146,7 @@ impl DesktopSso {
 #[cfg(test)]
 mod tests {
     use nexia_nextcloud_core::ServerUrl;
-    use nextcloud_sdk_keyring::MemoryKeyring;
+    use nexia_nextcloud_sdk_keyring::MemoryKeyring;
 
     use super::*;
 

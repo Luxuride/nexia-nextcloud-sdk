@@ -1335,74 +1335,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
-name = "nexia-nextcloud-core"
-version = "0.2.0"
-
-[[package]]
-name = "nexia-nextcloud-sdk"
-version = "0.2.0"
+name = "nexia-nextcloud-activity"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nexia-nextcloud-search",
- "nextcloud-activity",
- "nextcloud-auth",
- "nextcloud-client-config",
- "nextcloud-dav",
- "nextcloud-deck",
- "nextcloud-goa",
- "nextcloud-kaccounts",
- "nextcloud-notifications",
- "nextcloud-ocs",
- "nextcloud-preview",
- "nextcloud-sdk-fuse",
- "nextcloud-sdk-keyring",
- "nextcloud-sdk-orchestrator",
- "nextcloud-sdk-ratelimit",
- "nextcloud-sdk-request",
- "nextcloud-sdk-session",
- "nextcloud-sdk-storage",
- "nextcloud-sdk-vfs",
- "nextcloud-shares",
- "nextcloud-sync",
- "nextcloud-talk",
- "nextcloud-theming",
- "nextcloud-transport",
- "nextcloud-trashbin",
- "nextcloud-uploads",
- "nextcloud-users",
- "nextcloud-versions",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "nexia-nextcloud-search"
-version = "0.2.0"
-dependencies = [
- "nexia-nextcloud-core",
- "nextcloud-ocs",
+ "nexia-nextcloud-ocs",
  "serde",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-activity"
-version = "0.2.0"
-dependencies = [
- "nexia-nextcloud-core",
- "nextcloud-ocs",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "nextcloud-auth"
-version = "0.2.0"
+name = "nexia-nextcloud-auth"
+version = "0.2.1"
 dependencies = [
  "base64",
  "nexia-nextcloud-core",
@@ -1410,52 +1355,56 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-client-config"
-version = "0.2.0"
+name = "nexia-nextcloud-client-config"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-sdk-keyring",
+ "nexia-nextcloud-sdk-keyring",
  "serde",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-dav"
-version = "0.2.0"
+name = "nexia-nextcloud-core"
+version = "0.2.1"
+
+[[package]]
+name = "nexia-nextcloud-dav"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-deck"
-version = "0.2.0"
+name = "nexia-nextcloud-deck"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
  "serde",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-goa"
-version = "0.2.0"
+name = "nexia-nextcloud-goa"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
  "serde",
  "tracing",
  "zbus",
 ]
 
 [[package]]
-name = "nextcloud-kaccounts"
-version = "0.2.0"
+name = "nexia-nextcloud-kaccounts"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-sdk-keyring",
+ "nexia-nextcloud-sdk-keyring",
  "rusqlite",
  "serde",
  "tokio",
@@ -1463,19 +1412,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-notifications"
-version = "0.2.0"
+name = "nexia-nextcloud-notifications"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-ocs",
+ "nexia-nextcloud-ocs",
  "serde",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-ocs"
-version = "0.2.0"
+name = "nexia-nextcloud-ocs"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
  "serde",
@@ -1484,29 +1433,69 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-preview"
-version = "0.2.0"
+name = "nexia-nextcloud-preview"
+version = "0.2.1"
 dependencies = [
  "image",
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sdk-fuse"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk"
+version = "0.2.1"
 dependencies = [
- "fuser",
+ "nexia-nextcloud-activity",
+ "nexia-nextcloud-auth",
+ "nexia-nextcloud-client-config",
  "nexia-nextcloud-core",
- "nextcloud-sdk-vfs",
+ "nexia-nextcloud-dav",
+ "nexia-nextcloud-deck",
+ "nexia-nextcloud-goa",
+ "nexia-nextcloud-kaccounts",
+ "nexia-nextcloud-notifications",
+ "nexia-nextcloud-ocs",
+ "nexia-nextcloud-preview",
+ "nexia-nextcloud-sdk-fuse",
+ "nexia-nextcloud-sdk-keyring",
+ "nexia-nextcloud-sdk-orchestrator",
+ "nexia-nextcloud-sdk-ratelimit",
+ "nexia-nextcloud-sdk-request",
+ "nexia-nextcloud-sdk-session",
+ "nexia-nextcloud-sdk-storage",
+ "nexia-nextcloud-sdk-vfs",
+ "nexia-nextcloud-search",
+ "nexia-nextcloud-shares",
+ "nexia-nextcloud-sync",
+ "nexia-nextcloud-talk",
+ "nexia-nextcloud-theming",
+ "nexia-nextcloud-transport",
+ "nexia-nextcloud-trashbin",
+ "nexia-nextcloud-uploads",
+ "nexia-nextcloud-users",
+ "nexia-nextcloud-versions",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sdk-keyring"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-fuse"
+version = "0.2.1"
+dependencies = [
+ "fuser",
+ "nexia-nextcloud-core",
+ "nexia-nextcloud-sdk-vfs",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "nexia-nextcloud-sdk-keyring"
+version = "0.2.1"
 dependencies = [
  "keyring",
  "oo7",
@@ -1515,17 +1504,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-sdk-orchestrator"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-orchestrator"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-dav",
- "nextcloud-preview",
- "nextcloud-sdk-storage",
- "nextcloud-sdk-vfs",
- "nextcloud-shares",
- "nextcloud-sync",
- "nextcloud-theming",
+ "nexia-nextcloud-dav",
+ "nexia-nextcloud-preview",
+ "nexia-nextcloud-sdk-storage",
+ "nexia-nextcloud-sdk-vfs",
+ "nexia-nextcloud-shares",
+ "nexia-nextcloud-sync",
+ "nexia-nextcloud-theming",
  "notify",
  "serde",
  "serde_json",
@@ -1534,44 +1523,44 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-sdk-ratelimit"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-ratelimit"
+version = "0.2.1"
 dependencies = [
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sdk-request"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-request"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sdk-session"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-session"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sdk-storage"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-storage"
+version = "0.2.1"
 dependencies = [
  "getrandom 0.3.4",
- "nextcloud-sdk-keyring",
+ "nexia-nextcloud-sdk-keyring",
  "rusqlite",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sdk-vfs"
-version = "0.2.0"
+name = "nexia-nextcloud-sdk-vfs"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
  "serde",
@@ -1580,19 +1569,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-shares"
-version = "0.2.0"
+name = "nexia-nextcloud-search"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-ocs",
+ "nexia-nextcloud-ocs",
  "serde",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-sync"
-version = "0.2.0"
+name = "nexia-nextcloud-shares"
+version = "0.2.1"
+dependencies = [
+ "nexia-nextcloud-core",
+ "nexia-nextcloud-ocs",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "nexia-nextcloud-sync"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
  "serde",
@@ -1602,23 +1602,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-talk"
-version = "0.2.0"
+name = "nexia-nextcloud-talk"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-ocs",
+ "nexia-nextcloud-ocs",
  "serde",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-theming"
-version = "0.2.0"
+name = "nexia-nextcloud-theming"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
- "nextcloud-ocs",
+ "nexia-nextcloud-ocs",
  "serde",
  "serde_json",
  "tokio",
@@ -1626,55 +1626,55 @@ dependencies = [
 ]
 
 [[package]]
-name = "nextcloud-transport"
-version = "0.2.0"
+name = "nexia-nextcloud-transport"
+version = "0.2.1"
 dependencies = [
  "futures-util",
  "nexia-nextcloud-core",
- "nextcloud-sdk-ratelimit",
+ "nexia-nextcloud-sdk-ratelimit",
  "reqwest",
  "tokio",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-trashbin"
-version = "0.2.0"
+name = "nexia-nextcloud-trashbin"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
- "nextcloud-dav",
+ "nexia-nextcloud-dav",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-uploads"
-version = "0.2.0"
+name = "nexia-nextcloud-uploads"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
- "nextcloud-dav",
+ "nexia-nextcloud-dav",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-users"
-version = "0.2.0"
+name = "nexia-nextcloud-users"
+version = "0.2.1"
 dependencies = [
  "nexia-nextcloud-core",
- "nextcloud-ocs",
+ "nexia-nextcloud-ocs",
  "serde",
  "serde_json",
  "tracing",
 ]
 
 [[package]]
-name = "nextcloud-versions"
-version = "0.2.0"
+name = "nexia-nextcloud-versions"
+version = "0.2.1"
 dependencies = [
+ "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
- "nextcloud-auth",
- "nextcloud-dav",
+ "nexia-nextcloud-dav",
  "tracing",
 ]
 

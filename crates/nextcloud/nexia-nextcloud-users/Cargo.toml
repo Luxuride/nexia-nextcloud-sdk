@@ -1,0 +1,14 @@
+[package]
+name = "nexia-nextcloud-users"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Nextcloud user provisioning and server capabilities client"
+
+[dependencies]
+nexia-nextcloud-ocs.workspace = true
+nexia-nextcloud-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

@@ -65,9 +65,9 @@ mount records).
 
 ---
 
-## 2. Multi-platform keyring integration (`nextcloud-sdk-keyring`)
+## 2. Multi-platform keyring integration (`nexia-nextcloud-sdk-keyring`)
 
-Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`nextcloud-sdk-keyring`** through `KeychainKeyStore` and `PlatformKeyring`:
+Encryption keys and authentication tokens are never stored as plain files on disk. The SDK provides a unified cross-platform credential store abstraction via **`nexia-nextcloud-sdk-keyring`** through `KeychainKeyStore` and `PlatformKeyring`:
 
 ### 2.1 Supported Platform Backends
 1. **Linux & Sandboxed Flatpak**:
@@ -133,8 +133,8 @@ Used for all sensitive passphrases, app passwords and bearer tokens. There are t
 
 | Type | Crate | `Debug` | Plaintext access |
 | --- | --- | --- | --- |
-| `nextcloud_auth::SecretString` | `nextcloud-auth` | `SecretString("<redacted>")` | `.expose() -> &str` |
-| `nextcloud_sdk_keyring::SecretString` | `nextcloud-sdk-keyring` | `[REDACTED]` | `.expose_secret() -> &str`, `.into_inner() -> String` |
+| `nexia_nextcloud_auth::SecretString` | `nexia-nextcloud-auth` | `SecretString("<redacted>")` | `.expose() -> &str` |
+| `nexia_nextcloud_sdk_keyring::SecretString` | `nexia-nextcloud-sdk-keyring` | `[REDACTED]` | `.expose_secret() -> &str`, `.into_inner() -> String` |
 
 Both omit `Serialize`, so neither can be pushed into JSON logs. The keyring variant
 also implements `Display` (redacted) and `Drop` — `Drop` zeroes the backing bytes
@@ -146,7 +146,7 @@ The `Header` type automatically detects sensitive HTTP header names (case-insens
 - When formatted via `Debug`, the header value is replaced with `"<redacted>"`. Non-sensitive headers (e.g. `Content-Type: application/json`) remain readable for debugging.
 
 ### 3.3 User Profile Privacy Redaction
-In `nextcloud-users`, the `User` struct contains sensitive personal metadata. Its `Debug` implementation redacts private attributes:
+In `nexia-nextcloud-users`, the `User` struct contains sensitive personal metadata. Its `Debug` implementation redacts private attributes:
 - `email`: Formatted as `email: Some("<redacted>")`.
 - `storage_location`: Formatted as `storage_location: Some("<redacted>")` (prevents exposing internal server filesystem paths).
 

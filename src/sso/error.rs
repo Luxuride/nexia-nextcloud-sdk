@@ -6,13 +6,13 @@ use std::fmt;
 #[non_exhaustive]
 pub enum SsoError {
     /// GNOME Online Accounts error.
-    Goa(nextcloud_goa::GoaError),
+    Goa(nexia_nextcloud_goa::GoaError),
     /// KDE Plasma KAccounts error.
-    KAccounts(nextcloud_kaccounts::KAccountsError),
+    KAccounts(nexia_nextcloud_kaccounts::KAccountsError),
     /// Nextcloud desktop client config error.
-    ClientConfig(nextcloud_client_config::ClientConfigError),
+    ClientConfig(nexia_nextcloud_client_config::ClientConfigError),
     /// Keyring error.
-    Keyring(nextcloud_sdk_keyring::KeyringError),
+    Keyring(nexia_nextcloud_sdk_keyring::KeyringError),
 }
 
 impl fmt::Display for SsoError {
@@ -37,26 +37,26 @@ impl Error for SsoError {
     }
 }
 
-impl From<nextcloud_goa::GoaError> for SsoError {
-    fn from(err: nextcloud_goa::GoaError) -> Self {
+impl From<nexia_nextcloud_goa::GoaError> for SsoError {
+    fn from(err: nexia_nextcloud_goa::GoaError) -> Self {
         Self::Goa(err)
     }
 }
 
-impl From<nextcloud_kaccounts::KAccountsError> for SsoError {
-    fn from(err: nextcloud_kaccounts::KAccountsError) -> Self {
+impl From<nexia_nextcloud_kaccounts::KAccountsError> for SsoError {
+    fn from(err: nexia_nextcloud_kaccounts::KAccountsError) -> Self {
         Self::KAccounts(err)
     }
 }
 
-impl From<nextcloud_client_config::ClientConfigError> for SsoError {
-    fn from(err: nextcloud_client_config::ClientConfigError) -> Self {
+impl From<nexia_nextcloud_client_config::ClientConfigError> for SsoError {
+    fn from(err: nexia_nextcloud_client_config::ClientConfigError) -> Self {
         Self::ClientConfig(err)
     }
 }
 
-impl From<nextcloud_sdk_keyring::KeyringError> for SsoError {
-    fn from(err: nextcloud_sdk_keyring::KeyringError) -> Self {
+impl From<nexia_nextcloud_sdk_keyring::KeyringError> for SsoError {
+    fn from(err: nexia_nextcloud_sdk_keyring::KeyringError) -> Self {
         Self::Keyring(err)
     }
 }
