@@ -5,12 +5,46 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Payload data backing a hydrated virtual file node.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub enum HydratedContent {
     /// In-memory byte buffer containing file content.
     Bytes(Vec<u8>),
     /// Reference to a locally cached file on disk.
     Path(PathBuf),
+}
+
+/// Serialized shape of a hydration that is safe to persist.
+///
+/// `HydratedContent::Path` is the only form written to `tree.json`, so declarations mirror the
+/// derived representation the deserializer expects.
+#[derive(Serialize)]
+enum PersistedContent<'a> {
+    Path(&'a PathBuf),
+}
+
+/// A hydration payload is never serialized.
+///
+/// Persisted trees carry paths, because an in-memory `Bytes` payload written as a JSON number
+/// array costs several bytes per byte of content: one account's metadata-only tree reached 483 MB
+/// for 1046 files, which made every save and load dominate start-up. Content is spilled to the
+/// cache directory by [`crate::tree::VirtualTree::spill_hydrated_bytes`] before persisting; a
+/// payload that was not spilled degrades to a placeholder, which merely re-fetches on next read.
+impl Serialize for HydrationState {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+
+        match self {
+            Self::Placeholder => serializer.serialize_unit_variant("HydrationState", 0, "Placeholder"),
+            Self::Hydrated(HydratedContent::Path(path)) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Hydrated", &PersistedContent::Path(path))?;
+                map.end()
+            }
+            Self::Hydrated(HydratedContent::Bytes(_)) => {
+                serializer.serialize_unit_variant("HydrationState", 0, "Placeholder")
+            }
+        }
+    }
 }
 
 impl HydratedContent {
@@ -44,7 +78,7 @@ impl From<PathBuf> for HydratedContent {
 }
 
 /// Hydration state representing whether file content is available or a transient placeholder.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 pub enum HydrationState {
     /// Metadata-only transient placeholder. No file content is loaded in memory.
     #[default]

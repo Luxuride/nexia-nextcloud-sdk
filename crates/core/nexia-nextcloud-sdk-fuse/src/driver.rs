@@ -783,10 +783,7 @@ impl FuseDriver {
 
             // Wait for a download slot before touching the network, so a burst of reads cannot
             // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
-            let Some(bytes) = self
-                .fetch_span(vfs_path, span_start, extend as u32)
-                .await
-            else {
+            let Some(bytes) = self.fetch_span(vfs_path, span_start, extend as u32).await else {
                 // Nothing was fetched. Answering with a short/empty read here would look like
                 // end-of-file and get cached as such by the kernel, so a transient network error
                 // would permanently truncate the file. Fail the request instead; the reader
@@ -1547,7 +1544,10 @@ mod tests {
         tree.insert(VirtualNode::new_file(
             NodeMetadata::file("/big.jpg").with_size(size),
         ));
-        let driver = Arc::new(FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator));
+        let driver = Arc::new(FuseDriver::with_hydrator(
+            Arc::new(RwLock::new(tree)),
+            hydrator,
+        ));
         let attr = driver.lookup(FUSE_ROOT_INODE, "big.jpg").unwrap();
 
         let first = {
@@ -1786,7 +1786,10 @@ mod tests {
         spans.sort_unstable();
         let mut covered = 0u64;
         for (offset, len) in spans {
-            assert_eq!(offset, covered, "span starts at {offset}, expected {covered}");
+            assert_eq!(
+                offset, covered,
+                "span starts at {offset}, expected {covered}"
+            );
             covered += len;
         }
         assert_eq!(covered, size, "the parts did not cover the whole file");

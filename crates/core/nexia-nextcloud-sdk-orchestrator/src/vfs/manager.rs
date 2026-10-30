@@ -287,10 +287,34 @@ impl VfsManager {
     }
 
     /// Serializes the virtual tree to `tree.json` in the cache directory.
-    pub fn persist_tree(&self) -> OrchestratorResult<()> {
+    ///
+    /// Hydrated payloads are spilled into `<cache_dir>/content` first, so the tree records a cache
+    /// path rather than the file content: the persisted tree stays metadata-sized, and a restart
+    /// reuses the downloaded bytes instead of fetching them again.
+    pub fn persist_tree(&mut self) -> OrchestratorResult<()> {
         let tree_file = self.cache_dir.join("tree.json");
+        let content_dir = self.cache_dir.join("content");
+
+        if let Err(err) = self.tree.spill_hydrated_bytes(&content_dir) {
+            // Persisting metadata is still worthwhile: an unspilled payload only means the file is
+            // fetched again after a restart.
+            debug!(
+                content_dir = %content_dir.display(),
+                error = %err,
+                "could not spill hydrated payloads before persisting the tree"
+            );
+        }
+
         let json = serde_json::to_string_pretty(&self.tree)?;
-        fs::write(&tree_file, json).map_err(|err| OrchestratorError::Io {
+        // Write then rename, so an interrupted save cannot leave a half-written tree that fails to
+        // parse and silently drops every known node on the next start.
+        let temp_file = self.cache_dir.join("tree.json.tmp");
+        fs::write(&temp_file, json).map_err(|err| OrchestratorError::Io {
+            path: temp_file.clone(),
+            context: "writing virtual tree to disk".to_string(),
+            source: err,
+        })?;
+        fs::rename(&temp_file, &tree_file).map_err(|err| OrchestratorError::Io {
             path: tree_file,
             context: "persisting virtual tree to disk".to_string(),
             source: err,

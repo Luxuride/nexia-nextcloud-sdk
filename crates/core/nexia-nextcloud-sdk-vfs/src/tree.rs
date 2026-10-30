@@ -1,6 +1,7 @@
 //! In-memory hierarchical virtual file system tree.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -356,6 +357,78 @@ impl VirtualTree {
             }
             HydrationState::Placeholder => Ok(None),
         }
+    }
+
+    /// Returns `true` if any node holds its payload in memory instead of a cache file.
+    ///
+    /// Used to detect a tree written by an older build, where payloads were serialized inline and a
+    /// single account's `tree.json` reached hundreds of megabytes.
+    #[must_use]
+    pub fn has_in_memory_payloads(&self) -> bool {
+        self.nodes.values().any(|node| {
+            matches!(
+                node.hydration,
+                HydrationState::Hydrated(HydratedContent::Bytes(_))
+            )
+        })
+    }
+
+    /// Writes every in-memory payload below `content_root` and points the node at that file.
+    ///
+    /// Call this before persisting a tree: an in-memory payload is never serialized (see
+    /// [`HydrationState`]), so without spilling, a downloaded file would come back as a
+    /// placeholder and be fetched again. Each payload is written at its own path below
+    /// `content_root` — the layout the FUSE driver reads through — so the tree only ever stores a
+    /// path, not the bytes.
+    ///
+    /// Returns the number of payloads written.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying I/O error when a directory or a file cannot be created or written.
+    /// A node whose payload could not be written keeps its in-memory payload.
+    pub fn spill_hydrated_bytes(&mut self, content_root: &Path) -> std::io::Result<usize> {
+        let mut spilled = 0;
+
+        for node in self.nodes.values_mut() {
+            let payload = match std::mem::replace(node.hydration_mut(), HydrationState::Placeholder)
+            {
+                HydrationState::Hydrated(HydratedContent::Bytes(bytes)) if !bytes.is_empty() => {
+                    bytes
+                }
+                other => {
+                    *node.hydration_mut() = other;
+                    continue;
+                }
+            };
+
+            let relative = node.metadata.path.trim_start_matches('/').to_string();
+            let escapes = relative.is_empty() || relative.split('/').any(|s| s == "..");
+            if escapes {
+                *node.hydration_mut() = HydrationState::Hydrated(HydratedContent::Bytes(payload));
+                continue;
+            }
+
+            let target: PathBuf = content_root.join(&relative);
+            let written = target
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&target, &payload));
+
+            match written {
+                Ok(()) => {
+                    *node.hydration_mut() = HydrationState::Hydrated(HydratedContent::Path(target));
+                    spilled += 1;
+                }
+                Err(err) => {
+                    *node.hydration_mut() =
+                        HydrationState::Hydrated(HydratedContent::Bytes(payload));
+                    return Err(err);
+                }
+            }
+        }
+
+        Ok(spilled)
     }
 
     /// Merges freshly discovered remote metadata into this tree without discarding local state.
@@ -1594,5 +1667,101 @@ mod tests {
 
         assert!(tree.contains("/Photos/a.jpg"));
         assert!(tree.contains("/Photos/b.jpg"));
+    }
+
+    /// Regression: a persisted tree must not embed file payloads.
+    ///
+    /// One account's metadata-only tree reached 483 MB for 1046 files because in-memory payloads
+    /// were written as JSON number arrays, so every save and every start-up parsed half a gigabyte.
+    #[test]
+    fn persisted_tree_omits_payloads_and_thumbnails() {
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg").with_size(5),
+        ));
+        tree.hydrate("/Photos/a.jpg", b"hello".to_vec()).unwrap();
+        tree.set_thumbnail("/Photos/a.jpg", 256, 256, vec![0xAB; 64])
+            .unwrap();
+
+        let json = serde_json::to_string(&tree).unwrap();
+
+        assert!(
+            !json.contains("hello"),
+            "payload leaked into the persisted tree: {json}"
+        );
+        assert!(
+            !json.contains("thumbnails"),
+            "thumbnails leaked into the persisted tree: {json}"
+        );
+        assert!(
+            json.len() < 1024,
+            "metadata-only tree was {} bytes",
+            json.len()
+        );
+
+        // A payload that was never spilled degrades to a placeholder instead of bloating the file.
+        let reloaded: VirtualTree = serde_json::from_str(&json).unwrap();
+        assert!(reloaded.get("/Photos/a.jpg").unwrap().is_placeholder());
+    }
+
+    /// Spilling writes the payload to the cache and leaves a path in the tree, so a restart reuses
+    /// the downloaded content instead of fetching it again.
+    #[test]
+    fn spill_hydrated_bytes_writes_content_and_persists_path() {
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_directory(NodeMetadata::directory(
+            "/Photos",
+        )));
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg").with_size(5),
+        ));
+        tree.hydrate("/Photos/a.jpg", b"hello".to_vec()).unwrap();
+
+        let root = std::env::temp_dir().join(format!("nexia-spill-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(tree.spill_hydrated_bytes(&root).unwrap(), 1);
+
+        let cached = root.join("Photos/a.jpg");
+        assert_eq!(std::fs::read(&cached).unwrap(), b"hello".to_vec());
+        assert_eq!(
+            tree.get("/Photos/a.jpg")
+                .unwrap()
+                .hydration()
+                .cached_path(),
+            Some(cached.as_path())
+        );
+
+        // The tree now persists a path, not the payload, and reloading keeps it hydrated.
+        let json = serde_json::to_string(&tree).unwrap();
+        assert!(!json.contains("hello"), "payload leaked: {json}");
+        let reloaded: VirtualTree = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            reloaded
+                .read_hydrated_bytes("/Photos/a.jpg")
+                .unwrap()
+                .unwrap(),
+            b"hello".to_vec()
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Spilling must not write outside the cache root, even for a hostile node path.
+    #[test]
+    fn spill_hydrated_bytes_ignores_escaping_paths() {
+        let mut tree = VirtualTree::new("root");
+        let mut node = VirtualNode::new_file(NodeMetadata::file("/a.jpg").with_size(5));
+        node.metadata.path = "/../../etc/passwd".to_string();
+        node.hydration = HydrationState::Hydrated(HydratedContent::Bytes(b"hello".to_vec()));
+        tree.insert(node);
+
+        let root = std::env::temp_dir().join(format!("nexia-spill-esc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(tree.spill_hydrated_bytes(&root).unwrap(), 0);
+        assert!(!root.exists() || std::fs::read_dir(&root).unwrap().next().is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -16,6 +16,11 @@ pub struct VirtualNode {
     /// Current hydration state of the file content.
     pub hydration: HydrationState,
     /// Cached thumbnails keyed by resolution.
+    ///
+    /// Rendering cache only: never persisted. Thumbnail bytes written into `tree.json` as JSON
+    /// number arrays cost several bytes per thumbnail byte, and they are regenerable from the
+    /// desktop thumbnail cache, so a persisted tree stores metadata alone.
+    #[serde(default, skip)]
     pub thumbnails: ThumbnailCache,
     /// Canonical paths of direct children if this node is a directory.
     pub children: Option<BTreeSet<String>>,
