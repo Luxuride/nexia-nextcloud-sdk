@@ -85,7 +85,8 @@ pub use nexia_nextcloud_ocs::{Meta, Ocs, OcsClient, OcsEnvelope, OcsFormat, OcsS
 pub use nexia_nextcloud_preview::{
     PreviewClient, PreviewMode, PreviewOptions, crc32, embed_freedesktop_metadata,
     ensure_png_bytes, extract_embedded_jpeg_thumbnail, freedesktop_thumbnail_dirs,
-    install_freedesktop_fail_marker, install_freedesktop_thumbnail,
+    freedesktop_thumbnail_is_current, install_freedesktop_fail_marker,
+    install_freedesktop_thumbnail,
     install_freedesktop_thumbnail_with_mtime, make_png_text_chunk, md5_hex, path_to_file_uri,
     remove_freedesktop_fail_marker,
 };

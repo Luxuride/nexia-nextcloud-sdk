@@ -357,6 +357,46 @@ pub fn install_freedesktop_thumbnail(target_file: &Path, png_bytes: &[u8], softw
     install_freedesktop_thumbnail_with_mtime(target_file, png_bytes, mtime_sec, software);
 }
 
+/// Returns whether a thumbnail for `target_file` is already installed at every standard size.
+///
+/// The FreeDesktop standard treats the thumbnail cache as authoritative, so a caller that
+/// finds every expected size present has nothing left to produce. Checking that before
+/// [`install_freedesktop_thumbnail_with_mtime`] matters because installing decodes and
+/// re-encodes the image even when every destination already exists: a directory listing
+/// that reinstalls a few hundred thumbnails burns seconds of CPU and rewrites the very
+/// files a file manager is reading back, which is visible as stutter while a folder opens.
+pub fn freedesktop_thumbnail_is_current(target_file: &Path) -> bool {
+    let (normal_dir, large_dir) = freedesktop_thumbnail_dirs();
+    let Some(root) = normal_dir.parent().map(Path::to_path_buf) else {
+        return false;
+    };
+    let dirs = [
+        normal_dir,
+        large_dir,
+        root.join("x-large"),
+        root.join("xx-large"),
+    ];
+
+    thumbnails_current_in(&dirs, target_file)
+}
+
+/// Returns whether every URI form of `target_file` has a thumbnail of every size in `dirs`.
+///
+/// Split out from [`freedesktop_thumbnail_is_current`] so the bookkeeping can be exercised against
+/// a directory of the caller's choosing: the public entry point resolves the cache from the process
+/// environment, which this crate is not allowed to write to.
+fn thumbnails_current_in(dirs: &[PathBuf], target_file: &Path) -> bool {
+    let uris = file_uris_for_path(target_file);
+    if uris.is_empty() {
+        return false;
+    }
+
+    uris.iter().all(|uri| {
+        let filename = format!("{}.png", md5_hex(uri.as_bytes()));
+        dirs.iter().all(|dir| dir.join(&filename).is_file())
+    })
+}
+
 /// Installs a Nextcloud-provided preview into the FreeDesktop thumbnail cache for `target_file` with explicit modification time.
 pub fn install_freedesktop_thumbnail_with_mtime(
     target_file: &Path,
@@ -379,6 +419,10 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         .map(|p| p.join("xx-large"))
         .unwrap_or_else(|| large_dir.clone());
     let _ = fs::create_dir_all(&xxlarge_dir);
+
+    if freedesktop_thumbnail_is_current(target_file) {
+        return;
+    }
 
     let parsed_img = image::load_from_memory(png_bytes).ok();
 
@@ -623,5 +667,63 @@ mod tests {
             decoded.width(),
             decoded.height()
         );
+    }
+
+    /// `freedesktop_thumbnail_is_current` is the fast path that keeps a folder of already
+    /// thumbnailed files from being decoded and re-encoded again, so a version that always answered
+    /// false would silently restore that cost. The cache location comes from the process
+    /// environment, which this crate may not write to, so the size bookkeeping is what is pinned.
+    #[test]
+    fn thumbnails_count_as_current_only_when_every_size_is_present() {
+        let root = std::env::temp_dir().join(format!(
+            "nexia-thumb-current-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let dirs = [
+            root.join("normal"),
+            root.join("large"),
+            root.join("x-large"),
+            root.join("xx-large"),
+        ];
+        for dir in &dirs {
+            std::fs::create_dir_all(dir).expect("create thumbnail size directory");
+        }
+        let target = root.join("photo.jpg");
+        std::fs::write(&target, b"not a real image").expect("write target file");
+
+        assert!(
+            !thumbnails_current_in(&dirs, &target),
+            "nothing has been installed yet"
+        );
+
+        let uris = file_uris_for_path(&target);
+        assert!(
+            !uris.is_empty(),
+            "the target must resolve to at least one URI"
+        );
+        for dir in &dirs {
+            for uri in &uris {
+                std::fs::write(dir.join(format!("{}.png", md5_hex(uri.as_bytes()))), b"thumb")
+                    .expect("write thumbnail");
+            }
+        }
+        assert!(
+            thumbnails_current_in(&dirs, &target),
+            "every size is installed"
+        );
+
+        // A missing size makes the entry stale: the file manager falls back to the original for
+        // that size, so the honest answer is false rather than "mostly installed".
+        if let Some(uri) = uris.first() {
+            let _ = std::fs::remove_file(dirs[0].join(format!("{}.png", md5_hex(uri.as_bytes()))));
+        }
+        assert!(
+            !thumbnails_current_in(&dirs, &target),
+            "a missing size must report the thumbnail as stale"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
