@@ -7,7 +7,7 @@ use std::time::Duration;
 use fuser::{
     AccessFlags, BackgroundSession, Config, Errno, FileHandle, Filesystem, FopenFlags, Generation,
     INodeNo, LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty,
-    ReplyEntry, ReplyOpen, ReplyStatfs, ReplyXattr, Request,
+    ReplyEntry, ReplyOpen, ReplyStatfs, ReplyXattr, Request, SessionACL,
 };
 use tracing::{debug, error, trace};
 
@@ -289,9 +289,29 @@ pub fn mount_virtual_fs_with_options(
         .unwrap_or(4)
         .clamp(4, 16);
     config.n_threads = Some(threads);
+    config.clone_fd = true;
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");
     fuser::spawn_mount(driver, mp, &config)
+}
+
+/// Builds the mount options for the read-only virtual filesystem.
+///
+/// Deliberately does **not** include [`MountOption::AutoUnmount`]. `fuser` rejects that option
+/// unless the session ACL is something other than [`SessionACL::Owner`]
+/// (`fuser-0.18.0/src/session.rs:163`, "auto_unmount requires acl != Owner"), and both
+/// non-owner ACLs map to `allow_other`, which `fusermount3` refuses unless the host has opted in
+/// with `user_allow_other` in `/etc/fuse.conf`. Adding it back therefore makes every mount fail
+/// outright on a stock host, so stale mounts from a crash are handled by `unmount_all_fuse`
+/// instead.
+#[must_use]
+pub fn default_mount_options() -> Vec<MountOption> {
+    vec![
+        MountOption::FSName("Nextcloud".to_string()),
+        MountOption::Subtype("nextcloud".to_string()),
+        MountOption::RO,
+        MountOption::NoAtime,
+    ]
 }
 
 /// Mounts the [`FuseDriver`] at `mountpoint` in the background, returning a running session handle.
@@ -299,16 +319,7 @@ pub fn mount_virtual_fs(
     driver: FuseDriver,
     mountpoint: impl AsRef<Path>,
 ) -> Result<BackgroundSession, std::io::Error> {
-    let options = vec![
-        MountOption::FSName("Nextcloud".to_string()),
-        MountOption::Subtype("nextcloud".to_string()),
-        MountOption::RO,
-        // Clean up the mount when the desktop process dies instead of leaving a dead FUSE entry
-        // behind (a stale mountpoint answers every read with `ENOTCONN`).
-        MountOption::AutoUnmount,
-        MountOption::NoAtime,
-    ];
-    mount_virtual_fs_with_options(driver, mountpoint, options)
+    mount_virtual_fs_with_options(driver, mountpoint, default_mount_options())
 }
 
 #[cfg(test)]
@@ -324,6 +335,32 @@ mod tests {
         assert_eq!(fuser_attr.ino.0, 42);
         assert_eq!(fuser_attr.size, 1024);
         assert_eq!(fuser_attr.kind, fuser::FileType::RegularFile);
+    }
+
+    /// Guards the mount options against the ACL precondition that silently broke every mount:
+    /// `auto_unmount` is only legal with a non-`Owner` ACL, and this driver always uses the
+    /// default (`Owner`) ACL.
+    #[test]
+    fn default_mount_options_are_compatible_with_owner_acl() {
+        let options = default_mount_options();
+        assert!(
+            !options.contains(&MountOption::AutoUnmount),
+            "AutoUnmount requires a non-Owner ACL; adding it makes every mount fail with \
+             `auto_unmount requires acl != Owner`"
+        );
+        assert!(options.contains(&MountOption::RO));
+        assert!(options.contains(&MountOption::NoAtime));
+
+        // Mirror the check `fuser` performs in `Session::new`, so the invariant this crate
+        // depends on is asserted against the real default rather than assumed.
+        let mut config = Config::default();
+        config.mount_options = options;
+        assert_eq!(config.acl, SessionACL::Owner);
+        assert!(
+            !(config.mount_options.contains(&MountOption::AutoUnmount)
+                && config.acl == SessionACL::Owner),
+            "this option/ACL combination is rejected by fuser::Session::new"
+        );
     }
 
     #[test]

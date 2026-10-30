@@ -50,7 +50,9 @@ retry_publish() {
 
         if grep -q "already exists on crates.io index" <<<"$output"; then
             echo "  skipped $crate (version already published)"
-            return 0
+            # Nothing was uploaded, so no allowance was spent; the caller must
+            # not wait for a refill it does not need.
+            return 2
         fi
 
         if grep -qE "429|too many (crates|requests)|Please try again" <<<"$output"; then
@@ -74,8 +76,13 @@ retry_publish() {
 mapfile -t order < <(python3 scripts/crate-publish-order.py)
 
 echo "Publishing ${#order[@]} crates${1:+ (${1})}"
+status=0
 for crate in "${order[@]}"; do
-    retry_publish "$crate"
+    retry_publish "$crate" || status=$?
+    if (( status == 2 )); then
+        status=0
+        continue
+    fi
     # New-crate allowance refills one per ten minutes; waiting the full interval
     # avoids spending retry attempts on a bucket that cannot have refilled.
     if [[ -z "${dry_run[*]:-}" ]]; then
