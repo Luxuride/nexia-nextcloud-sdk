@@ -365,7 +365,8 @@ fn failed_hydration_surfaces_eio_not_short_read() {
     let mounted = mount_with_defaults("eio", single_file_tree(64), hydrator.clone());
 
     let file = mounted.wait_for_entry("photo.bin");
-    let err = std::fs::read(&file).expect_err("a failing hydrator must not yield a successful read");
+    let err =
+        std::fs::read(&file).expect_err("a failing hydrator must not yield a successful read");
     assert!(
         !matches!(err.kind(), std::io::ErrorKind::UnexpectedEof),
         "failure must be reported as EIO, not EOF: {err:?}"
@@ -432,9 +433,7 @@ fn empty_tree_mounts_and_enumerates_empty() {
         CountingHydrator::new(b""),
     );
 
-    let is_listable = wait_until(ENTRY_TIMEOUT, || {
-        std::fs::read_dir(mounted.path()).is_ok()
-    });
+    let is_listable = wait_until(ENTRY_TIMEOUT, || std::fs::read_dir(mounted.path()).is_ok());
     assert!(is_listable, "readdir on an empty mount must succeed");
 
     let count = std::fs::read_dir(mounted.path())
@@ -452,7 +451,11 @@ fn dropping_the_session_unmounts_the_path() {
     let mounted = mount_with_defaults("unmount", single_file_tree(1), CountingHydrator::new(b"x"));
     let file = mounted.wait_for_entry("photo.bin");
 
-    let MountedFs { session, runtime, mp } = mounted;
+    let MountedFs {
+        session,
+        runtime,
+        mp,
+    } = mounted;
     drop(session);
 
     assert!(

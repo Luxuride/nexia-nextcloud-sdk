@@ -7,7 +7,7 @@ use std::time::Duration;
 use fuser::{
     AccessFlags, BackgroundSession, Config, Errno, FileHandle, Filesystem, FopenFlags, Generation,
     INodeNo, LockOwner, MountOption, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty,
-    ReplyEntry, ReplyOpen, ReplyStatfs, ReplyXattr, Request, SessionACL,
+    ReplyEntry, ReplyOpen, ReplyStatfs, ReplyXattr, Request,
 };
 use tracing::{debug, error, trace};
 
@@ -325,6 +325,7 @@ pub fn mount_virtual_fs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fuser::SessionACL;
     use std::time::SystemTime;
 
     #[test]
