@@ -59,13 +59,15 @@ pub const SWEEP_WINDOW: Duration = Duration::from_secs(3);
 /// A single preview touches one file. Three in three seconds is already a directory walk.
 pub const SWEEP_DISTINCT_FILES: usize = 3;
 
-/// How many times one file may be refused before the read is served regardless.
+/// The largest read a file manager may make while sweeping a directory without being treated as a
+/// probe rather than as content access.
 ///
-/// A sweep samples each entry once and never returns to it, so this bound costs a sweep nothing: it
-/// never collects on it. A caller that genuinely wants the bytes gets them after this many retries,
-/// which is what guarantees no file can become permanently unreadable and that a copy started from
-/// inside the file manager still finishes.
-pub const MAX_REFUSALS_PER_FILE: u32 = 3;
+/// A sweep samples each entry with a handful of kilobytes - 4 KiB, 8 KiB, 16 KiB, whatever the
+/// sniffing library wants - while anything that actually reads a file (a copy, an unarchiver, a
+/// viewer) asks for real chunks: 128 KiB or more. The size is therefore what separates "wants a
+/// hint about this file" from "wants these bytes", and it is the only signal that can vouch for a
+/// copy's *first* read, which no run evidence can.
+pub const PROBE_MAX: u32 = 16 * 1024;
 
 /// What should happen to a read request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,8 +105,6 @@ struct FileProbe {
     last_end: u64,
     /// When that run last advanced.
     last_at: Option<Instant>,
-    /// How many reads of this file have been refused.
-    refusals: u32,
 }
 
 impl FileProbe {
@@ -193,12 +193,6 @@ impl ReadIntent {
         probe.last_end = offset.saturating_add(u64::from(size));
         probe.last_at = Some(now);
 
-        // A refusal can never be permanent: after the budget the bytes are served no matter how
-        // the read looks, so a copy inside the file manager also completes.
-        if probe.refusals >= MAX_REFUSALS_PER_FILE {
-            return ReadVerdict::Allow;
-        }
-
         // Reading one file through is content access, not sampling: always serve it.
         if continues {
             return ReadVerdict::Allow;
@@ -209,7 +203,14 @@ impl ReadIntent {
             return ReadVerdict::Allow;
         }
 
-        probe.refusals += 1;
+        // A copy asks for real chunks; a sweep samples a file a few kilobytes at a time. Size is
+        // what separates "wants a hint about this file" from "wants these bytes", and it is what
+        // keeps a copy started inside the file manager working: a copy is served from its very
+        // first read, when no run evidence exists yet, and is never refused at any point.
+        if size > PROBE_MAX {
+            return ReadVerdict::Allow;
+        }
+
         ReadVerdict::Refuse
     }
 
@@ -264,11 +265,11 @@ mod tests {
         let now = Instant::now();
         // The first two files establish the sweep.
         for ino in 0..SWEEP_DISTINCT_FILES as u64 - 1 {
-            intent.classify_at(1, true, ino, 0, 131_072, now);
+            intent.classify_at(1, true, ino, 0, PROBE_MAX, now);
         }
         let mut refused = 0;
         for ino in 10..40u64 {
-            if intent.classify_at(1, true, ino, 0, 131_072, now) == ReadVerdict::Refuse {
+            if intent.classify_at(1, true, ino, 0, PROBE_MAX, now) == ReadVerdict::Refuse {
                 refused += 1;
             }
         }
@@ -278,55 +279,50 @@ mod tests {
         );
     }
 
-    /// A copy walks a file forward and must be served on every read after the first.
+    /// A copy must be served from its very first read, while a sweep is in progress: it asks for
+    /// real chunks, so it never looks like a probe, and it can never be refused.
     #[test]
-    fn sequential_copy_is_served_throughout() {
+    fn a_copy_is_served_from_its_first_read() {
         let intent = ReadIntent::default();
         let now = Instant::now();
         // Establish a sweep first, the worst case for a copy.
         for ino in 0..10u64 {
-            intent.classify_at(1, true, ino, 0, 131_072, now);
+            intent.classify_at(1, true, ino, 0, PROBE_MAX, now);
         }
         let mut offset = 0u64;
-        // The first read may be refused; it is retried. Everything after must be served.
-        for _ in 0..=MAX_REFUSALS_PER_FILE {
-            if intent.classify_at(1, true, 777, 0, 131_072, now) == ReadVerdict::Allow {
-                offset = 131_072;
-                break;
-            }
-        }
-        assert_eq!(offset, 131_072, "the copy's first read was never served");
         for read in 0..40 {
             assert_eq!(
                 intent.classify_at(1, true, 777, offset, 131_072, now),
                 ReadVerdict::Allow,
-                "sequential read #{read} of an in-progress copy was refused"
+                "read #{read} of a copy started during a sweep was refused"
             );
             offset += 131_072;
         }
     }
 
-    /// A copy must never fail permanently, however it reads: the budget always releases the bytes.
+    /// A sweep must never collect: it probes each file with different offsets and sizes.
     #[test]
-    fn no_file_can_be_refused_forever() {
+    fn a_sweep_of_different_spans_is_never_served() {
         let intent = ReadIntent::default();
         let now = Instant::now();
         for ino in 0..10u64 {
             intent.classify_at(1, true, ino, 0, 131_072, now);
         }
-        // A caller that restarts from zero every single time still gets through.
-        let mut served = false;
-        for attempt in 0..=MAX_REFUSALS_PER_FILE {
-            if intent.classify_at(1, true, 999, 0, 131_072, now) == ReadVerdict::Allow {
-                served = true;
-                assert_eq!(
-                    attempt, MAX_REFUSALS_PER_FILE,
-                    "the read was served before the refusal budget was spent"
-                );
-                break;
-            }
+        // The shape observed from the file manager in the wild: head at two sizes, then a tail
+        // read, then the head again at yet another size - never the same span twice.
+        let probes = [
+            (0u64, 16_384u32),
+            (0, 4_096),
+            (4_284_416, 4_096),
+            (0, 8_192),
+        ];
+        for (round, &(offset, size)) in probes.iter().enumerate() {
+            assert_eq!(
+                intent.classify_at(1, true, 4242, offset, size, now),
+                ReadVerdict::Refuse,
+                "probe #{round} of a swept file was served, so the original would be downloaded"
+            );
         }
-        assert!(served, "a file was refused more than the budget allows");
     }
 
     /// Opening a single preview must work: one or two files is not a sweep.
@@ -337,7 +333,7 @@ mod tests {
         for ino in 0..SWEEP_DISTINCT_FILES as u64 - 1 {
             for _ in 0..10 {
                 assert_eq!(
-                    intent.classify_at(1, true, ino, 0, 131_072, now),
+                    intent.classify_at(1, true, ino, 0, PROBE_MAX, now),
                     ReadVerdict::Allow,
                     "opening file {ino} was refused before a sweep was established"
                 );
@@ -345,19 +341,31 @@ mod tests {
         }
     }
 
-    /// Read size must play no part: the kernel coalesces a sweep and a copy to the same size.
+    /// Read size is the signal: a probe-sized sample is refused, a content-sized read is not.
     #[test]
-    fn verdict_does_not_depend_on_read_size() {
-        for size in [4096u32, 16 * 1024, 64 * 1024, 131_072, 1024 * 1024] {
+    fn probe_reads_are_refused_and_content_reads_are_not() {
+        for size in [4_096u32, 8_192, 16_384, PROBE_MAX] {
             let intent = ReadIntent::default();
             let now = Instant::now();
             for ino in 0..10u64 {
-                intent.classify_at(1, true, ino, 0, size, now);
+                intent.classify_at(1, true, ino, 0, PROBE_MAX, now);
             }
             assert_eq!(
                 intent.classify_at(1, true, 999, 0, size, now),
                 ReadVerdict::Refuse,
-                "a mid-sweep read of {size} bytes was not refused"
+                "a mid-sweep probe of {size} bytes was not refused"
+            );
+        }
+        for size in [PROBE_MAX + 1, 131_072, 1024 * 1024] {
+            let intent = ReadIntent::default();
+            let now = Instant::now();
+            for ino in 0..10u64 {
+                intent.classify_at(1, true, ino, 0, PROBE_MAX, now);
+            }
+            assert_eq!(
+                intent.classify_at(1, true, 999, 0, size, now),
+                ReadVerdict::Allow,
+                "a mid-sweep content read of {size} bytes was refused, so a copy would fail"
             );
         }
     }
@@ -368,11 +376,11 @@ mod tests {
         let intent = ReadIntent::default();
         let now = Instant::now();
         for ino in 0..20u64 {
-            intent.classify_at(1, true, ino, 0, 131_072, now);
+            intent.classify_at(1, true, ino, 0, PROBE_MAX, now);
         }
         // A second file manager has its own history, so a single open is still ordinary use.
         assert_eq!(
-            intent.classify_at(2, true, 500, 0, 131_072, now),
+            intent.classify_at(2, true, 500, 0, PROBE_MAX, now),
             ReadVerdict::Allow,
             "one process inherited another's sweep history"
         );
@@ -390,7 +398,6 @@ mod tests {
         let probe = FileProbe {
             last_end: 131_072,
             last_at: Some(start),
-            refusals: 0,
         };
         assert!(
             probe.continues(131_072, start),
@@ -422,12 +429,12 @@ mod tests {
         let start = Instant::now();
         for ino in 0..20u64 {
             for _ in 0..4 {
-                intent.classify_at(1, true, ino, 0, 131_072, start);
+                intent.classify_at(1, true, ino, 0, PROBE_MAX, start);
             }
         }
         let later = start + SWEEP_WINDOW + Duration::from_millis(1);
         assert_eq!(
-            intent.classify_at(1, true, 999, 0, 131_072, later),
+            intent.classify_at(1, true, 999, 0, PROBE_MAX, later),
             ReadVerdict::Allow,
             "stale sweep evidence still caused a refusal"
         );

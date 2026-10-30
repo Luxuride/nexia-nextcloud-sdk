@@ -228,13 +228,14 @@ impl Filesystem for FuseDriver {
 
         // A file manager opening a directory touches every entry in it: it samples each file once,
         // each sample a full round trip, which is what makes the folder look hung for minutes. The
-        // preview it wants either already exists in the thumbnail cache or can be built from the
-        // thumbnail we serve, so downloading the original buys nothing.
+        // preview it wants already exists in the thumbnail cache, so downloading the original buys
+        // nothing - and it costs the *interface thread*, which is where these reads happen: a
+        // 256 KiB ranged fetch per file is a second of stalled UI per file, for a whole directory.
         //
         // The guard is confined to file managers (see [`crate::intent::BROWSER_COMMS`]) and to
-        // files that are not local yet; it always serves a read that continues through one file, so
-        // copies, viewers and archivers are unaffected, and its per-file refusal budget means no
-        // file can become permanently unreadable.
+        // files that are not local yet. It always serves a read that continues through one file, so
+        // copies, viewers and archivers are unaffected, and a caller that repeats the exact read it
+        // was refused gets the bytes, so no file can become permanently unreadable.
         if self.is_placeholder(ino.0)
             && self.classify_read(req.pid(), ino.0, offset, size) == ReadVerdict::Refuse
         {
