@@ -139,6 +139,8 @@ pub struct FuseDriver {
     partial_blocks: Arc<RwLock<PartialBlocks>>,
     /// Bounds how many threads may wait on a remote fetch, protecting metadata requests.
     download_gate: Arc<DownloadGate>,
+    /// Remembers which processes asked for a preview, so their speculative reads are declined.
+    preview_intent: crate::fs::PreviewIntentTracker,
 }
 
 impl FuseDriver {
@@ -194,7 +196,22 @@ impl FuseDriver {
             root_prefix: normalized_root,
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
+            preview_intent: crate::fs::PreviewIntentTracker::default(),
         }
+    }
+
+    /// Records that `pid` queried preview attributes on an unhydrated file.
+    ///
+    /// Called from the xattr handlers, which is the only place a file manager announces that it is
+    /// building previews rather than opening the file: it checks `user.thumb.*` for every entry
+    /// before deciding whether to read bytes.
+    pub fn note_preview_request(&self, pid: u32) {
+        self.preview_intent.note_preview_request(pid);
+    }
+
+    /// Whether `pid` is currently considered to be doing a preview pass.
+    pub fn is_previewing(&self, pid: u32) -> bool {
+        self.preview_intent.is_previewing(pid)
     }
 
     /// The gate bounding simultaneous remote fetches.

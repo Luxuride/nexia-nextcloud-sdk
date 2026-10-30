@@ -61,10 +61,60 @@ fn to_errno(code: i32) -> Errno {
 /// misclassify ordinary applications (an image viewer started from the desktop shell has a
 /// `gvfsd`/`nautilus` ancestor) and then deny every read with `ENODATA`.
 #[cfg(target_os = "linux")]
-const THUMBNAILER_COMMS: &[&str] = &["tumblerd", "thumbnailerd", "tracker-miner", "localsearch"];
+const THUMBNAILER_COMMS: &[&str] = &[
+    // FreeDesktop thumbnailer daemons.
+    "tumblerd",
+    "thumbnailerd",
+    // Indexers that walk whole trees.
+    "tracker-miner",
+    "localsearch",
+    // GNOME's thumbnail workers. `glycin-image-rs` is what actually decodes image bytes for
+    // `gnome-thumbnail-factory` on current GNOME; the other two cover different packaging and
+    // versions. Without these the worker decodes the original in full for a preview it discards.
+    "glycin-image-rs",
+    "glycin-loaders",
+    "glycin",
+];
+
+/// Tracks which processes have asked for a preview, so their reads can be declined.
+///
+/// A process is recorded when it lists or queries the `user.thumb.*` attribute of a file that is
+/// still a placeholder. That is the moment a file manager decides whether to build a preview, and
+/// it is the only point where the intent is unambiguous.
+#[derive(Debug, Default)]
+pub struct PreviewIntentTracker {
+    seen: std::sync::Mutex<std::collections::HashMap<u32, std::time::Instant>>,
+}
+
+impl PreviewIntentTracker {
+    /// How long a preview request keeps marking a process as a thumbnailer.
+    ///
+    /// Long enough to cover a directory's preview pass, short enough that the same process opening a
+    /// photo normally minutes later is served it in full.
+    pub const TTL: std::time::Duration = std::time::Duration::from_secs(120);
+
+    /// Records that `pid` asked for preview information.
+    pub fn note_preview_request(&self, pid: u32) {
+        if let Ok(mut seen) = self.seen.lock() {
+            let now = std::time::Instant::now();
+            seen.retain(|_, at| now.duration_since(*at) < Self::TTL);
+            seen.insert(pid, now);
+        }
+    }
+
+    /// Whether `pid` is currently considered to be doing a preview pass.
+    pub fn is_previewing(&self, pid: u32) -> bool {
+        let Ok(mut seen) = self.seen.lock() else {
+            return false;
+        };
+        let now = std::time::Instant::now();
+        seen.retain(|_, at| now.duration_since(*at) < Self::TTL);
+        seen.contains_key(&pid)
+    }
+}
 
 /// Returns `true` when `pid` itself is a background thumbnailer or indexer daemon.
-fn is_background_thumbnailer(pid: u32) -> bool {
+pub fn is_background_thumbnailer(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
         let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) else {
@@ -186,10 +236,17 @@ impl Filesystem for FuseDriver {
     ) {
         trace!(ino = ino.0, offset, size, "fuser::read");
 
-        // Background thumbnailers/indexers get an `EAGAIN` style "try later" answer instead of
-        // triggering a full remote hydration for a preview they will throw away. Ordinary readers
-        // (file managers, image viewers) are never denied: hydration is their only way to work.
-        if is_background_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
+        // A preview pass is declined rather than answered with a download of the original: the
+        // preview is built from the server-rendered thumbnail exposed through `user.thumb.*`, and a
+        // 32-byte peek at an 8.9 MB photo must not cost 8.9 MB of transfer on the caller's thread.
+        //
+        // Two independent signals, both evidence of *intent* rather than guesses about behaviour:
+        // a known thumbnailer/indexer binary, or a process that just asked for preview attributes
+        // on an unhydrated file. Read shape is deliberately not used — a small read at offset zero
+        // is indistinguishable between a thumbnail pass and `std::fs::read`, so keying on it would
+        // break ordinary readers.
+        let previewing = is_background_thumbnailer(req.pid()) || self.is_previewing(req.pid());
+        if previewing && self.is_placeholder(ino.0) {
             // `ECHILD` rather than `EAGAIN`. On a page-cache-backed read the kernel reserves
             // `EAGAIN` for its own internal retry and converts it into `EIO` before it reaches
             // userspace, so an `EAGAIN` here is reported to the thumbnailer as an I/O error and
@@ -229,7 +286,7 @@ impl Filesystem for FuseDriver {
         }
     }
 
-    fn getxattr(&self, _req: &Request, ino: INodeNo, name: &OsStr, size: u32, reply: ReplyXattr) {
+    fn getxattr(&self, req: &Request, ino: INodeNo, name: &OsStr, size: u32, reply: ReplyXattr) {
         let name_str = match name.to_str() {
             Some(s) => s,
             None => {
@@ -239,6 +296,12 @@ impl Filesystem for FuseDriver {
         };
 
         trace!(ino = ino.0, name = name_str, size, "fuser::getxattr");
+        // A `user.thumb.*` query is how a file manager decides whether to build a preview. Record
+        // it so the bytes it reads next are not mistaken for real work and answered with a full
+        // download of the original.
+        if name_str.starts_with("user.thumb.") && self.is_placeholder(ino.0) {
+            self.note_preview_request(req.pid());
+        }
         match self.getxattr(ino.0, name_str) {
             Ok(bytes) => {
                 if size == 0 {
@@ -253,8 +316,13 @@ impl Filesystem for FuseDriver {
         }
     }
 
-    fn listxattr(&self, _req: &Request, ino: INodeNo, size: u32, reply: ReplyXattr) {
+    fn listxattr(&self, req: &Request, ino: INodeNo, size: u32, reply: ReplyXattr) {
         trace!(ino = ino.0, size, "fuser::listxattr");
+        // Listing the extended attributes of an unhydrated file marks the caller as a preview pass:
+        // `user.thumb.*` only exists to advertise previews, and no ordinary reader enumerates it.
+        if self.is_placeholder(ino.0) {
+            self.note_preview_request(req.pid());
+        }
         match self.listxattr(ino.0) {
             Ok(attrs) => {
                 let mut buffer = Vec::new();
@@ -388,5 +456,47 @@ mod tests {
         assert_eq!(to_errno(20), Errno::ENOTDIR);
         assert_eq!(to_errno(34), Errno::ERANGE);
         assert_eq!(to_errno(999), Errno::EIO);
+    }
+}
+
+#[cfg(test)]
+mod preview_intent_tests {
+    use super::*;
+
+    /// A process that asks for preview attributes is remembered, so its reads are declined.
+    #[test]
+    fn preview_request_marks_the_process() {
+        let tracker = PreviewIntentTracker::default();
+        assert!(!tracker.is_previewing(4242));
+        tracker.note_preview_request(4242);
+        assert!(tracker.is_previewing(4242));
+        assert!(!tracker.is_previewing(9999), "only the requesting pid is marked");
+    }
+
+    /// Two different file managers previewing at once must not interfere.
+    #[test]
+    fn tracking_is_per_process() {
+        let tracker = PreviewIntentTracker::default();
+        tracker.note_preview_request(1);
+        tracker.note_preview_request(2);
+        assert!(tracker.is_previewing(1));
+        assert!(tracker.is_previewing(2));
+    }
+
+    /// A leaked mark would deny a file manager's later *real* open, so entries must expire.
+    #[test]
+    fn marks_expire_after_the_ttl() {
+        let tracker = PreviewIntentTracker::default();
+        tracker.note_preview_request(7);
+        assert!(tracker.is_previewing(7));
+        // Backdate the entry past the TTL instead of sleeping.
+        if let Ok(mut seen) = tracker.seen.lock() {
+            let stale = std::time::Instant::now() - PreviewIntentTracker::TTL - std::time::Duration::from_secs(1);
+            seen.insert(7, stale);
+        }
+        assert!(
+            !tracker.is_previewing(7),
+            "a stale preview mark must expire, or the process's real reads stay denied"
+        );
     }
 }
