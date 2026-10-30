@@ -775,10 +775,10 @@ impl FuseDriver {
 
     /// Returns the async gate serialising fetches for `vfs_path`.
     fn fetch_gate(&self, vfs_path: &str) -> Arc<tokio::sync::Mutex<()>> {
-        if let Ok(gates) = self.fetch_gates.read() {
-            if let Some(gate) = gates.get(vfs_path) {
-                return gate.clone();
-            }
+        if let Ok(gates) = self.fetch_gates.read()
+            && let Some(gate) = gates.get(vfs_path)
+        {
+            return gate.clone();
         }
         let mut gates = match self.fetch_gates.write() {
             Ok(gates) => gates,
