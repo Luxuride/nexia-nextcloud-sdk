@@ -11,7 +11,14 @@ description = "Transient VFS FUSE driver for desktop filesystem mounting"
 [dependencies]
 nexia-nextcloud-core.workspace = true
 nexia-nextcloud-sdk-vfs.workspace = true
-tokio = { workspace = true, features = ["sync", "rt", "rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = [
+    "sync",
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "fs",
+    "io-util",
+] }
 tracing.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

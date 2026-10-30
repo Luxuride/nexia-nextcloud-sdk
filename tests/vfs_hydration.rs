@@ -477,10 +477,23 @@ async fn hydration_failure_preserves_placeholder_integrity() {
     let attr = driver.lookup(1, "broken.bin").expect("lookup file");
     assert_eq!(attr.size, remote_size);
 
-    // Read should fail with ENOENT (2)
+    // The read must fail with EIO rather than returning a short/empty buffer: a silent zero-byte
+    // answer is indistinguishable from end-of-file and gets cached as such by the kernel, which is
+    // what made viewers report a perfectly downloadable image as unreadable.
     let res = driver.read(attr.ino, 0, 1024).await;
-    assert!(res.is_err(), "Read must fail when hydrator fails");
-    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        res,
+        Err(5), // EIO
+        "Read must fail hard when hydration fails"
+    );
+
+    // A full hydration is attempted once, then the ranged fallback. Both fail here, and neither may
+    // be retried unboundedly.
+    let attempts = call_count.load(Ordering::SeqCst);
+    assert!(
+        (1..=2).contains(&attempts),
+        "hydration should be attempted once (plus one ranged fallback), got {attempts}"
+    );
 
     // Verify tree node remains an unhydrated placeholder with intact virtual size
     {

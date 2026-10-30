@@ -36,7 +36,7 @@ impl From<&crate::attr::FileAttr> for fuser::FileAttr {
             gid: attr.gid,
             rdev: attr.rdev,
             flags: attr.flags,
-            blksize: 512,
+            blksize: crate::attr::BLOCK_SIZE as u32,
         }
     }
 }
@@ -46,85 +46,41 @@ fn to_errno(code: i32) -> Errno {
         2 => Errno::ENOENT,
         22 => Errno::EINVAL,
         20 => Errno::ENOTDIR,
+        11 => Errno::EAGAIN,
+        29 => Errno::ESPIPE,
         34 => Errno::ERANGE,
         _ => Errno::EIO,
     }
 }
 
-fn is_file_manager_or_thumbnailer(pid: u32) -> bool {
+/// Binary names of background thumbnailer / indexer daemons.
+///
+/// Those daemons walk whole directories and only want a small preview, so hydrating every
+/// multi-megabyte original they touch would destroy the mount. They are recognised **only** by
+/// their own executable name: no ancestor walk and no file-manager matching, because both used to
+/// misclassify ordinary applications (an image viewer started from the desktop shell has a
+/// `gvfsd`/`nautilus` ancestor) and then deny every read with `ENODATA`.
+#[cfg(target_os = "linux")]
+const THUMBNAILER_COMMS: &[&str] = &["tumblerd", "thumbnailerd", "tracker-miner", "localsearch"];
+
+/// Returns `true` when `pid` itself is a background thumbnailer or indexer daemon.
+fn is_background_thumbnailer(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
     {
-        let is_thumbnailer_or_indexer = |s: &str| -> bool {
-            let lower = s.to_ascii_lowercase();
-            lower.contains("thumbnail")
-                || lower.contains("tumbler")
-                || lower.contains("tracker")
-                || lower.contains("localsearch")
+        let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) else {
+            return false;
         };
-
-        let is_file_manager = |s: &str| -> bool {
-            let lower = s.to_ascii_lowercase();
-            lower.contains("nautilus")
-                || lower.contains("dolphin")
-                || lower.contains("thunar")
-                || lower.contains("nemo")
-                || lower.contains("caja")
-                || lower.contains("pcmanfm")
-                || lower.contains("gvfsd")
-        };
-
-        // 1. Direct process check: if the direct process is a file manager or thumbnailer, decline!
-        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm"))
-            && (is_file_manager(&comm) || is_thumbnailer_or_indexer(&comm))
-        {
-            return true;
+        let comm = comm.trim();
+        if comm.is_empty() {
+            return false;
         }
-        if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
-            let cmd_str = String::from_utf8_lossy(&cmdline);
-            if is_file_manager(&cmd_str) || is_thumbnailer_or_indexer(&cmd_str) {
-                return true;
-            }
-        }
-
-        // 2. Ancestor check: if any ancestor is a background thumbnailer or indexer worker, decline!
-        let mut cur_pid = pid;
-        for _ in 0..8 {
-            if cur_pid <= 1 {
-                break;
-            }
-            if let Ok(comm) = std::fs::read_to_string(format!("/proc/{cur_pid}/comm"))
-                && is_thumbnailer_or_indexer(&comm)
-            {
-                return true;
-            }
-            if let Ok(cmdline) = std::fs::read(format!("/proc/{cur_pid}/cmdline")) {
-                let cmd_str = String::from_utf8_lossy(&cmdline);
-                if is_thumbnailer_or_indexer(&cmd_str) {
-                    return true;
-                }
-            }
-            let mut next_ppid = 0;
-            if let Ok(status) = std::fs::read_to_string(format!("/proc/{cur_pid}/status")) {
-                for line in status.lines() {
-                    if let Some(ppid_str) = line.strip_prefix("PPid:")
-                        && let Ok(ppid) = ppid_str.trim().parse::<u32>()
-                    {
-                        next_ppid = ppid;
-                        break;
-                    }
-                }
-            }
-            if next_ppid == 0 || next_ppid == cur_pid {
-                break;
-            }
-            cur_pid = next_ppid;
-        }
+        THUMBNAILER_COMMS.contains(&comm)
     }
     #[cfg(not(target_os = "linux"))]
     {
         let _ = pid;
+        false
     }
-    false
 }
 
 impl Filesystem for FuseDriver {
@@ -144,7 +100,16 @@ impl Filesystem for FuseDriver {
     }
 
     fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
-        reply.statfs(1_000_000, 500_000, 500_000, 1_000_000, 500_000, 512, 255, 0);
+        reply.statfs(
+            1_000_000,
+            500_000,
+            500_000,
+            1_000_000,
+            500_000,
+            crate::attr::BLOCK_SIZE as u32,
+            255,
+            0,
+        );
     }
 
     fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
@@ -200,7 +165,12 @@ impl Filesystem for FuseDriver {
 
     fn open(&self, _req: &Request, ino: INodeNo, _flags: OpenFlags, reply: ReplyOpen) {
         trace!(ino = ino.0, "fuser::open");
-        reply.opened(FileHandle(ino.0), FopenFlags::empty());
+        // `FOPEN_KEEP_CACHE` keeps already-hydrated bytes resident across opens. The cache is safe
+        // to keep because a failed fetch now surfaces as `EIO` (see `FuseDriver::read_ranged`)
+        // instead of a short read, so the kernel never stores a bogus end-of-file page.
+        // `FOPEN_DIRECT_IO` is deliberately *not* set: it would disable `mmap`, which several
+        // image viewers rely on.
+        reply.opened(FileHandle(ino.0), FopenFlags::FOPEN_KEEP_CACHE);
     }
 
     fn read(
@@ -216,14 +186,17 @@ impl Filesystem for FuseDriver {
     ) {
         trace!(ino = ino.0, offset, size, "fuser::read");
 
-        if is_file_manager_or_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
+        // Background thumbnailers/indexers get an `EAGAIN` style "try later" answer instead of
+        // triggering a full remote hydration for a preview they will throw away. Ordinary readers
+        // (file managers, image viewers) are never denied: hydration is their only way to work.
+        if is_background_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
             debug!(
                 pid = req.pid(),
                 ino = ino.0,
                 offset,
-                "Declined file manager/thumbnailer read on unhydrated placeholder"
+                "Deferring thumbnailer read on unhydrated placeholder"
             );
-            reply.error(Errno::ENODATA);
+            reply.error(Errno::EAGAIN);
             return;
         }
         let result = if let Some(rt) = self.runtime_handle() {
@@ -309,7 +282,13 @@ pub fn mount_virtual_fs_with_options(
 
     let mut config = Config::default();
     config.mount_options = options;
-    config.n_threads = Some(2);
+    // Two threads meant a single large hydration blocked every concurrent lookup/readdir, so the
+    // mount looked hung while one image downloaded. Scale with the machine, within sane bounds.
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(4, 16);
+    config.n_threads = Some(threads);
 
     debug!(mountpoint = %mp.display(), "Mounting virtual filesystem with FUSE");
     fuser::spawn_mount(driver, mp, &config)
@@ -324,6 +303,10 @@ pub fn mount_virtual_fs(
         MountOption::FSName("Nextcloud".to_string()),
         MountOption::Subtype("nextcloud".to_string()),
         MountOption::RO,
+        // Clean up the mount when the desktop process dies instead of leaving a dead FUSE entry
+        // behind (a stale mountpoint answers every read with `ENOTCONN`).
+        MountOption::AutoUnmount,
+        MountOption::NoAtime,
     ];
     mount_virtual_fs_with_options(driver, mountpoint, options)
 }

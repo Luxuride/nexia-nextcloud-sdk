@@ -3,7 +3,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
-use nexia_nextcloud_sdk_vfs::{HydrationState, VirtualNode, VirtualTree};
+use nexia_nextcloud_sdk_vfs::{HydratedContent, HydrationState, VirtualNode, VirtualTree};
 
 use crate::attr::{FileAttr, FileType};
 use crate::entry::DirEntry;
@@ -12,10 +12,20 @@ use crate::inode::{FUSE_ROOT_INODE, InodeTable};
 
 /// Standard POSIX error constant: No such file or directory.
 pub const ENOENT: i32 = 2;
+/// Standard POSIX error constant: Input/output error.
+pub const EIO: i32 = 5;
 /// Standard POSIX error constant: Invalid argument.
 pub const EINVAL: i32 = 22;
 /// Standard POSIX error constant: Not a directory.
 pub const ENOTDIR: i32 = 20;
+/// Standard POSIX error constant: Illegal seek (read beyond end of file).
+pub const ESPIPE: i32 = 29;
+
+/// Page size used when hydrating partial byte ranges from a remote file.
+pub const HYDRATION_BLOCK_SIZE: u64 = 128 * 1024;
+
+/// Buffered `(block_start, bytes)` windows per virtual path, for files whose full hydration failed.
+type PartialBlocks = std::collections::HashMap<String, Vec<(u64, Vec<u8>)>>;
 
 /// Core filesystem driver bridging a [`VirtualTree`] and [`InodeTable`] to FUSE operations.
 pub struct FuseDriver {
@@ -24,6 +34,11 @@ pub struct FuseDriver {
     hydrator: Arc<dyn AsyncHydrator>,
     runtime: Option<tokio::runtime::Handle>,
     root_prefix: String,
+    /// Byte windows fetched so far for files whose full hydration failed.
+    ///
+    /// Entries are dropped as soon as the node becomes fully hydrated again. The buffer keeps
+    /// the most recent windows per path so repeated paging over one file does not re-download.
+    partial_blocks: Arc<RwLock<PartialBlocks>>,
 }
 
 impl FuseDriver {
@@ -77,6 +92,7 @@ impl FuseDriver {
             hydrator,
             runtime: tokio::runtime::Handle::try_current().ok(),
             root_prefix: normalized_root,
+            partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
         }
     }
 
@@ -319,7 +335,11 @@ impl FuseDriver {
 
     /// Reads bytes from regular file `ino` at `offset` up to `size` bytes.
     ///
-    /// If the file is an unhydrated placeholder, transparently triggers the hydrator.
+    /// Placeholders are transparently hydrated: a *full* hydration is attempted first so the
+    /// whole file becomes readable, and the read then falls back to a ranged hydration when the
+    /// full fetch fails. A node that is already hydrated through a local cache path
+    /// ([`HydratedContent::Path`]) is read straight from that file — it is never answered with a
+    /// silent short read.
     pub async fn read(&self, ino: u64, offset: i64, size: u32) -> Result<Vec<u8>, i32> {
         let mount_path = {
             let inodes = self.inodes.read().map_err(|_| EINVAL)?;
@@ -328,32 +348,217 @@ impl FuseDriver {
         let vfs_path = self.to_vfs_path(&mount_path);
         tracing::trace!(ino, mount_path = %mount_path, vfs_path = %vfs_path, offset, size, "FUSE read request");
 
-        // Check if placeholder
-        let is_placeholder = {
+        let (is_placeholder, file_size) = {
             let tree = self.tree.read().map_err(|_| EINVAL)?;
             let node = tree.get(&vfs_path).ok_or(ENOENT)?;
-            node.is_placeholder()
+            (node.is_placeholder(), node.size())
         };
 
         if is_placeholder {
             tracing::info!(ino, vfs_path = %vfs_path, "FUSE triggering on-demand file hydration");
-            let bytes = self.hydrator.hydrate(&vfs_path).await.map_err(|_| ENOENT)?;
-            let mut tree = self.tree.write().map_err(|_| EINVAL)?;
-            tree.hydrate(&vfs_path, bytes).map_err(|_| EINVAL)?;
+            match self.hydrator.hydrate(&vfs_path).await {
+                Ok(bytes) => {
+                    let mut tree = self.tree.write().map_err(|_| EINVAL)?;
+                    tree.hydrate(&vfs_path, bytes).map_err(|_| EINVAL)?;
+                    self.clear_partial_ranges(&vfs_path);
+                }
+                Err(err) => {
+                    tracing::warn!(vfs_path = %vfs_path, error = %err, "full hydration failed, falling back to ranged read");
+                    return self.read_ranged(&vfs_path, file_size, offset, size).await;
+                }
+            }
         }
 
-        let tree = self.tree.read().map_err(|_| EINVAL)?;
-        let node = tree.get(&vfs_path).ok_or(ENOENT)?;
+        // Fast path: fully hydrated in memory.
+        let cached_path = {
+            let tree = self.tree.read().map_err(|_| EINVAL)?;
+            let node = tree.get(&vfs_path).ok_or(ENOENT)?;
+            match node.hydration() {
+                HydrationState::Hydrated(HydratedContent::Bytes(bytes)) => {
+                    let bytes = bytes.clone();
+                    drop(tree);
+                    return Ok(Self::slice_from_memory(&bytes, offset, size));
+                }
+                HydrationState::Hydrated(HydratedContent::Path(path)) => Some(path.clone()),
+                HydrationState::Placeholder => None,
+            }
+        };
 
-        if let HydrationState::Hydrated(content) = node.hydration()
-            && let Some(bytes) = content.as_bytes()
-        {
-            let off = (offset as usize).min(bytes.len());
-            let end = (off + size as usize).min(bytes.len());
-            return Ok(bytes[off..end].to_vec());
+        // Hydrated through a local cache file: serve the range from disk.
+        if let Some(path) = cached_path {
+            return Self::read_local_range(&path, offset, size).await;
         }
 
-        Ok(Vec::new())
+        // Partially hydrated (or hydration state vanished under us): merge ranges.
+        self.read_ranged(&vfs_path, file_size, offset, size).await
+    }
+
+    /// Slices a memory buffer, clamping the requested range to the buffer bounds.
+    fn slice_from_memory(bytes: &[u8], offset: i64, size: u32) -> Vec<u8> {
+        let off = (offset.max(0) as usize).min(bytes.len());
+        let end = off.saturating_add(size as usize).min(bytes.len());
+        bytes[off..end].to_vec()
+    }
+
+    /// Serves a read range from a hydrated local cache file.
+    async fn read_local_range(
+        path: &std::path::Path,
+        offset: i64,
+        size: u32,
+    ) -> Result<Vec<u8>, i32> {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+        if offset < 0 {
+            return Err(EINVAL);
+        }
+        let mut file = tokio::fs::File::open(path).await.map_err(|err| {
+            tracing::error!(path = %path.display(), error = %err, "failed to open hydrated cache file");
+            EIO
+        })?;
+        let len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+        let start = (offset as u64).min(len);
+        if start >= len {
+            return Ok(Vec::new());
+        }
+        let want = (size as u64).min(len - start);
+        file.seek(std::io::SeekFrom::Start(start))
+            .await
+            .map_err(|_| EIO)?;
+        let mut buf = vec![0u8; want as usize];
+        file.read_exact(&mut buf).await.map_err(|err| {
+            tracing::error!(path = %path.display(), error = %err, "failed to read hydrated cache file");
+            EIO
+        })?;
+        Ok(buf)
+    }
+
+    /// Fetches (or serves from) a byte range of a not-fully-hydrated file.
+    async fn read_ranged(
+        &self,
+        vfs_path: &str,
+        file_size: u64,
+        offset: i64,
+        size: u32,
+    ) -> Result<Vec<u8>, i32> {
+        if offset < 0 {
+            return Err(EINVAL);
+        }
+        let start = offset as u64;
+        if file_size > 0 && start >= file_size {
+            return Ok(Vec::new());
+        }
+
+        let known = match &file_size {
+            0 => size as u64,
+            total => (*total).saturating_sub(start).min(size as u64),
+        };
+        let mut out = vec![0u8; known as usize];
+        let mut filled = 0usize;
+
+        while filled < out.len() {
+            let cursor = start + filled as u64;
+
+            // Serve from an earlier fetched block when it already covers this position.
+            if let Some((chunk_start, chunk)) = self.take_cached_block(vfs_path, cursor) {
+                let skip = (cursor - chunk_start) as usize;
+                let n = (chunk.len() - skip).min(out.len() - filled);
+                out[filled..filled + n].copy_from_slice(&chunk[skip..skip + n]);
+                filled += n;
+                continue;
+            }
+
+            let block_start = (cursor / HYDRATION_BLOCK_SIZE) * HYDRATION_BLOCK_SIZE;
+            let mut block_len = 2 * HYDRATION_BLOCK_SIZE;
+            if file_size > 0 {
+                let remaining = file_size.saturating_sub(block_start);
+                if remaining == 0 {
+                    break;
+                }
+                block_len = block_len.min(remaining).max(1);
+            }
+
+            let Some(bytes) = self
+                .fetch_range(vfs_path, block_start, block_len as u32)
+                .await?
+            else {
+                // Nothing was fetched. Answering with a short/empty read here would look like
+                // end-of-file and get cached as such by the kernel, so a transient network error
+                // would permanently truncate the file. Fail the request instead; the reader
+                // retries and hydration has another chance to succeed.
+                return Err(EIO);
+            };
+            if bytes.is_empty() {
+                return Err(EIO);
+            }
+
+            let short = (bytes.len() as u64) < block_len;
+            self.store_block(vfs_path, block_start, bytes.clone());
+
+            let skip = (cursor - block_start) as usize;
+            if skip < bytes.len() {
+                let n = (bytes.len() - skip).min(out.len() - filled);
+                out[filled..filled + n].copy_from_slice(&bytes[skip..skip + n]);
+                filled += n;
+            }
+
+            // A short block read means we reached the end of the remote file.
+            if short {
+                break;
+            }
+        }
+
+        out.truncate(filled);
+        Ok(out)
+    }
+
+    /// Calls the hydrator for `len` bytes at `start`, returning `None` when it fails.
+    async fn fetch_range(
+        &self,
+        vfs_path: &str,
+        start: u64,
+        len: u32,
+    ) -> Result<Option<Vec<u8>>, i32> {
+        match self.hydrator.hydrate_range(vfs_path, start, len).await {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(err) => {
+                tracing::warn!(vfs_path, start, len, error = %err, "ranged hydration failed");
+                Ok(None)
+            }
+        }
+    }
+
+    /// Returns the buffered block that already covers `cursor`, as `(block_start, bytes)`.
+    fn take_cached_block(&self, vfs_path: &str, cursor: u64) -> Option<(u64, Vec<u8>)> {
+        let blocks = self.partial_blocks.read().ok()?;
+        let entries = blocks.get(vfs_path)?;
+        entries
+            .iter()
+            .find(|(start, bytes)| cursor >= *start && cursor < *start + bytes.len() as u64)
+            .map(|(start, bytes)| (*start, bytes.clone()))
+    }
+
+    /// Buffers a fetched block so subsequent reads of the same window stay local.
+    fn store_block(&self, vfs_path: &str, start: u64, bytes: Vec<u8>) {
+        if bytes.is_empty() {
+            return;
+        }
+        let Ok(mut blocks) = self.partial_blocks.write() else {
+            return;
+        };
+        let entry = blocks.entry(vfs_path.to_string()).or_default();
+        entry.push((start, bytes));
+        // Keep the per-file block cache bounded (most recent 16 blocks win).
+        if entry.len() > 16 {
+            entry.sort_by_key(|(s, _)| *s);
+            entry.drain(..entry.len() - 16);
+        }
+    }
+
+    /// Drops all buffered partial blocks for `vfs_path` (called once it is fully hydrated).
+    fn clear_partial_ranges(&self, vfs_path: &str) {
+        if let Ok(mut blocks) = self.partial_blocks.write() {
+            blocks.remove(vfs_path);
+        }
     }
 
     /// Retrieves extended attributes such as thumbnails (`user.thumb.{width}x{height}`).

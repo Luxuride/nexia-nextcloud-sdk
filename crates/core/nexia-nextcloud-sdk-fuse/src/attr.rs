@@ -2,6 +2,13 @@
 
 use std::time::SystemTime;
 
+/// Preferred I/O block size reported to the kernel.
+///
+/// This is what clients use to size their read requests. Reporting 512 made viewers issue
+/// 512-byte reads, which forced one remote fetch per block; 128 KiB matches the hydration block
+/// size and keeps large files paging in a handful of round trips.
+pub const BLOCK_SIZE: u64 = 128 * 1024;
+
 /// Node type classification for FUSE filesystem entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileType {
@@ -18,7 +25,7 @@ pub struct FileAttr {
     pub ino: u64,
     /// Total size in bytes.
     pub size: u64,
-    /// Number of 512-byte blocks allocated.
+    /// Number of 512-byte blocks allocated (the POSIX `st_blocks` unit is fixed).
     pub blocks: u64,
     /// Time of last access.
     pub atime: SystemTime,
@@ -52,6 +59,7 @@ impl FileAttr {
             FileType::RegularFile => (0o644, 1),
         };
         let blocks = size.div_ceil(512);
+        debug_assert!(BLOCK_SIZE.is_multiple_of(512));
 
         Self {
             ino,
