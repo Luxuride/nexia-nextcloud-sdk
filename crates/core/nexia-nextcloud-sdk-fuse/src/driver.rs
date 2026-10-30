@@ -45,6 +45,46 @@ pub const RANGED_WINDOW_SIZE: u64 = 4 * HYDRATION_BLOCK_SIZE;
 /// [`read_ranged`](FuseDriver::read_ranged) instead.
 pub const FULL_HYDRATION_MAX_SIZE: u64 = RANGED_WINDOW_SIZE;
 
+/// Largest single range request issued to satisfy one read.
+///
+/// The cost of a range request is dominated by its round trip, not its size: measured against a
+/// real server each hop takes ~0.5 s whether it carries 256 KiB or several MiB. Since a caller that
+/// asks for 9 MiB has already accepted 9 MiB of latency and memory, fetching it as one request is
+/// strictly better than fetching it as 18 windows one after another — the same bytes, one round
+/// trip instead of eighteen. This cap exists only to keep a single request from growing without
+/// bound if a caller ever asks for an enormous read; it is far above the largest read a real image
+/// loader issues (9.2 MiB observed), so in practice a read is served by one request.
+pub const MAX_RANGE_REQUEST_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Merges the windows covering `len` bytes at `start` into contiguous fetch spans.
+///
+/// Returns `(offset, length)` pairs aligned so the first span starts on the window containing
+/// `start`, which keeps the cached-block layout stable for later partial reads. Adjacent windows
+/// are deliberately *not* kept separate: fetching them individually is what made a single large
+/// read take one round trip per window.
+fn plan_fetch_spans(start: u64, len: u64, file_size: u64) -> Vec<(u64, u64)> {
+    let mut spans = Vec::new();
+    if len == 0 {
+        return spans;
+    }
+    let want_end = start.saturating_add(len);
+    let mut cursor = (start / RANGED_WINDOW_SIZE) * RANGED_WINDOW_SIZE;
+    // Round the end *up* to a window boundary. Ending exactly at the requested byte would turn a
+    // sequential reader (a 16 KiB read repeated across a file) into one round trip per read; the
+    // whole point of window-aligned prefetch is that the rest of the window is already buffered
+    // when the next read arrives.
+    let rounded_end = want_end
+        .div_ceil(RANGED_WINDOW_SIZE)
+        .saturating_mul(RANGED_WINDOW_SIZE);
+    let end = rounded_end.min(if file_size > 0 { file_size } else { rounded_end });
+    while cursor < end {
+        let span_len = (end - cursor).min(MAX_RANGE_REQUEST_SIZE);
+        spans.push((cursor, span_len));
+        cursor += span_len;
+    }
+    spans
+}
+
 /// Upper bound on the number of FUSE threads that may sit blocked on a remote fetch at once.
 ///
 /// Every read of an unhydrated placeholder occupies its FUSE thread for the whole round trip,
@@ -139,8 +179,6 @@ pub struct FuseDriver {
     partial_blocks: Arc<RwLock<PartialBlocks>>,
     /// Bounds how many threads may wait on a remote fetch, protecting metadata requests.
     download_gate: Arc<DownloadGate>,
-    /// Remembers which processes asked for a preview, so their speculative reads are declined.
-    preview_intent: crate::fs::PreviewIntentTracker,
 }
 
 impl FuseDriver {
@@ -196,22 +234,7 @@ impl FuseDriver {
             root_prefix: normalized_root,
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
-            preview_intent: crate::fs::PreviewIntentTracker::default(),
         }
-    }
-
-    /// Records that `pid` queried preview attributes on an unhydrated file.
-    ///
-    /// Called from the xattr handlers, which is the only place a file manager announces that it is
-    /// building previews rather than opening the file: it checks `user.thumb.*` for every entry
-    /// before deciding whether to read bytes.
-    pub fn note_preview_request(&self, pid: u32) {
-        self.preview_intent.note_preview_request(pid);
-    }
-
-    /// Whether `pid` is currently considered to be doing a preview pass.
-    pub fn is_previewing(&self, pid: u32) -> bool {
-        self.preview_intent.is_previewing(pid)
     }
 
     /// The gate bounding simultaneous remote fetches.
@@ -609,6 +632,12 @@ impl FuseDriver {
         let mut out = vec![0u8; known as usize];
         let mut filled = 0usize;
 
+        // Serve whatever is already buffered, then fetch the rest as few contiguous spans.
+        //
+        // The loop deliberately merges adjacent windows into one request. Walking window by window
+        // and awaiting each fetch put one round trip per window in series on a single FUSE thread:
+        // a live session issued reads of 8.8-9.2 MiB, i.e. 18 windows at ~0.5 s per hop, which is
+        // what a file manager experiences as a freeze even though the network is fine.
         while filled < out.len() {
             let cursor = start + filled as u64;
 
@@ -621,20 +650,16 @@ impl FuseDriver {
                 continue;
             }
 
-            let block_start = (cursor / RANGED_WINDOW_SIZE) * RANGED_WINDOW_SIZE;
-            let mut block_len = RANGED_WINDOW_SIZE;
-            if file_size > 0 {
-                let remaining = file_size.saturating_sub(block_start);
-                if remaining == 0 {
-                    break;
-                }
-                block_len = block_len.min(remaining).max(1);
-            }
+            let remaining = out.len() - filled;
+            let spans = plan_fetch_spans(cursor, remaining as u64, file_size);
+            let Some(&(span_start, span_len)) = spans.first() else {
+                break;
+            };
 
             // Wait for a download slot before touching the network, so a burst of reads cannot
             // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
             let Some(bytes) = self
-                .fetch_range(vfs_path, block_start, block_len as u32)
+                .fetch_range(vfs_path, span_start, span_len as u32)
                 .await?
             else {
                 // Nothing was fetched. Answering with a short/empty read here would look like
@@ -647,17 +672,17 @@ impl FuseDriver {
                 return Err(EIO);
             }
 
-            let short = (bytes.len() as u64) < block_len;
-            self.store_block(vfs_path, block_start, bytes.clone());
+            let short = (bytes.len() as u64) < span_len;
+            self.store_block(vfs_path, span_start, bytes.clone());
 
-            let skip = (cursor - block_start) as usize;
+            let skip = (cursor - span_start) as usize;
             if skip < bytes.len() {
                 let n = (bytes.len() - skip).min(out.len() - filled);
                 out[filled..filled + n].copy_from_slice(&bytes[skip..skip + n]);
                 filled += n;
             }
 
-            // A short block read means we reached the end of the remote file.
+            // A short span means we reached the end of the remote file.
             if short {
                 break;
             }
@@ -1297,6 +1322,71 @@ mod tests {
         starts.sort_unstable();
         starts.dedup();
         assert_eq!(starts.len(), calls.len(), "two fetches covered one window");
+    }
+
+    /// A single large read must cost one round trip, not one per window.
+    ///
+    /// This is the freeze that a live session exhibited: an image loader asked for 8.8-9.2 MiB in
+    /// one `read`, which is 18 windows of [`RANGED_WINDOW_SIZE`]. Fetching window by window put 18
+    /// round trips in series on one FUSE thread, and at ~0.5 s per hop that is nine seconds of
+    /// apparently-hung file manager for a read the caller had already committed to. Merging the
+    /// windows into contiguous spans makes it a single request.
+    #[tokio::test]
+    async fn one_large_read_issues_a_single_range_request() {
+        let size = 18 * RANGED_WINDOW_SIZE;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/huge.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "huge.jpg").unwrap();
+
+        let got = driver.read(attr.ino, 0, size as u32).await.unwrap();
+        assert_eq!(got, payload, "the merged read returned the wrong bytes");
+
+        let calls = range_calls.read().unwrap().clone();
+        assert_eq!(
+            calls.len(),
+            1,
+            "one {size}-byte read was split into {} round trips: {calls:?}",
+            calls.len()
+        );
+    }
+
+    /// A read in the middle of a file must not be rounded up past the end of the file.
+    ///
+    /// Span ends are rounded up to a window boundary so sequential readers find the rest of the
+    /// window already buffered, but that rounding must never make a request extend beyond the
+    /// remote file: some servers answer a request for bytes past the end with `416` instead of a
+    /// short body.
+    #[tokio::test]
+    async fn trailing_span_is_clamped_to_the_file_size() {
+        let size = 2 * RANGED_WINDOW_SIZE + 4096;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+        let hydrator = Arc::new(RangeHydrator::new(payload.clone(), false));
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/tail.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "tail.jpg").unwrap();
+
+        let start = size - 4096;
+        let got = driver.read(attr.ino, start as i64, 4096).await.unwrap();
+        assert_eq!(got, payload[start as usize..]);
+
+        for (offset, len) in range_calls.read().unwrap().iter().copied() {
+            assert!(
+                offset + u64::from(len) <= size,
+                "range request {offset}+{len} reads past the {size}-byte file"
+            );
+        }
     }
 
     /// The download gate must serialise down to its limit and never deadlock or leak slots.
