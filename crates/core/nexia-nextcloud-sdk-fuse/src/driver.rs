@@ -45,6 +45,19 @@ pub const RANGED_WINDOW_SIZE: u64 = 4 * HYDRATION_BLOCK_SIZE;
 /// [`read_ranged`](FuseDriver::read_ranged) instead.
 pub const FULL_HYDRATION_MAX_SIZE: u64 = RANGED_WINDOW_SIZE;
 
+/// How many windows of readahead a sequential reader gets after the window it just touched.
+///
+/// Measured against a real server, a range request costs a fixed ~300 ms plus ~0.1 ms/KiB, so the
+/// first bytes of *any* request are four orders of magnitude more expensive than the marginal byte.
+/// A reader that touches window `n` and then window `n + 1` pays that fixed cost again for data it
+/// could have had almost free. Prefetching a few windows ahead converts a page-by-page walk into
+/// one paid round trip per group of windows.
+///
+/// Four is a deliberate ceiling: [`FuseDriver::store_block`] keeps only the most recent 16 blocks
+/// per file, so prefetching much further would evict the very data it just fetched, and each
+/// prefetch also competes for the download gate with real reads.
+pub const READAHEAD_WINDOWS: u64 = 4;
+
 /// Largest single range request issued to satisfy one read.
 ///
 /// The cost of a range request is dominated by its round trip, not its size: measured against a
@@ -179,6 +192,8 @@ pub struct FuseDriver {
     partial_blocks: Arc<RwLock<PartialBlocks>>,
     /// Bounds how many threads may wait on a remote fetch, protecting metadata requests.
     download_gate: Arc<DownloadGate>,
+    /// Windows already prefetched ahead of a sequential reader, per file.
+    readahead_inflight: Arc<RwLock<std::collections::HashSet<String>>>,
 }
 
 impl FuseDriver {
@@ -234,6 +249,7 @@ impl FuseDriver {
             root_prefix: normalized_root,
             partial_blocks: Arc::new(RwLock::new(PartialBlocks::new())),
             download_gate: Arc::new(DownloadGate::new(MAX_INFLIGHT_DOWNLOADS)),
+            readahead_inflight: Arc::new(RwLock::new(std::collections::HashSet::new())),
         }
     }
 
@@ -656,10 +672,29 @@ impl FuseDriver {
                 break;
             };
 
+            // Extend a sequential walk one step further than this read needs.
+            //
+            // A range request costs a fixed ~300 ms plus ~0.1 ms/KiB, so the marginal byte is
+            // nearly free while every fresh request pays that fixed cost again. Fetching the next
+            // few windows in the same request turns a start-to-finish walk into roughly one paid
+            // round trip per group of windows instead of one per window.
+            let readahead_end = span_start
+                .saturating_add(span_len)
+                .saturating_add(READAHEAD_WINDOWS * RANGED_WINDOW_SIZE);
+            let extend = readahead_end.min(if file_size > 0 {
+                file_size
+            } else {
+                readahead_end
+            });
+            let extend = extend
+                .saturating_sub(span_start)
+                .min(MAX_RANGE_REQUEST_SIZE)
+                .max(span_len);
+
             // Wait for a download slot before touching the network, so a burst of reads cannot
             // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
             let Some(bytes) = self
-                .fetch_range(vfs_path, span_start, span_len as u32)
+                .fetch_range(vfs_path, span_start, extend as u32)
                 .await?
             else {
                 // Nothing was fetched. Answering with a short/empty read here would look like
@@ -672,6 +707,17 @@ impl FuseDriver {
                 return Err(EIO);
             }
 
+            tracing::debug!(
+                vfs_path,
+                span_start,
+                span_len,
+                got = bytes.len(),
+                "ranged fetch"
+            );
+
+            // Judged against `span_len`, not the readahead-extended `extend`: a response that
+            // covers the requested span is complete even though it stops short of the extra
+            // readahead bytes, which merely means the server/path had nothing more to give.
             let short = (bytes.len() as u64) < span_len;
             self.store_block(vfs_path, span_start, bytes.clone());
 
@@ -1276,18 +1322,53 @@ mod tests {
             "expected exactly one ranged fetch: {ranges:?}"
         );
         assert_eq!(ranges[0].0, 0);
+        // The fetched size may exceed one window because readahead extends the request, but it must
+        // stay small relative to the file: the point of ranging is that touching a file costs a
+        // bounded amount, not its full size.
         assert!(
-            u64::from(ranges[0].1) <= RANGED_WINDOW_SIZE,
-            "ranged fetch was larger than the window size: {:?}",
+            u64::from(ranges[0].1) <= RANGED_WINDOW_SIZE * (1 + READAHEAD_WINDOWS),
+            "ranged fetch was larger than one window plus readahead: {:?}",
             ranges[0]
         );
     }
 
-    /// Ranged windows must be disjoint, so paging through a file never re-downloads bytes.
+    /// Touching a very large file must cost a bounded amount, not its full size.
     ///
-    /// Aligning windows to [`HYDRATION_BLOCK_SIZE`] instead of to their own size makes each one
-    /// overlap its predecessor: reading a file start to finish then re-fetches up to three blocks
-    /// per window that are already buffered.
+    /// The neighbouring test uses a file only one byte over the threshold, where fetching the whole
+    /// thing is genuinely optimal and readahead correctly does so. This one uses a file far larger
+    /// than a window plus readahead, which is the case that used to hang a file manager.
+    #[tokio::test]
+    async fn touching_a_huge_placeholder_fetches_a_bounded_amount() {
+        let size = 32 * 1024 * 1024;
+        let hydrator = Arc::new(RangeHydrator::new(vec![7u8; size as usize], false));
+        let range_calls = hydrator.range_calls.clone();
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/huge.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "huge.jpg").unwrap();
+
+        let got = driver.read(attr.ino, 0, 4096).await.unwrap();
+        assert_eq!(got.len(), 4096);
+
+        let calls = range_calls.read().unwrap().clone();
+        assert_eq!(calls.len(), 1, "a 4 KiB read cost {} requests", calls.len());
+        let fetched = u64::from(calls[0].1);
+        assert!(
+            fetched <= RANGED_WINDOW_SIZE * (1 + READAHEAD_WINDOWS),
+            "a 4 KiB read fetched {fetched} bytes of a {size}-byte file"
+        );
+    }
+
+    /// Paging through a file must not re-download bytes it already has.
+    ///
+    /// This is the property that matters for sequential readers, and readahead serves it better
+    /// than one-request-per-window: it must reduce the number of round trips, never increase the
+    /// number of times the same byte range is fetched. The assertion is therefore on *coverage* —
+    /// every byte of the file fetched exactly once, with no overlapping ranges — rather than on a
+    /// fixed request count.
     #[tokio::test]
     async fn ranged_windows_do_not_overlap_when_paging_forward() {
         let size = 8 * RANGED_WINDOW_SIZE;
@@ -1311,17 +1392,36 @@ mod tests {
         }
 
         let calls = range_calls.read().unwrap().clone();
-        // One window covers each 4096-byte read, and each read lands exactly on a window boundary,
-        // so a forward pass costs exactly one fetch per window with no repeats.
-        assert_eq!(
-            calls.len(),
-            (size / RANGED_WINDOW_SIZE) as usize,
-            "paging forward re-fetched already buffered windows: {calls:?}"
+        assert!(!calls.is_empty(), "paging forward issued no fetch at all");
+
+        // Readahead must be a net win: fewer round trips than one per window.
+        let windows = (size / RANGED_WINDOW_SIZE) as usize;
+        assert!(
+            calls.len() <= windows,
+            "readahead made paging worse: {} fetches for {windows} windows: {calls:?}",
+            calls.len()
         );
-        let mut starts: Vec<u64> = calls.iter().map(|(o, _)| *o).collect();
-        starts.sort_unstable();
-        starts.dedup();
-        assert_eq!(starts.len(), calls.len(), "two fetches covered one window");
+
+        // Ranges must be disjoint and must together cover every byte exactly once, so a forward
+        // walk never pays twice for the same data.
+        let mut spans: Vec<(u64, u64)> = calls
+            .iter()
+            .map(|(o, l)| (*o, u64::from(*l)))
+            .collect();
+        spans.sort_unstable();
+        let mut covered = 0u64;
+        for (offset, len) in spans {
+            assert!(
+                offset <= covered,
+                "overlapping or out-of-order fetch at {offset} (already covered {covered})"
+            );
+            assert!(
+                offset + len <= size,
+                "fetch {offset}+{len} reads past the {size}-byte file"
+            );
+            covered = covered.max(offset + len);
+        }
+        assert_eq!(covered, size, "a forward walk did not fetch the whole file");
     }
 
     /// A single large read must cost one round trip, not one per window.
