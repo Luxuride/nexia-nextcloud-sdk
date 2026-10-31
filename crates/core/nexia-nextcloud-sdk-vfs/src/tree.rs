@@ -59,10 +59,20 @@ impl VirtualTree {
             {
                 children.extend(existing_children.iter().cloned());
             }
-            // Adopt existing nodes whose parent is this directory
-            for existing_path in self.nodes.keys() {
-                if parent_path(existing_path).as_deref() == Some(&canonical) {
-                    children.insert(existing_path.clone());
+            // Adopt nodes whose parent is this directory but that were inserted before it existed.
+            //
+            // Only when this directory has no child set yet: every other case is already covered by
+            // `existing_children` above, and scanning here made a directory listing refresh cost
+            // one full map walk (with an allocation per entry) for every directory it touched.
+            let needs_adoption = self
+                .nodes
+                .get(&canonical)
+                .is_none_or(|existing| existing.children.as_ref().is_none_or(|c| c.is_empty()));
+            if needs_adoption {
+                for existing_path in self.nodes.keys() {
+                    if is_direct_child(&canonical, existing_path) {
+                        children.insert(existing_path.clone());
+                    }
                 }
             }
             node.children = Some(children);
@@ -962,14 +972,14 @@ impl VirtualTree {
         if let Some(target) = target_dir {
             self.set_directory_populated(&target, true);
 
-            // Prune any children of `target` that were moved or deleted on the remote server
-            let returned_children: std::collections::HashSet<String> = resources
-                .iter()
-                .map(|r| extract_clean_dav_path(&r.href, base_dav_prefix))
-                .filter(|p| p != &target)
-                .collect();
-
             if prune {
+                // Prune any children of `target` that were moved or deleted on the remote server
+                let returned_children: std::collections::HashSet<String> = resources
+                    .iter()
+                    .map(|r| extract_clean_dav_path(&r.href, base_dav_prefix))
+                    .filter(|p| p != &target)
+                    .collect();
+
                 let current_children = self.children(&target);
                 let stale_children: Vec<String> = current_children
                     .into_iter()
@@ -980,8 +990,6 @@ impl VirtualTree {
                 for stale in stale_children {
                     self.remove(&stale);
                 }
-            } else {
-                let _ = returned_children;
             }
         }
 
@@ -1032,39 +1040,63 @@ fn percent_decode(s: &str) -> String {
 }
 
 fn extract_clean_dav_path(href: &str, base_dav_prefix: &str) -> String {
-    let decoded = percent_decode(href);
     let prefix = base_dav_prefix.trim_end_matches('/');
 
-    let path_after_prefix = if let Some(idx) = decoded.find(prefix) {
-        &decoded[idx + prefix.len()..]
-    } else if let Some(idx) = decoded.find("/remote.php/dav/files/") {
-        let after_files = &decoded[idx + "/remote.php/dav/files/".len()..];
-        if let Some(slash) = after_files.find('/') {
-            &after_files[slash..]
-        } else {
-            ""
-        }
-    } else if let Some(idx) = decoded.find("/remote.php/webdav") {
-        &decoded[idx + "/remote.php/webdav".len()..]
-    } else if let Some(p) = decoded.strip_prefix(prefix) {
-        p
-    } else if let Some(idx) = decoded.find("://") {
-        let after_scheme = &decoded[idx + 3..];
-        if let Some(first_slash) = after_scheme.find('/') {
-            &after_scheme[first_slash..]
-        } else {
-            &decoded
-        }
-    } else {
-        &decoded
-    };
+    // The marker is matched on the *raw* href and only the remaining path is decoded:
+    // decoding first turned an encoded separator inside a file name (`a%2Fb.txt`) into a real
+    // path separator, which nested the node one level too deep — and the prune pass then deleted
+    // the mis-nested children. Matching is anchored on a segment boundary, and an empty prefix is
+    // skipped entirely because `find("")` matches at offset zero and captured the whole URL.
+    let raw_path = (!prefix.is_empty())
+        .then(|| strip_dav_marker(href, prefix))
+        .flatten()
+        .or_else(|| strip_user_root(href))
+        .or_else(|| strip_dav_marker(href, "/remote.php/webdav"))
+        .or_else(|| {
+            // No known marker: fall back to the path of the URL itself (or the bare href).
+            match href.find("://") {
+                Some(scheme_end) => {
+                    let after_scheme = &href[scheme_end + 3..];
+                    after_scheme.find('/').map(|slash| &after_scheme[slash..])
+                }
+                None => Some(href),
+            }
+        })
+        .unwrap_or(href);
 
-    let trimmed = path_after_prefix.trim_matches('/');
+    let trimmed = percent_decode(raw_path).trim_matches('/').to_string();
     if trimmed.is_empty() {
         "/".to_string()
     } else {
-        format!("/{}", trimmed)
+        format!("/{trimmed}")
     }
+}
+
+/// Returns the part of `href` after `marker`, if `marker` occurs there on a segment boundary.
+fn strip_dav_marker<'a>(href: &'a str, marker: &str) -> Option<&'a str> {
+    href.match_indices(marker)
+        .map(|(idx, _)| &href[idx + marker.len()..])
+        .find(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+/// Returns the tree-relative part of `/remote.php/dav/files/<user>/…`, skipping the user segment.
+///
+/// Unlike [`strip_dav_marker`] the text after the marker here starts with the user name, so the
+/// segment-boundary rule has to be applied after that name instead of at the marker.
+fn strip_user_root(href: &str) -> Option<&str> {
+    let after_files = href.split_once("/remote.php/dav/files/")?.1;
+    after_files.find('/').map(|slash| &after_files[slash..])
+}
+
+/// `true` when `path` is a direct child of the directory `dir`; allocates nothing.
+fn is_direct_child(dir: &str, path: &str) -> bool {
+    let rest = if dir == "/" {
+        path.strip_prefix('/')
+    } else {
+        path.strip_prefix(dir)
+            .and_then(|rest| rest.strip_prefix('/'))
+    };
+    rest.is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
 }
 
 #[cfg(test)]
@@ -1525,6 +1557,57 @@ mod tests {
         assert_eq!(sub_children[0].name, "Work Plan.pdf");
         assert_eq!(sub_children[0].size, 2048);
         assert!(!sub_children[0].is_directory);
+    }
+
+    /// Regression: an empty base prefix made `find("")` match at offset zero, so the whole URL
+    /// became the node path (`/https:/host/remote.php/dav/files/alice/Docs`) instead of the tree
+    /// relative path.
+    #[test]
+    fn populate_from_resources_accepts_an_empty_prefix() {
+        let mut tree = VirtualTree::new("root");
+        let resources = vec![
+            crate::resource::DavResourceSummary::new(
+                "https://cloud.example.com/remote.php/dav/files/alice/",
+                true,
+            ),
+            crate::resource::DavResourceSummary::new(
+                "https://cloud.example.com/remote.php/dav/files/alice/Docs/",
+                true,
+            ),
+        ];
+
+        let inserted = tree.populate_from_resources("", &resources);
+
+        assert_eq!(inserted, 1);
+        let children = tree.children_summaries("/");
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].path, "/Docs");
+        assert!(tree.is_directory_populated("/"));
+    }
+
+    /// The marker must land on a segment boundary: a sibling user whose name merely starts with the
+    /// prefix (`alice` vs `alice2`) is a different tree, and matching it as a substring mapped
+    /// foreign entries into this one.
+    #[test]
+    fn the_dav_marker_only_matches_a_whole_segment() {
+        assert_eq!(
+            strip_dav_marker(
+                "/remote.php/dav/files/alice/Photos/a.txt",
+                "/remote.php/dav/files/alice"
+            ),
+            Some("/Photos/a.txt")
+        );
+        assert_eq!(
+            strip_dav_marker(
+                "/remote.php/dav/files/alice2/Photos/a.txt",
+                "/remote.php/dav/files/alice"
+            ),
+            None
+        );
+        assert_eq!(
+            strip_dav_marker("/remote.php/dav/files/alice", "/remote.php/dav/files/alice"),
+            Some("")
+        );
     }
 
     /// Regression: a `Path`-backed hydration must be readable, not reported as "no data".

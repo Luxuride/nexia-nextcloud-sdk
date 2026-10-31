@@ -116,6 +116,19 @@ fn plan_fetch_spans(start: u64, len: u64, file_size: u64) -> Vec<(u64, u64)> {
 /// separately via `ECHILD`, since those reads are speculative by nature.
 pub const MAX_INFLIGHT_DOWNLOADS: usize = 8;
 
+/// Upper bound on buffered fetch spans kept per file for partial reads.
+///
+/// A span can be as large as [`MAX_RANGE_REQUEST_SIZE`], so this cap is also a memory bound per
+/// file: without it a long-lived viewer accumulates one buffer per read until the mount is
+/// restarted.
+const MAX_CACHED_BLOCKS_PER_FILE: usize = 16;
+
+/// Upper bound on files with buffered fetch spans.
+///
+/// Entries are dropped when a file is fully hydrated, but this mount has no `forget`/`unlink`
+/// hook, so a deleted file would otherwise keep its buffers for the lifetime of the mount.
+const MAX_CACHED_FILES: usize = 512;
+
 /// Bounds how many FUSE threads may be blocked on a remote payload fetch simultaneously.
 ///
 /// Deliberately a plain mutex/condvar gate with a blocking acquire: the callers are `fuser`'s
@@ -400,24 +413,37 @@ impl FuseDriver {
         self.runtime.clone()
     }
 
-    pub(crate) fn execute_blocking<F>(rt: &tokio::runtime::Handle, fut: F) -> F::Output
+    /// Runs `fut` to completion from a synchronous FUSE thread.
+    ///
+    /// Returns `Err(EIO)` when the future panicked, so a failing hydration is reported to the
+    /// caller as an I/O error instead of unwinding through the dispatch loop.
+    pub(crate) fn execute_blocking<F>(rt: &tokio::runtime::Handle, fut: F) -> Result<F::Output, i32>
     where
         F: std::future::Future + Send,
         F::Output: Send,
     {
         match tokio::runtime::Handle::try_current() {
             Ok(cur) if cur.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
-                tokio::task::block_in_place(|| rt.block_on(fut))
+                Ok(tokio::task::block_in_place(|| rt.block_on(fut)))
             }
             Ok(_) => {
-                // A hydrator that panics must surface as a failed read, not as a
-                // panic on the FUSE dispatch path.
-                match std::thread::scope(|s| s.spawn(|| rt.block_on(fut)).join()) {
-                    Ok(value) => value,
-                    Err(panic) => std::panic::resume_unwind(panic),
+                // A current-thread runtime cannot be re-entered, so the future runs on a scratch
+                // thread. A panic in a hydrator must surface as a failed request rather than as a
+                // panic on the FUSE dispatch path, which would take the mount down.
+                match std::thread::scope(|scope| scope.spawn(|| rt.block_on(fut)).join()) {
+                    Ok(value) => Ok(value),
+                    Err(panic) => {
+                        let reason = panic
+                            .downcast_ref::<&str>()
+                            .map(|message| (*message).to_string())
+                            .or_else(|| panic.downcast_ref::<String>().cloned())
+                            .unwrap_or_else(|| "non-string panic payload".to_string());
+                        tracing::error!(reason, "blocking future panicked");
+                        Err(EIO)
+                    }
                 }
             }
-            Err(_) => rt.block_on(fut),
+            Err(_) => Ok(rt.block_on(fut)),
         }
     }
 
@@ -437,10 +463,15 @@ impl FuseDriver {
         if needs_hydrate {
             tracing::debug!(vfs_path, "FUSE triggering directory hydration");
             let fut = self.hydrator.hydrate_directory(vfs_path);
-            if let Some(rt) = self.runtime_handle() {
-                let _ = Self::execute_blocking(&rt, fut);
+            let outcome = if let Some(rt) = self.runtime_handle() {
+                Self::execute_blocking(&rt, fut)
             } else if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                let _ = Self::execute_blocking(&rt, fut);
+                Self::execute_blocking(&rt, fut)
+            } else {
+                return;
+            };
+            if let Err(code) = outcome {
+                tracing::warn!(vfs_path, error_code = code, "directory hydration failed");
             }
         }
     }
@@ -680,6 +711,10 @@ impl FuseDriver {
                     if let Ok(mut tree) = self.tree.write() {
                         let _ = tree.dehydrate(&vfs_path);
                     }
+                    // This path bypasses the placeholder branch above, so it has to take the
+                    // download slot itself; `read_ranged` never acquires one (taking a second slot
+                    // while holding one deadlocks the gate).
+                    let _download_slot = self.download_gate.acquire();
                     return self.read_ranged(&vfs_path, file_size, offset, size).await;
                 }
                 Err(err) => return Err(err),
@@ -687,6 +722,7 @@ impl FuseDriver {
         }
 
         // Partially hydrated (or hydration state vanished under us): merge ranges.
+        let _download_slot = self.download_gate.acquire();
         self.read_ranged(&vfs_path, file_size, offset, size).await
     }
 
@@ -762,11 +798,8 @@ impl FuseDriver {
             let cursor = start + filled as u64;
 
             // Serve from an earlier fetched block when it already covers this position.
-            if let Some((chunk_start, chunk)) = self.take_cached_block(vfs_path, cursor) {
-                let skip = (cursor - chunk_start) as usize;
-                let n = (chunk.len() - skip).min(out.len() - filled);
-                out[filled..filled + n].copy_from_slice(&chunk[skip..skip + n]);
-                filled += n;
+            if let Some(copied) = self.copy_cached_block(vfs_path, cursor, &mut out[filled..]) {
+                filled += copied;
                 continue;
             }
 
@@ -801,8 +834,9 @@ impl FuseDriver {
                 .min(MAX_RANGE_REQUEST_SIZE)
                 .max(span_len);
 
-            // Wait for a download slot before touching the network, so a burst of reads cannot
-            // occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
+            // The caller holds a download slot for the whole read (see [`Self::read`]), so a burst
+            // of reads cannot occupy every FUSE thread and starve `getattr`/`readdir`/`lookup`.
+            // This function never acquires one: the gate is not reentrant.
             let Some(bytes) = self.fetch_span(vfs_path, span_start, extend as u32).await else {
                 // Nothing was fetched. Answering with a short/empty read here would look like
                 // end-of-file and get cached as such by the kernel, so a transient network error
@@ -828,14 +862,20 @@ impl FuseDriver {
             self.record_readahead(vfs_path, span_start, span_len, bytes.len() as u64);
 
             let short = (bytes.len() as u64) < span_len;
-            self.store_block(vfs_path, span_start, bytes.clone());
 
             let skip = (cursor - span_start) as usize;
-            if skip < bytes.len() {
-                let n = (bytes.len() - skip).min(out.len() - filled);
-                out[filled..filled + n].copy_from_slice(&bytes[skip..skip + n]);
-                filled += n;
+            if skip >= bytes.len() {
+                // Unreachable while spans are window-aligned, but a loop that stops making
+                // progress must fail the read rather than spin.
+                return Err(EIO);
             }
+            let n = (bytes.len() - skip).min(out.len() - filled);
+            out[filled..filled + n].copy_from_slice(&bytes[skip..skip + n]);
+            filled += n;
+
+            // Buffer the span for the next read only after serving it, and move it in: the span
+            // is usually a megabyte or more, so cloning it would double the cost of every read.
+            self.store_block(vfs_path, span_start, bytes);
 
             // A short span means we reached the end of the remote file.
             if short {
@@ -849,8 +889,10 @@ impl FuseDriver {
 
     /// Fetches one contiguous span, splitting it across a few parallel requests.
     ///
-    /// Returns `None` when any part failed: a partially assembled span would look like a short read
-    /// and therefore like end-of-file, so the caller must answer `EIO` instead.
+    /// Returns `None` when any part failed, and also when a non-final part came back short: a
+    /// partially assembled span looks like a contiguous one to the caller, so a short middle part
+    /// would silently shift every following byte left and then be cached under the span's offset.
+    /// Only the final part may be short, which is how end-of-file inside the span is reported.
     async fn fetch_span(&self, vfs_path: &str, start: u64, len: u32) -> Option<Vec<u8>> {
         if (len as u64) < PARALLEL_SPLIT_MIN {
             return self.fetch_range_shared(vfs_path, start, len).await;
@@ -875,7 +917,13 @@ impl FuseDriver {
                     self.fetch_range_shared(vfs_path, *o0, *l0),
                     self.fetch_range_shared(vfs_path, *o1, *l1)
                 );
-                Some([a?, b?].concat())
+                Some(
+                    [
+                        Self::checked_part(a, *l0, false)?,
+                        Self::checked_part(b, *l1, true)?,
+                    ]
+                    .concat(),
+                )
             }
             [(o0, l0), (o1, l1), (o2, l2)] => {
                 let (a, b, c) = tokio::join!(
@@ -883,7 +931,14 @@ impl FuseDriver {
                     self.fetch_range_shared(vfs_path, *o1, *l1),
                     self.fetch_range_shared(vfs_path, *o2, *l2)
                 );
-                Some([a?, b?, c?].concat())
+                Some(
+                    [
+                        Self::checked_part(a, *l0, false)?,
+                        Self::checked_part(b, *l1, false)?,
+                        Self::checked_part(c, *l2, true)?,
+                    ]
+                    .concat(),
+                )
             }
             [(o0, l0), (o1, l1), (o2, l2), (o3, l3)] => {
                 let (a, b, c, d) = tokio::join!(
@@ -892,7 +947,15 @@ impl FuseDriver {
                     self.fetch_range_shared(vfs_path, *o2, *l2),
                     self.fetch_range_shared(vfs_path, *o3, *l3)
                 );
-                Some([a?, b?, c?, d?].concat())
+                Some(
+                    [
+                        Self::checked_part(a, *l0, false)?,
+                        Self::checked_part(b, *l1, false)?,
+                        Self::checked_part(c, *l2, false)?,
+                        Self::checked_part(d, *l3, true)?,
+                    ]
+                    .concat(),
+                )
             }
             _ => return self.fetch_range_shared(vfs_path, start, len).await,
         };
@@ -904,10 +967,30 @@ impl FuseDriver {
                 start,
                 len,
                 got = bytes.len(),
-                "parallel span fetch returned fewer bytes than requested"
+                "parallel span fetch reached end of file"
             );
         }
         Some(bytes)
+    }
+
+    /// Accepts one part of a split span only when it can be concatenated without shifting bytes.
+    ///
+    /// `final_part` is allowed to come back short, which is how a span that runs past the end of
+    /// the remote file is reported.
+    fn checked_part(part: Option<Vec<u8>>, requested: u32, final_part: bool) -> Option<Vec<u8>> {
+        let bytes = part?;
+        let got = bytes.len() as u64;
+        let requested = u64::from(requested);
+        if got == requested || (final_part && got < requested) {
+            return Some(bytes);
+        }
+        tracing::warn!(
+            requested,
+            got,
+            final_part,
+            "range part does not match its request; failing the span instead of shifting bytes"
+        );
+        None
     }
 
     /// Fetches a range, joining an identical request that is already in flight.
@@ -920,7 +1003,7 @@ impl FuseDriver {
         let key: InflightKey = (vfs_path.to_string(), start, len);
         let (cell, joined) = {
             let Ok(mut flights) = self.inflight_ranges.lock() else {
-                return self.fetch_range(vfs_path, start, len).await.ok().flatten();
+                return self.fetch_range(vfs_path, start, len).await;
             };
             match flights.get(&key) {
                 Some(existing) => (existing.clone(), true),
@@ -933,7 +1016,7 @@ impl FuseDriver {
         };
 
         let value = cell
-            .get_or_init(|| async { self.fetch_range(vfs_path, start, len).await.ok().flatten() })
+            .get_or_init(|| async { self.fetch_range(vfs_path, start, len).await })
             .await
             .clone();
 
@@ -960,17 +1043,12 @@ impl FuseDriver {
     }
 
     /// Calls the hydrator for `len` bytes at `start`, returning `None` when it fails.
-    async fn fetch_range(
-        &self,
-        vfs_path: &str,
-        start: u64,
-        len: u32,
-    ) -> Result<Option<Vec<u8>>, i32> {
+    async fn fetch_range(&self, vfs_path: &str, start: u64, len: u32) -> Option<Vec<u8>> {
         match self.hydrator.hydrate_range(vfs_path, start, len).await {
-            Ok(bytes) => Ok(Some(bytes)),
+            Ok(bytes) => Some(bytes),
             Err(err) => {
                 tracing::warn!(vfs_path, start, len, error = %err, "ranged hydration failed");
-                Ok(None)
+                None
             }
         }
     }
@@ -1011,13 +1089,27 @@ impl FuseDriver {
     }
 
     /// Returns the buffered block that already covers `cursor`, as `(block_start, bytes)`.
-    fn take_cached_block(&self, vfs_path: &str, cursor: u64) -> Option<(u64, Vec<u8>)> {
+    /// Copies the buffered block covering `cursor` into `out`, returning how many bytes it wrote.
+    ///
+    /// Copies out of the guarded buffer instead of cloning it: a buffered block is a whole fetch
+    /// span, so a 4 KiB read served from one must not clone the rest of it.
+    fn copy_cached_block(&self, vfs_path: &str, cursor: u64, out: &mut [u8]) -> Option<usize> {
         let blocks = self.partial_blocks.read().ok()?;
         let entries = blocks.get(vfs_path)?;
-        entries
-            .iter()
-            .find(|(start, bytes)| cursor >= *start && cursor < *start + bytes.len() as u64)
-            .map(|(start, bytes)| (*start, bytes.clone()))
+        // Newest first: the most recent fetch for a position is the one with the freshest bytes.
+        for (start, bytes) in entries.iter().rev() {
+            let Some(skip) = cursor
+                .checked_sub(*start)
+                .filter(|skip| *skip < bytes.len() as u64)
+            else {
+                continue;
+            };
+            let skip = skip as usize;
+            let n = (bytes.len() - skip).min(out.len());
+            out[..n].copy_from_slice(&bytes[skip..skip + n]);
+            return Some(n);
+        }
+        None
     }
 
     /// Buffers a fetched block so subsequent reads of the same window stay local.
@@ -1028,12 +1120,26 @@ impl FuseDriver {
         let Ok(mut blocks) = self.partial_blocks.write() else {
             return;
         };
+        if blocks.len() >= MAX_CACHED_FILES && !blocks.contains_key(vfs_path) {
+            // No `forget`/`unlink` hook reaches this cache, so a file that disappeared would
+            // otherwise keep its buffers for the lifetime of the mount.
+            if let Some(stale) = blocks.keys().next().cloned() {
+                blocks.remove(&stale);
+            }
+        }
         let entry = blocks.entry(vfs_path.to_string()).or_default();
+        // A block that fully covers an older one makes it unreachable for every future read, so
+        // drop it now instead of letting overlapping copies accumulate.
+        let end = start.saturating_add(bytes.len() as u64);
+        entry.retain(|(existing_start, existing)| {
+            let existing_end = existing_start.saturating_add(existing.len() as u64);
+            !(*existing_start >= start && existing_end <= end)
+        });
         entry.push((start, bytes));
-        // Keep the per-file block cache bounded (most recent 16 blocks win).
-        if entry.len() > 16 {
-            entry.sort_by_key(|(s, _)| *s);
-            entry.drain(..entry.len() - 16);
+        // Evict oldest-first. Evicting by offset instead would throw away the readahead that was
+        // just fetched and keep the stale windows at the start of the file.
+        while entry.len() > MAX_CACHED_BLOCKS_PER_FILE {
+            entry.remove(0);
         }
     }
 
@@ -1486,6 +1592,136 @@ mod tests {
         assert_eq!(driver.read(attr.ino, 0, 256).await.unwrap(), payload[..256]);
 
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// Regression: a split span whose middle part comes back short must fail, not shift bytes.
+    ///
+    /// The parts are concatenated in order, so a short middle part moved every following byte to a
+    /// lower offset while still looking like a full-length span — the read returned wrong bytes and
+    /// cached them under the span's offset. A short *final* part is different: that is how a span
+    /// that runs past the end of the remote file is reported.
+    #[test]
+    fn a_short_middle_part_fails_the_span() {
+        let short = Some(vec![0u8; 9]);
+        assert!(FuseDriver::checked_part(short, 10, false).is_none());
+
+        let short = Some(vec![0u8; 9]);
+        assert!(FuseDriver::checked_part(short, 10, true).is_some());
+
+        // A part that returns *more* than it was asked for would also shift the bytes after it.
+        let long = Some(vec![0u8; 11]);
+        assert!(FuseDriver::checked_part(long, 10, true).is_none());
+
+        assert!(FuseDriver::checked_part(None, 10, true).is_none());
+    }
+
+    /// Regression: the block cache must keep the most recently fetched spans.
+    ///
+    /// It sorted by offset and drained from the front, so it kept the windows at the start of the
+    /// file and threw away the readahead that had just been fetched — the opposite of what the
+    /// readahead policy in [`READAHEAD_WINDOWS`] relies on.
+    #[test]
+    fn the_block_cache_keeps_the_newest_spans() {
+        let driver = FuseDriver::new(Arc::new(RwLock::new(VirtualTree::new("root"))));
+
+        for start in 0..20u64 {
+            driver.store_block("/a.bin", start * 10, vec![start as u8; 10]);
+        }
+
+        let blocks = driver.partial_blocks.read().unwrap();
+        let starts: Vec<u64> = blocks["/a.bin"].iter().map(|(start, _)| *start).collect();
+        assert_eq!(starts.len(), MAX_CACHED_BLOCKS_PER_FILE);
+        assert_eq!(
+            starts.first(),
+            Some(&40),
+            "the oldest spans are evicted first"
+        );
+        assert_eq!(starts.last(), Some(&190), "the newest span survives");
+    }
+
+    /// A span that fully covers an older one makes the older one unreachable, so it is dropped.
+    #[test]
+    fn a_covering_span_replaces_the_spans_it_covers() {
+        let driver = FuseDriver::new(Arc::new(RwLock::new(VirtualTree::new("root"))));
+
+        driver.store_block("/a.bin", 0, vec![1u8; 10]);
+        driver.store_block("/a.bin", 10, vec![2u8; 10]);
+        driver.store_block("/a.bin", 0, vec![3u8; 20]);
+
+        let blocks = driver.partial_blocks.read().unwrap();
+        let entries: Vec<(u64, Vec<u8>)> = blocks["/a.bin"].clone();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, 0);
+        assert_eq!(entries[0].1, vec![3u8; 20]);
+
+        // The newest copy is the one served.
+        let mut out = vec![0u8; 4];
+        assert_eq!(driver.copy_cached_block("/a.bin", 12, &mut out), Some(4));
+        assert_eq!(out, vec![3u8; 4]);
+
+        let mut out = vec![0u8; 64];
+        assert_eq!(driver.copy_cached_block("/a.bin", 16, &mut out), Some(4));
+        assert_eq!(driver.copy_cached_block("/a.bin", 20, &mut out), None);
+    }
+
+    /// A desynchronised parallel fetch must surface as `EIO` rather than as wrong bytes.
+    ///
+    /// The hydrator returns one byte less than asked for on the second part of a four-way split,
+    /// which is what a server that clamps a `Range` header does.
+    #[tokio::test]
+    async fn a_desynchronised_parallel_fetch_returns_eio() {
+        // Four windows of payload, and a read wide enough to be split into four parts of one
+        // window each.
+        let size = 8 * RANGED_WINDOW_SIZE;
+        let read_len = (2 * RANGED_WINDOW_SIZE) as u32;
+        let payload: Vec<u8> = (0..=255u8).cycle().take(size as usize).collect();
+
+        struct ShortMiddlePartHydrator {
+            payload: Vec<u8>,
+            short_at: u64,
+        }
+
+        impl AsyncHydrator for ShortMiddlePartHydrator {
+            fn hydrate(
+                &self,
+                path: &str,
+            ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+            {
+                let path = path.to_string();
+                Box::pin(async move { Err(VfsError::NotFound(path)) })
+            }
+
+            fn hydrate_range(
+                &self,
+                _path: &str,
+                offset: u64,
+                len: u32,
+            ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>>
+            {
+                let start = (offset as usize).min(self.payload.len());
+                let mut end = (start + len as usize).min(self.payload.len());
+                if offset == self.short_at {
+                    end = end.saturating_sub(1);
+                }
+                let slice = self.payload[start..end].to_vec();
+                Box::pin(async move { Ok(slice) })
+            }
+        }
+
+        // The second of the four parts a two-window read is split into.
+        let hydrator = Arc::new(ShortMiddlePartHydrator {
+            payload: payload.clone(),
+            short_at: RANGED_WINDOW_SIZE,
+        });
+
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/big.jpg").with_size(size),
+        ));
+        let driver = FuseDriver::with_hydrator(Arc::new(RwLock::new(tree)), hydrator);
+        let attr = driver.lookup(FUSE_ROOT_INODE, "big.jpg").unwrap();
+
+        assert_eq!(driver.read(attr.ino, 0, read_len).await, Err(EIO));
     }
 
     /// Records what `hydrate_range` was asked for and serves from an in-memory buffer.

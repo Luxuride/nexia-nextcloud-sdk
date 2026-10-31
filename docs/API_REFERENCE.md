@@ -60,7 +60,7 @@ machine only decides what to do next.
 | --- | --- | --- | --- | --- | --- |
 | `/remote.php/dav/files/{user}/{path}` | `PROPFIND` | `nexia-nextcloud-dav` | `DavClient::propfind(path, depth, body)` | `&DavPath`, `Depth`, `&PropfindBody` | `Vec<DavResource>` |
 | `/remote.php/dav/files/{user}/{path}` | `GET` | `nexia-nextcloud-dav` | `DavClient::get(path)` | `&DavPath` | `Vec<u8>` |
-| `/remote.php/dav/files/{user}/{path}` | `GET` (+`Range`) | `nexia-nextcloud-dav` | `DavClient::get_range(path, start, end)` | `&DavPath`, `u64`, `u64` | `Vec<u8>` |
+| `/remote.php/dav/files/{user}/{path}` | `GET` (+`Range`) | `nexia-nextcloud-dav` | `DavClient::get_range(path, start, end)` | `&DavPath`, `u64`, inclusive `u64` | `Vec<u8>` — a `200` answer is reduced to the requested window, a `206` whose `Content-Range` starts later is an error |
 | `/remote.php/dav/files/{user}/{path}` | `PUT` | `nexia-nextcloud-dav` | `DavClient::put(path, body, content_type)` | `&DavPath`, `Vec<u8>`, `Option<&str>` | `()` |
 | `/remote.php/dav/files/{user}/{path}` | `MKCOL` | `nexia-nextcloud-dav` | `DavClient::mkcol(path)` | `&DavPath` | `()` |
 | `/remote.php/dav/files/{user}/{path}` | `DELETE` | `nexia-nextcloud-dav` | `DavClient::delete(path)` | `&DavPath` | `()` |
@@ -98,7 +98,7 @@ machine only decides what to do next.
 | --- | --- | --- | --- | --- | --- |
 | `/remote.php/dav/uploads/{user}/{session_id}` | `MKCOL` | `nexia-nextcloud-uploads` | `UploadClient::start(user_id, destination_path, total_size)` / `start_with_id(user_id, destination_path, total_size, upload_id)` | `&str`, `&str`, `u64`, `&str` | `UploadSession` |
 | `/remote.php/dav/uploads/{user}/{session_id}/{chunk}` | `PUT` | `nexia-nextcloud-uploads` | `UploadClient::upload_chunk(&session, chunk_index, chunk_data)` | `&UploadSession`, `u32`, `Vec<u8>` | `()` |
-| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nexia-nextcloud-uploads` | `UploadClient::finish(&session, mtime)` | `&UploadSession`, `Option<u64>` | `()` |
+| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nexia-nextcloud-uploads` | `UploadClient::finish(&session, mtime)` / `finish_verified(&session, chunk_size, mtime)` | `&UploadSession`, `Option<u64>` | `()` — `finish_verified` refuses a session with missing chunks |
 | `/remote.php/dav/uploads/{user}/{session_id}` | `DELETE` | `nexia-nextcloud-uploads` | `UploadClient::abort(&session)` | `&UploadSession` | `()` |
 
 `UploadSession` carries `user_id`, `upload_id`, `destination_path`, `total_size`
@@ -358,7 +358,8 @@ The runtime. Owns an OS thread and its own Tokio runtime.
 ### 3.13 `nexia-nextcloud-dav`
 
 - `DavClient<'a, T, A>` — `propfind`, `get`, `get_range`, `put`, `mkcol`, `delete`,
-  `copy`, `move_`.
+  `copy`, `move_`. Its `Debug` prints a constant, so a credential source held by
+  reference cannot be logged through the client.
 - `DavPath` (`DavPath::new(user, relative)`), `DavProperty`.
 - `DavResource`, `Depth::{Zero, One, Infinity}`, `Overwrite::{Allow, Forbidden}`.
 - `PropfindBody::{ new(properties), all() }` — `new` takes `impl IntoIterator<Item = DavProperty>`; there is no `names`/`prop` constructor.
@@ -391,7 +392,10 @@ The runtime. Owns an OS thread and its own Tokio runtime.
 The reconciliation engine *behind* the orchestrator. Applications normally never
 call it directly.
 
-- `reconcile`, `SyncAction`, `SyncJournal`, `JournalEntry`, `scan_local_directory`.
+- `reconcile`, `reconcile_local_changes` (upload-only planner for a local rescan),
+  `is_ignored_name` (the names a scan skips — mechanical noise only, so dotfiles
+  are scanned like any other file), `SyncAction`, `SyncJournal`, `JournalEntry`,
+  `scan_local_directory`.
 - `DiscoveredLocalFile`, `DiscoveredRemoteFile`, `SyncError`.
 - `SyncDownloadQueue` + `DownloadTask` / `DownloadTaskId` / `DownloadPriority` /
   `DownloadStatus` / `DownloadQueueEvent` / `DownloadQueueSnapshot`,

@@ -205,9 +205,11 @@ filesystem, because the path originates in a server listing.
 `MountsHandle::sync_mount(id)` is **local-only today**: the worker branch for
 `OrchestratorCommand::SyncMount` (`worker.rs:376-437`) constructs a
 `FolderSyncRunner` and calls `run_local_reconciliation()`
-(`crates/core/nextcloud-sdk-orchestrator/src/sync/runner.rs:114`), which reconciles
-the local directory against the journal with an *empty* remote set
-(`runner.rs:140`, `reconcile(&local_entries, &[], &journal)`). No PROPFIND, no
+(`crates/core/nexia-nextcloud-sdk-orchestrator/src/sync/runner.rs:114`), which
+reconciles the local directory against the journal with
+`nexia_nextcloud_sync::reconcile_local_changes` — an upload-only planner that
+emits `Upload`/`CreateRemoteDirectory`/`InSync` and never a deletion, so a rescan
+cannot remove a remote file it merely failed to see locally. No PROPFIND, no
 download, no upload happens on that path, and the returned
 `SyncCycleCompleted { items_processed }` counts planned local actions. A caller
 that wants a real two-way cycle drives `FolderSyncRunner::execute_sync_cycle`

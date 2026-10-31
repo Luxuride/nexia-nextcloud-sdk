@@ -9,7 +9,19 @@ Security and data confidentiality are foundational tenets of the `nexia-nextclou
 The SDK separates mutable state into three distinct local SQLite databases, each
 encrypted with [SQLCipher](https://www.zetetic.net/sqlcipher/) (AES-256) and each
 opened through `EncryptedDatabase::open_credential_store(path, &key)`, which runs
-`PRAGMA key` followed by a fail-fast `SELECT count(*) FROM sqlite_master`:
+`PRAGMA key` and `PRAGMA temp_store = MEMORY`, followed by a fail-fast
+`SELECT count(*) FROM sqlite_master`.
+
+`PRAGMA temp_store = MEMORY` matters because SQLite otherwise spills sorts and
+temporary tables into an unencrypted file in the temp directory, and a sort over
+`dav_entry` or a `SELECT … ORDER BY` on the credential tables would write
+plaintext rows there.
+
+A directory the SDK creates for a database is created `0700` and the database
+file is set `0600` (best effort: a filesystem without mode bits is reported as a
+warning, not as an open failure). The ciphertext is only as private as the file
+holding it — a world-readable `auth.db` can be copied and attacked offline
+instead of having to be read through the SDK.
 
 | Store | Contents |
 | --- | --- |

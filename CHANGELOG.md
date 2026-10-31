@@ -9,6 +9,13 @@ All notable changes to the Nextcloud Rust SDK workspace.
 - `nexia-nextcloud-core::url::{percent_encode, percent_encode_path}` — the single
   RFC 3986 encoder for the workspace. Query values, form values and path segments
   previously had three separate implementations that had already drifted.
+- `UploadClient::finish_verified`, which refuses to assemble a session whose
+  expected chunks are missing. `finish` cannot check this on its own because
+  `UploadSession` does not record the chunk size.
+- `UploadSession::is_supported_chunk_size` for the range the server accepts.
+- `nexia-nextcloud-sync`: `reconcile_local_changes`, an upload-only planner for a
+  local rescan, plus `is_ignored_name` as the single definition of the names a
+  scan skips.
 - `UrlError::InvalidPort` for a port outside `u16`. A malformed port used to be
   reported as `MissingHost`.
 
@@ -56,6 +63,44 @@ All notable changes to the Nextcloud Rust SDK workspace.
   stored `Thumb::MTime` with the file, so a changed file gets a fresh thumbnail,
   and a payload that cannot be decoded is no longer installed under a `.png`
   name.
+- `nexia-nextcloud-dav`: `get_range` reduces a `200` answer to the requested
+  window instead of returning the first bytes of the file as if they were the
+  range, rejects an inverted range, and reconciles a `206` whose `Content-Range`
+  starts later than requested.
+- `nexia-nextcloud-dav`: a propstat status line without a reason phrase
+  (`HTTP/1.1 200`) is accepted; matching on `" 200 "` dropped every property of
+  such a response. A file whose name contains `collection` is no longer reported
+  as a directory.
+- `nexia-nextcloud-dav`/`nexia-nextcloud-uploads`: the clients print a constant
+  `Debug`, so a credential source held by reference cannot be logged through the
+  client.
+- `nexia-nextcloud-uploads`: chunk boundaries saturate instead of overflowing,
+  `chunk_boundaries` no longer reserves one entry per byte of the file for a tiny
+  chunk size, and a chunk index is bounded by the five-digit file name.
+- `nexia-nextcloud-versions`: a segment containing `%` is rejected, because the
+  server decodes escapes and `%2F` would address a different resource.
+- `nexia-nextcloud-search`: `provider_id` is percent-encoded before it is
+  interpolated into the path.
+- `nexia-nextcloud-sync`: a rescan plans uploads from the local side instead of
+  reusing the full three-way plan, which scheduled a `DeleteLocal` for every
+  journaled path. Mechanical noise (`~$…`, `.part`, `.crdownload`, `.DS_Store`) is
+  skipped and no longer looks like a deletion, while dotfiles are scanned again.
+- `nexia-nextcloud-sdk-fuse`: a parallel range fetch fails the span when a part
+  does not have the requested length, instead of concatenating shifted bytes into
+  the cache; the block cache is bounded per file and per mount, keeps the newest
+  spans, and serves a read without cloning the span.
+- `nexia-nextcloud-sdk-fuse`: a panic in the hydration block no longer panics the
+  mount; the read fails with `EIO`.
+- `nexia-nextcloud-sdk-vfs`: `extract_clean_dav_path` matches the DAV marker on
+  the raw href and only decodes the extracted path, so a `%2F` in a name is no
+  longer a separator and an empty prefix no longer turns the whole URL into a
+  path.
+- `nexia-nextcloud-sdk-storage`: the database directory is created `0700` and the
+  file `0600`, and `PRAGMA temp_store = MEMORY` keeps sorts over cached rows from
+  spilling plaintext into an unencrypted temp file.
+- `nexia-nextcloud-kaccounts`: the accounts database is looked up in
+  `libaccounts-glib` under the config directory first, where the daemon actually
+  writes it.
 
 ### Changed
 

@@ -337,3 +337,29 @@ fn client_accessors_and_display() {
     );
     assert_eq!(client.to_string(), "UploadClient");
 }
+
+#[test]
+fn an_incomplete_session_is_not_assembled() {
+    use crate::session::UploadSession;
+
+    let transport = FakeTransport::new(201, Vec::new());
+    let auth = FakeAuth;
+    let client = UploadClient::new(&transport, &auth);
+    let session = UploadSession::new("alice", "up-1", "/dest.txt", 2048);
+    session.mark_chunk_uploaded(1);
+
+    let error = block_on(client.finish_verified(&session, 1024, None)).expect_err("must refuse");
+    assert!(error.to_string().contains("1 of 2 chunks"), "{error}");
+    assert!(
+        transport
+            .seen
+            .lock()
+            .expect("test mutex not poisoned")
+            .is_empty(),
+        "no assembly request may be sent for an incomplete session"
+    );
+
+    session.mark_chunk_uploaded(2);
+    block_on(client.finish_verified(&session, 1024, None)).expect("a complete session assembles");
+    assert_eq!(transport.last_request().method(), HttpMethod::Move);
+}

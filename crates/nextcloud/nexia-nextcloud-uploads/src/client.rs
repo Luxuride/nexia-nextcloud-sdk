@@ -14,6 +14,18 @@ use crate::path::{
 };
 use crate::session::UploadSession;
 
+/// A session that must not be assembled because chunks are missing.
+#[derive(Debug)]
+struct IncompleteUpload(String);
+
+impl fmt::Display for IncompleteUpload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for IncompleteUpload {}
+
 #[cfg(test)]
 mod tests;
 
@@ -42,10 +54,17 @@ fn generate_upload_id() -> String {
 ///
 /// Generic over the [`Transport`] and [`AuthProvider`], held by reference so that
 /// connection pools and credentials can be shared across tasks.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct UploadClient<'a, T: Transport, A: AuthProvider> {
     transport: &'a T,
     auth: &'a A,
+}
+
+impl<T: Transport, A: AuthProvider> fmt::Debug for UploadClient<'_, T, A> {
+    /// The client holds no state worth logging, and the credential source may.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("UploadClient")
+    }
 }
 
 impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
@@ -149,6 +168,41 @@ impl<'a, T: Transport, A: AuthProvider> UploadClient<'a, T, A> {
 
         session.mark_chunk_uploaded(chunk_index);
         Ok(())
+    }
+
+    /// Finalizes the upload after verifying that every expected chunk arrived.
+    ///
+    /// Assembly moves whatever chunks the server holds into the destination, so
+    /// finalizing an incomplete session stores a truncated file under the real
+    /// name and its missing tail can no longer be uploaded. [`Self::finish`]
+    /// cannot check this on its own because [`UploadSession`] does not record
+    /// the chunk size, so callers that chunk their own upload should prefer this
+    /// method.
+    ///
+    /// # Errors
+    /// Returns [`Error::Decode`] when the session is incomplete or `chunk_size`
+    /// is zero, plus everything [`Self::finish`] can return.
+    pub async fn finish_verified(
+        &self,
+        session: &UploadSession,
+        chunk_size: u64,
+        mtime: Option<u64>,
+    ) -> Result<(), Error> {
+        let Some(expected) = session.expected_chunk_count(chunk_size) else {
+            return Err(Error::invalid_response(IncompleteUpload(format!(
+                "upload '{}' cannot be assembled without a chunk size",
+                session.upload_id()
+            ))));
+        };
+        if !session.is_complete(chunk_size) {
+            return Err(Error::invalid_response(IncompleteUpload(format!(
+                "upload '{}' is incomplete: {} of {} chunks arrived",
+                session.upload_id(),
+                session.uploaded_chunk_count(),
+                expected
+            ))));
+        }
+        self.finish(session, mtime).await
     }
 
     /// Finalizes the upload by moving `.file` to the destination path.

@@ -72,7 +72,10 @@ impl<'a, T: Transport, A: AuthProvider> SearchClient<'a, T, A> {
         cursor: Option<i64>,
     ) -> Result<SearchResultSet, Error> {
         tracing::debug!(provider_id, term, "Executing unified search query");
-        let path = ApiPath::ocs(format!("{SEARCH_API_PATH}/{provider_id}/search"))?;
+        let path = ApiPath::ocs(format!(
+            "{SEARCH_API_PATH}/{}/search",
+            nexia_nextcloud_core::url::percent_encode(provider_id)
+        ))?;
         let mut query = Query::new().format(OcsFormat::Json).param("term", term);
         if let Some(l) = limit {
             query = query.param("limit", l.to_string());

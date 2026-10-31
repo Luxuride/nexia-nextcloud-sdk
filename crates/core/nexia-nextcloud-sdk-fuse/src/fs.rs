@@ -200,6 +200,11 @@ impl Filesystem for FuseDriver {
     ) {
         trace!(ino = ino.0, offset, size, "fuser::read");
 
+        // Resolved once: every guard below asks the same question, and each `is_placeholder` call
+        // takes the inode table plus the tree read lock and normalises a path. A read is the
+        // hottest request the mount serves, so it must not repeat that three times.
+        let is_placeholder = self.is_placeholder(ino.0);
+
         // A background thumbnailer/indexer gets a "try later" answer instead of triggering a remote
         // fetch of the original for a preview it may well discard. Only the executable name is
         // used: an earlier revision also keyed on the caller having queried `user.thumb.*`, but a
@@ -209,7 +214,7 @@ impl Filesystem for FuseDriver {
         // Read shape is deliberately NOT used to identify a peek: a small read at offset zero is
         // indistinguishable between a thumbnail pass and `std::fs::read`, whose first probe read is
         // 32 bytes at offset zero, so keying on it returned `EIO` to legitimate readers.
-        if is_background_thumbnailer(req.pid()) && self.is_placeholder(ino.0) {
+        if is_placeholder && is_background_thumbnailer(req.pid()) {
             // `ECHILD` rather than `EAGAIN`. On a page-cache-backed read the kernel reserves
             // `EAGAIN` for its own internal retry and converts it into `EIO` before it reaches
             // userspace, so an `EAGAIN` here is reported to the thumbnailer as an I/O error and
@@ -236,7 +241,7 @@ impl Filesystem for FuseDriver {
         // files that are not local yet. It always serves a read that continues through one file, so
         // copies, viewers and archivers are unaffected, and a caller that repeats the exact read it
         // was refused gets the bytes, so no file can become permanently unreadable.
-        if self.is_placeholder(ino.0)
+        if is_placeholder
             && self.classify_read(req.pid(), ino.0, offset, size) == ReadVerdict::Refuse
         {
             // `ECHILD` for the same reason as above: it is passed through verbatim instead of
@@ -259,7 +264,7 @@ impl Filesystem for FuseDriver {
         // is free the read is declined immediately instead; the thumbnail cache already holds what
         // a browser is looking for. Copies and every other caller are untouched — they still wait
         // for a slot and always complete.
-        if self.is_placeholder(ino.0)
+        if is_placeholder
             && crate::intent::is_browser_process(req.pid())
             && self.download_gate().is_saturated()
         {
@@ -281,6 +286,12 @@ impl Filesystem for FuseDriver {
                 Ok(rt) => Self::execute_blocking(&rt, self.read(ino.0, offset as i64, size)),
                 Err(_) => Err(5), // EIO
             }
+        };
+        // The two arms above nest the read's own result inside the blocking-call result: an `Err`
+        // from `execute_blocking` means the future panicked, an inner `Err` is the read's errno.
+        let result = match result {
+            Ok(inner) => inner,
+            Err(code) => Err(code),
         };
 
         match result {

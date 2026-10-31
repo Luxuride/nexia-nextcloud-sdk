@@ -25,15 +25,41 @@ impl EncryptedDatabase {
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
+            let created = !parent.exists();
             std::fs::create_dir_all(parent)
                 .map_err(|source| StorageError::path("creating the database directory", source))?;
+            // Only tighten a directory this call created: an existing one belongs
+            // to the user's setup and refusing to open the database because its
+            // mode is wider than expected would break working installs.
+            if created && let Err(error) = set_owner_only(parent, 0o700) {
+                tracing::warn!(
+                    path = %parent.display(),
+                    %error,
+                    "could not restrict the database directory to the owner"
+                );
+            }
         }
 
         let connection = Connection::open(&path).map_err(|source| {
             tracing::error!(path = %path.display(), error = %source, "Failed to open sqlite database file");
             StorageError::open(&path, source)
         })?;
-        connection.execute_batch(&key.pragma()).map_err(|source| {
+        // The file holds credential ciphertext: a world-readable one can be
+        // copied and attacked offline. Failure is reported, not fatal, so a
+        // database on a filesystem without mode bits still opens.
+        if let Err(error) = set_owner_only(&path, 0o600) {
+            tracing::warn!(
+                path = %path.display(),
+                %error,
+                "could not restrict the database file to the owner"
+            );
+        }
+
+        // `PRAGMA key` first, then keep every temporary table in memory: a sort
+        // or `ORDER BY` over cached rows would otherwise spill plaintext
+        // credential rows into an unencrypted temp file.
+        let pragmas = format!("{}\nPRAGMA temp_store = MEMORY;", key.pragma());
+        connection.execute_batch(&pragmas).map_err(|source| {
             tracing::error!(path = %path.display(), error = %source, "Failed to apply encryption key pragma");
             StorageError::open(&path, source)
         })?;
@@ -119,6 +145,25 @@ impl fmt::Debug for EncryptedDatabase {
     }
 }
 
+/// Restricts `path` to the owner only.
+///
+/// The database holds credential ciphertext, so a world-readable file would let
+/// any local user copy it and attack the key offline instead of having to read
+/// the plaintext here.
+#[cfg(unix)]
+fn set_owner_only(path: &Path, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+}
+
+/// Platforms without Unix mode bits have no equivalent; access is governed by
+/// the ACLs of the parent directory.
+#[cfg(not(unix))]
+fn set_owner_only(_path: &Path, _mode: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::EncryptedDatabase;
@@ -197,5 +242,34 @@ mod tests {
         let database = EncryptedDatabase::open(&path, &key).unwrap();
         assert!(!format!("{database:?}").contains(&key.to_hex()));
         std::fs::remove_file(&path).ok();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod permission_tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use super::EncryptedDatabase;
+    use crate::StoreKey;
+
+    #[test]
+    fn the_database_and_its_directory_are_private() {
+        let root = std::env::temp_dir().join(format!(
+            "sdk-storage-perms-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let nested = root.join("nested");
+        let path = nested.join("auth.db");
+        let key = StoreKey::generate().unwrap();
+
+        drop(EncryptedDatabase::open_credential_store(&path, &key).unwrap());
+
+        let dir_mode = std::fs::metadata(&nested).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700, "directory mode {dir_mode:o}");
+        let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o600, "file mode {file_mode:o}");
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }

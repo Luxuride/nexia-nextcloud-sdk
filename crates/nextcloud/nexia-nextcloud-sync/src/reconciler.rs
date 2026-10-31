@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use crate::action::SyncAction;
 use crate::journal::SyncJournal;
-use crate::scanner::{DiscoveredLocalFile, DiscoveredRemoteFile};
+use crate::scanner::{DiscoveredLocalFile, DiscoveredRemoteFile, is_ignored_name};
 
 /// Reconciles local files against remote files using the previous sync journal state.
 ///
@@ -41,6 +41,12 @@ pub fn reconcile(
     all_paths.extend(remote_map.keys().copied());
 
     for path in &all_paths {
+        // Ignored names are filtered on both sides at once. Skipping them only in the local scan
+        // would make a journaled remote file look locally deleted and remove it from the server.
+        if path.rsplit('/').next().is_some_and(is_ignored_name) {
+            continue;
+        }
+
         let local = local_map.get(path);
         let remote = remote_map.get(path);
         let journal_entry = journal.get(path);
@@ -156,6 +162,60 @@ pub fn reconcile(
 
             // Case 5: Neither side present
             (None, None, _) => {}
+        }
+    }
+
+    actions
+}
+
+/// Reconciles a local scan against the journal baseline when the remote side was **not** queried.
+///
+/// This is the local-index refresh case: it answers "what would have to be uploaded" and never
+/// plans a deletion, because "absent remotely" is unknown here. Passing an empty remote file list to
+/// [`reconcile`] instead reports every journaled path as [`SyncAction::DeleteLocal`] — the opposite
+/// of what a local refresh means — so callers must not use that shape.
+pub fn reconcile_local_changes(
+    local_files: &[DiscoveredLocalFile],
+    journal: &SyncJournal,
+) -> Vec<SyncAction> {
+    let mut actions = Vec::new();
+
+    let local_map: HashMap<&str, &DiscoveredLocalFile> = local_files
+        .iter()
+        .map(|file| (file.relative_path.as_str(), file))
+        .collect();
+
+    // Sorted, so the plan is identical across runs and a parent precedes its children.
+    let paths: BTreeSet<&str> = local_map.keys().copied().collect();
+
+    for path in paths {
+        if path.rsplit('/').next().is_some_and(is_ignored_name) {
+            continue;
+        }
+
+        let Some(local) = local_map.get(path) else {
+            continue;
+        };
+
+        let changed = match journal.get(path) {
+            None => true,
+            Some(entry) => local.size != entry.local_size || local.mtime > entry.local_mtime,
+        };
+
+        if !changed {
+            actions.push(SyncAction::InSync {
+                relative_path: path.to_string(),
+            });
+        } else if local.is_directory {
+            actions.push(SyncAction::CreateRemoteDirectory {
+                relative_path: path.to_string(),
+            });
+        } else {
+            actions.push(SyncAction::Upload {
+                relative_path: path.to_string(),
+                local_path: local.absolute_path.clone(),
+                size: local.size,
+            });
         }
     }
 
@@ -309,5 +369,141 @@ mod tests {
         let actions = reconcile(&local_files, &remote_files, &journal);
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], SyncAction::Conflict { .. }));
+    }
+
+    /// Regression: an ignored name that the local scan skipped was reported as deleted, so a
+    /// journaled lock or partial file was removed on the server. Ignored names are now invisible to
+    /// the plan, while a genuine local deletion still removes the remote copy — including dotfiles,
+    /// which are ordinary synced files again.
+    #[test]
+    fn ignored_names_are_never_deleted_remotely() {
+        let mut journal = SyncJournal::new();
+        for path in ["/.env", "/notes.part", "/gone.txt"] {
+            journal.record(JournalEntry {
+                relative_path: path.to_string(),
+                remote_etag: Some("\"etag0\"".to_string()),
+                local_size: 10,
+                local_mtime: std::time::SystemTime::UNIX_EPOCH,
+                is_directory: false,
+            });
+        }
+
+        let remote_files = vec![
+            DiscoveredRemoteFile {
+                relative_path: "/.env".to_string(),
+                href: "/remote.php/dav/files/user/.env".to_string(),
+                size: 10,
+                etag: Some("\"etag0\"".to_string()),
+                is_directory: false,
+                file_id: None,
+            },
+            DiscoveredRemoteFile {
+                relative_path: "/notes.part".to_string(),
+                href: "/remote.php/dav/files/user/notes.part".to_string(),
+                size: 10,
+                etag: Some("\"etag0\"".to_string()),
+                is_directory: false,
+                file_id: None,
+            },
+            DiscoveredRemoteFile {
+                relative_path: "/gone.txt".to_string(),
+                href: "/remote.php/dav/files/user/gone.txt".to_string(),
+                size: 10,
+                etag: Some("\"etag0\"".to_string()),
+                is_directory: false,
+                file_id: None,
+            },
+        ];
+
+        let actions = reconcile(&[], &remote_files, &journal);
+
+        assert_eq!(
+            actions,
+            vec![
+                SyncAction::DeleteRemote {
+                    relative_path: "/.env".to_string(),
+                    is_directory: false,
+                },
+                SyncAction::DeleteRemote {
+                    relative_path: "/gone.txt".to_string(),
+                    is_directory: false,
+                },
+            ]
+        );
+    }
+
+    /// Regression: a local-only refresh used to be expressed as `reconcile(local, &[], journal)`,
+    /// which reports every journaled path as `DeleteLocal` — a plan that deletes the user's files and
+    /// that callers counted as "items processed".
+    #[test]
+    fn a_local_only_refresh_never_plans_a_deletion() {
+        let t0 = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(100);
+        let t1 = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(200);
+
+        let mut journal = SyncJournal::new();
+        for path in ["/synced.txt", "/changed.txt"] {
+            journal.record(JournalEntry {
+                relative_path: path.to_string(),
+                remote_etag: Some("\"etag0\"".to_string()),
+                local_size: 10,
+                local_mtime: t0,
+                is_directory: false,
+            });
+        }
+
+        let local_files = vec![
+            DiscoveredLocalFile {
+                relative_path: "/synced.txt".to_string(),
+                absolute_path: PathBuf::from("/sync/synced.txt"),
+                size: 10,
+                mtime: t0,
+                is_directory: false,
+            },
+            DiscoveredLocalFile {
+                relative_path: "/changed.txt".to_string(),
+                absolute_path: PathBuf::from("/sync/changed.txt"),
+                size: 11,
+                mtime: t1,
+                is_directory: false,
+            },
+            DiscoveredLocalFile {
+                relative_path: "/fresh.txt".to_string(),
+                absolute_path: PathBuf::from("/sync/fresh.txt"),
+                size: 4,
+                mtime: t1,
+                is_directory: false,
+            },
+            DiscoveredLocalFile {
+                relative_path: "/newdir".to_string(),
+                absolute_path: PathBuf::from("/sync/newdir"),
+                size: 0,
+                mtime: t1,
+                is_directory: true,
+            },
+        ];
+
+        let actions = reconcile_local_changes(&local_files, &journal);
+
+        assert_eq!(
+            actions,
+            vec![
+                SyncAction::Upload {
+                    relative_path: "/changed.txt".to_string(),
+                    local_path: PathBuf::from("/sync/changed.txt"),
+                    size: 11,
+                },
+                SyncAction::Upload {
+                    relative_path: "/fresh.txt".to_string(),
+                    local_path: PathBuf::from("/sync/fresh.txt"),
+                    size: 4,
+                },
+                SyncAction::CreateRemoteDirectory {
+                    relative_path: "/newdir".to_string(),
+                },
+                SyncAction::InSync {
+                    relative_path: "/synced.txt".to_string(),
+                },
+            ]
+        );
     }
 }

@@ -18,7 +18,7 @@ const XML_CONTENT_TYPE: &str = "application/xml; charset=utf-8";
 ///
 /// Both are held by reference, so a client can be borrowed into several
 /// spawned tasks and share one connection pool and one token.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct DavClient<'a, T: Transport, A: AuthProvider> {
     transport: &'a T,
     auth: &'a A,
@@ -90,9 +90,19 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
 
     /// Fetches a byte range from `path` using the HTTP `Range` header.
     ///
-    /// Any non-`2xx` status returns [`Error::Status`] with the response body
-    /// retained for diagnosis.
+    /// `start` and `end` are inclusive offsets. Any non-`2xx` status returns
+    /// [`Error::Status`] with the response body retained for diagnosis.
+    ///
+    /// A server is allowed to ignore `Range` and answer `200` with the whole
+    /// representation; that answer is reduced to the requested window here,
+    /// because returning the first bytes of the file as if they were the range
+    /// silently corrupts every caller that caches the result.
     pub async fn get_range(&self, path: &DavPath, start: u64, end: u64) -> Result<Vec<u8>, Error> {
+        if end < start {
+            return Err(Error::invalid_response(RangeMismatch(format!(
+                "range {start}-{end} is inverted"
+            ))));
+        }
         tracing::debug!(path = %path.as_str(), start, end, "Executing WebDAV GET with Range");
         let mut headers = self.authenticated_headers();
         headers.set("Range", format!("bytes={start}-{end}"));
@@ -100,7 +110,21 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
         let response = self.transport.execute(request).await?;
 
         ensure_success(HttpMethod::Get, path, &response)?;
-        Ok(response.into_body())
+        let partial = response.status().as_u16() == 206;
+        let server_start = ranged_start(response.headers());
+        let body = response.into_body();
+        if !partial {
+            return Ok(window(&body, start, end));
+        }
+        match server_start {
+            Some(server_start) if server_start > start => {
+                Err(Error::invalid_response(RangeMismatch(format!(
+                    "server answered the range from {server_start} while {start} was requested"
+                ))))
+            }
+            Some(server_start) => Ok(window(&body, start - server_start, end - server_start)),
+            None => Ok(body),
+        }
     }
 
     /// Uploads `body` to `path`, optionally specifying the `Content-Type` header.
@@ -229,6 +253,41 @@ impl<'a, T: Transport, A: AuthProvider> DavClient<'a, T, A> {
     }
 }
 
+/// A `Range` request whose answer cannot be reconciled with what was asked.
+#[derive(Debug)]
+struct RangeMismatch(String);
+
+impl std::fmt::Display for RangeMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for RangeMismatch {}
+
+/// Inclusive `start..=end` window of `body`, clamped to its length.
+fn window(body: &[u8], start: u64, end: u64) -> Vec<u8> {
+    let len = body.len() as u64;
+    let from = usize::try_from(start.min(len)).unwrap_or(body.len());
+    let to = usize::try_from(end.saturating_add(1).min(len)).unwrap_or(body.len());
+    if from >= to {
+        return Vec::new();
+    }
+    body[from..to].to_vec()
+}
+
+/// Start offset of a `Content-Range: bytes <start>-<end>/<size>` header.
+fn ranged_start(headers: &Headers) -> Option<u64> {
+    let value = headers.get("content-range")?.trim();
+    let (unit, range) = value.split_once(' ')?;
+    if !unit.eq_ignore_ascii_case("bytes") {
+        return None;
+    }
+    let (start, remainder) = range.split_once('-')?;
+    remainder.split_once('/')?;
+    start.parse().ok()
+}
+
 fn ensure_success(method: HttpMethod, path: &DavPath, response: &Response) -> Result<(), Error> {
     if !response.status().is_success() {
         tracing::warn!(
@@ -246,6 +305,13 @@ fn ensure_success(method: HttpMethod, path: &DavPath, response: &Response) -> Re
     }
     tracing::trace!(method = ?method, path = %path.as_str(), "WebDAV request succeeded");
     Ok(())
+}
+
+impl<T: Transport, A: AuthProvider> std::fmt::Debug for DavClient<'_, T, A> {
+    /// A client holds no state worth logging, and the credential source may.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DavClient")
+    }
 }
 
 impl<T: Transport, A: AuthProvider> std::fmt::Display for DavClient<'_, T, A> {
@@ -695,5 +761,41 @@ mod tests {
         let request = transport.last_request();
         assert_eq!(request.method(), HttpMethod::Get);
         assert_eq!(request.headers().get("Range"), Some("bytes=0-1024"));
+    }
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::{ranged_start, window};
+    use nexia_nextcloud_core::Headers;
+
+    #[test]
+    fn a_full_body_answer_is_reduced_to_the_requested_window() {
+        let body = b"0123456789";
+        assert_eq!(window(body, 2, 4), b"234");
+    }
+
+    #[test]
+    fn a_window_past_the_end_is_clamped() {
+        let body = b"0123456789";
+        assert_eq!(window(body, 8, 99), b"89");
+        assert!(window(body, 20, 30).is_empty());
+    }
+
+    #[test]
+    fn a_content_range_start_is_read_back() {
+        let mut headers = Headers::new();
+        headers.set("Content-Range", "bytes 1024-2047/4096");
+        assert_eq!(ranged_start(&headers), Some(1024));
+    }
+
+    #[test]
+    fn a_missing_or_unreadable_content_range_yields_none() {
+        let headers = Headers::new();
+        assert_eq!(ranged_start(&headers), None);
+
+        let mut headers = Headers::new();
+        headers.set("Content-Range", "items 1-2");
+        assert_eq!(ranged_start(&headers), None);
     }
 }

@@ -63,8 +63,6 @@ impl DavResource {
             || props.iter().any(|prop| {
                 has_element(prop.inner(), "d:collection")
                     || has_element(prop.inner(), "D:collection")
-                    || has_element(prop.inner(), "collection")
-                    || prop.inner().contains("collection")
             });
 
         Ok(Self {
@@ -88,8 +86,17 @@ impl DavResource {
 fn is_successful_propstat(propstat: &Element<'_>) -> bool {
     match propstat.child("d:status") {
         None => true,
-        Some(status) => status.text().contains(" 200 "),
+        Some(status) => status_code(&status.text()) == Some(200),
     }
+}
+
+/// Numeric code of a status line such as `HTTP/1.1 200 OK`.
+///
+/// The reason phrase is optional, so a legal `HTTP/1.1 200` has no trailing
+/// space; matching on `" 200 "` dropped every property of such a propstat.
+fn status_code(line: &str) -> Option<u16> {
+    line.split_ascii_whitespace()
+        .find_map(|token| token.parse().ok())
 }
 
 fn is_truthy(value: &str) -> bool {
@@ -170,6 +177,35 @@ mod tests {
         assert!(resource.is_collection);
         assert_eq!(resource.has_preview, Some(true));
         assert_eq!(resource.content_length, None);
+    }
+
+    #[test]
+    fn a_name_containing_collection_is_not_a_directory() {
+        let resource = single(
+            r#"<d:response>
+                <d:href>/remote.php/dav/files/alice/collection-of-notes.txt</d:href>
+                <d:propstat>
+                    <d:prop><d:resourcetype/><oc:fileid>21</oc:fileid></d:prop>
+                    <d:status>HTTP/1.1 200 OK</d:status>
+                </d:propstat>
+            </d:response>"#,
+        );
+        assert!(!resource.is_collection);
+    }
+
+    #[test]
+    fn a_status_line_without_a_reason_phrase_still_counts() {
+        let resource = single(
+            r#"<d:response>
+                <d:href>/remote.php/dav/files/alice/Report.txt</d:href>
+                <d:propstat>
+                    <d:prop><d:getetag>"v*"</d:getetag><oc:fileid>8</oc:fileid></d:prop>
+                    <d:status>HTTP/1.1 200</d:status>
+                </d:propstat>
+            </d:response>"#,
+        );
+        assert_eq!(resource.etag.as_deref(), Some("\"v*\""));
+        assert_eq!(resource.file_id.as_deref(), Some("8"));
     }
 
     #[test]

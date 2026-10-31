@@ -97,6 +97,14 @@ impl UploadSession {
         self.total_size
     }
 
+    /// Whether `chunk_size` is inside the range Nextcloud accepts.
+    ///
+    /// Nothing enforces this, but uploading outside it produces a session the
+    /// server assembles slowly or not at all.
+    pub const fn is_supported_chunk_size(chunk_size: u64) -> bool {
+        chunk_size >= MIN_CHUNK_SIZE && chunk_size <= MAX_CHUNK_SIZE
+    }
+
     /// Records that a chunk index has been uploaded successfully.
     pub fn mark_chunk_uploaded(&self, chunk_index: u32) {
         self.lock_chunks().insert(chunk_index);
@@ -155,7 +163,7 @@ impl UploadSession {
             return None;
         }
         let offset = u64::from(chunk_index - 1) * chunk_size;
-        let end = (offset + chunk_size).min(self.total_size);
+        let end = offset.saturating_add(chunk_size).min(self.total_size);
         Some(ChunkBoundary::new(chunk_index, offset, end))
     }
 
@@ -164,7 +172,11 @@ impl UploadSession {
     /// Returns `None` if `chunk_size` is zero or if total chunk count overflows `u32`.
     pub fn chunk_boundaries(&self, chunk_size: u64) -> Option<Vec<ChunkBoundary>> {
         let total_chunks = self.expected_chunk_count(chunk_size)?;
-        let mut boundaries = Vec::with_capacity(total_chunks as usize);
+        // A caller-supplied chunk size is not validated, so the reservation is
+        // capped: a tiny chunk size would otherwise reserve one boundary per
+        // byte of the file before the first one is calculated.
+        let mut boundaries =
+            Vec::with_capacity(usize::try_from(total_chunks).unwrap_or(0).min(1024));
         for index in 1..=total_chunks {
             if let Some(boundary) = self.chunk_boundary(index, chunk_size) {
                 boundaries.push(boundary);

@@ -25,12 +25,14 @@ pub fn validate_upload_id(upload_id: &str) -> Result<&str, UrlError> {
 
 /// Validates that a chunk index is valid.
 ///
-/// Nextcloud Chunking v2 protocol numbers chunks starting from 1 up to 10,000.
+/// Nextcloud Chunking v2 protocol numbers chunks starting from 1. The file name
+/// is zero-padded to five digits, so 99,999 is the largest index that sorts
+/// correctly.
 pub fn validate_chunk_index(chunk_index: u32) -> Result<u32, UrlError> {
-    if chunk_index == 0 {
-        return Err(UrlError::InvalidSegment(
-            "chunk index must be greater than zero".to_owned(),
-        ));
+    if !(1..=99_999).contains(&chunk_index) {
+        return Err(UrlError::InvalidSegment(format!(
+            "chunk index {chunk_index} is outside 1..=99999"
+        )));
     }
     Ok(chunk_index)
 }

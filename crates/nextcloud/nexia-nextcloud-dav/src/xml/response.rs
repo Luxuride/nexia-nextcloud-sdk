@@ -27,7 +27,8 @@ use super::{Element, MissingElement};
 
 /// First element with `name`.
 pub fn first_element<'a>(xml: &'a str, name: &'a str) -> Option<Element<'a>> {
-    elements(xml, name).into_iter().next()
+    let span = scanner::find(xml, 0, name)?;
+    Some(Element::new(name, &xml[span.inner]))
 }
 
 /// Every element with `name`, in document order.

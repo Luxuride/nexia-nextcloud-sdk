@@ -485,7 +485,13 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         .unwrap_or_else(|| large_dir.clone());
     let _ = fs::create_dir_all(&xxlarge_dir);
 
-    if freedesktop_thumbnail_is_current(target_file) {
+    let all_current = file_uris_for_path(target_file).iter().all(|uri| {
+        let filename = format!("{}.png", md5_hex(uri.as_bytes()));
+        [&normal_dir, &large_dir, &xlarge_dir, &xxlarge_dir]
+            .iter()
+            .all(|dir| thumbnail_matches(&dir.join(&filename), mtime_sec))
+    });
+    if all_current {
         return;
     }
 
@@ -501,11 +507,10 @@ pub fn install_freedesktop_thumbnail_with_mtime(
         let xlarge_dest = xlarge_dir.join(&filename);
         let xxlarge_dest = xxlarge_dir.join(&filename);
 
-        if normal_dest.exists()
-            && large_dest.exists()
-            && xlarge_dest.exists()
-            && xxlarge_dest.exists()
-        {
+        let current = [&normal_dest, &large_dest, &xlarge_dest, &xxlarge_dest]
+            .iter()
+            .all(|dest| thumbnail_matches(dest, mtime_sec));
+        if current {
             continue;
         }
 

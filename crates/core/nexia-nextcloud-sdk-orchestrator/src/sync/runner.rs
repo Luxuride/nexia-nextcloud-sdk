@@ -8,7 +8,8 @@ use crate::error::{OrchestratorError, OrchestratorResult};
 use nexia_nextcloud_core::{AuthProvider, Transport};
 use nexia_nextcloud_dav::{DavClient, DavPath, Depth, PropfindBody};
 use nexia_nextcloud_sync::{
-    DiscoveredRemoteFile, JournalEntry, SyncAction, SyncJournal, reconcile, scan_local_directory,
+    DiscoveredRemoteFile, JournalEntry, SyncAction, SyncError, SyncJournal, reconcile,
+    reconcile_local_changes, scan_local_directory,
 };
 
 /// Helper to construct a validated [`DavPath`] from user name and relative path.
@@ -78,6 +79,37 @@ pub struct FolderSyncRunner {
     journal_path: PathBuf,
 }
 
+/// Loads the sync journal, keeping a corrupt file from silently discarding the baseline.
+///
+/// The journal is what distinguishes "the user deleted this" from "this was never synced", so an
+/// unreadable journal is reported loudly. The cycle still proceeds from an empty baseline, which is
+/// the conservative choice: everything is re-examined instead of assumed deleted.
+fn load_journal(path: &Path) -> SyncJournal {
+    if !path.exists() {
+        return SyncJournal::new();
+    }
+
+    SyncJournal::load_from_file(path).unwrap_or_else(|error| {
+        tracing::warn!(
+            path = %path.display(),
+            error = %error,
+            "sync journal could not be read; continuing from an empty baseline"
+        );
+        SyncJournal::new()
+    })
+}
+
+/// Saves the journal, reporting a failure instead of dropping it.
+///
+/// These calls sit next to file operations that already happened, so the caller cannot undo them;
+/// what it can do is stop reporting a clean cycle when the baseline was not recorded.
+fn save_journal(path: &Path, journal: &SyncJournal) -> Result<(), SyncError> {
+    journal.save_to_file(path).map_err(|source| {
+        tracing::error!(path = %path.display(), error = %source, "sync journal could not be saved");
+        source
+    })
+}
+
 impl FolderSyncRunner {
     /// Creates a new `FolderSyncRunner` for the specified local and remote directory pair.
     pub fn new(
@@ -111,6 +143,9 @@ impl FolderSyncRunner {
     }
 
     /// Executes a synchronization reconciliation cycle, scanning the local filesystem and updating the journal.
+    ///
+    /// The remote side is not queried here, so the returned plan only states what the local scan would
+    /// have to upload (see [`reconcile_local_changes`]); it never plans a deletion.
     pub fn run_local_reconciliation(&self) -> OrchestratorResult<Vec<SyncAction>> {
         if !self.local_dir.exists() {
             fs::create_dir_all(&self.local_dir).map_err(|err| OrchestratorError::Io {
@@ -124,11 +159,7 @@ impl FolderSyncRunner {
             let _ = fs::create_dir_all(parent);
         }
 
-        let mut journal = if self.journal_path.exists() {
-            SyncJournal::load_from_file(&self.journal_path).unwrap_or_else(|_| SyncJournal::new())
-        } else {
-            SyncJournal::new()
-        };
+        let mut journal = load_journal(&self.journal_path);
 
         let local_entries =
             scan_local_directory(&self.local_dir).map_err(|e| OrchestratorError::Sync {
@@ -136,8 +167,7 @@ impl FolderSyncRunner {
                 source: e,
             })?;
 
-        // Reconcile differences: local vs empty remote against journal
-        let actions = reconcile(&local_entries, &[], &journal);
+        let actions = reconcile_local_changes(&local_entries, &journal);
 
         // Commit newly discovered local files into the journal
         for local_entry in &local_entries {
@@ -150,7 +180,14 @@ impl FolderSyncRunner {
             journal.record(j_entry);
         }
 
-        let _ = journal.save_to_file(&self.journal_path);
+        // This call exists to update the journal, so a failed save is a failed cycle: reporting it
+        // keeps the next run from comparing the tree against a baseline that never recorded this one.
+        journal
+            .save_to_file(&self.journal_path)
+            .map_err(|source| OrchestratorError::Sync {
+                operation: format!("saving sync journal '{}'", self.journal_path.display()),
+                source,
+            })?;
 
         info!(
             local = %self.local_dir.display(),
@@ -283,11 +320,7 @@ impl FolderSyncRunner {
             let _ = fs::create_dir_all(parent);
         }
 
-        let journal = if self.journal_path.exists() {
-            SyncJournal::load_from_file(&self.journal_path).unwrap_or_else(|_| SyncJournal::new())
-        } else {
-            SyncJournal::new()
-        };
+        let journal = load_journal(&self.journal_path);
 
         let local_entries =
             scan_local_directory(&self.local_dir).map_err(|e| OrchestratorError::Sync {
@@ -412,8 +445,15 @@ impl FolderSyncRunner {
             source: err,
         })?;
 
-        if size > 0 {
-            let _ = file.set_len(size);
+        if size > 0
+            && let Err(error) = file.set_len(size)
+        {
+            tracing::warn!(
+                path = %dest.display(),
+                size,
+                %error,
+                "could not set the placeholder length; the file stays allocated"
+            );
         }
 
         let mtime = fs::metadata(&dest)
@@ -764,7 +804,10 @@ impl FolderSyncRunner {
             on_progress(processed, total_actions, rel_path);
         }
 
-        let _ = journal.save_to_file(&self.journal_path);
+        save_journal(&self.journal_path, &journal).map_err(|source| OrchestratorError::Sync {
+            operation: format!("saving sync journal '{}'", self.journal_path.display()),
+            source,
+        })?;
         Ok(outcome)
     }
 
@@ -807,11 +850,7 @@ impl FolderSyncRunner {
         })?;
 
         if let Some(jpath) = journal_path {
-            let mut journal = if jpath.exists() {
-                SyncJournal::load_from_file(jpath).unwrap_or_else(|_| SyncJournal::new())
-            } else {
-                SyncJournal::new()
-            };
+            let mut journal = load_journal(jpath);
             let mtime = fs::metadata(dest_path)
                 .and_then(|m| m.modified())
                 .unwrap_or_else(|_| std::time::SystemTime::now());
@@ -821,7 +860,7 @@ impl FolderSyncRunner {
                 mtime,
                 false,
             ));
-            let _ = journal.save_to_file(jpath);
+            let _ = save_journal(jpath, &journal);
         }
 
         nexia_nextcloud_preview::remove_freedesktop_fail_marker(dest_path);
@@ -865,16 +904,19 @@ impl FolderSyncRunner {
                 source: err,
             })?;
 
-        if size > 0 {
-            let _ = file.set_len(size);
+        if size > 0
+            && let Err(error) = file.set_len(size)
+        {
+            tracing::warn!(
+                path = %dest_path.display(),
+                size,
+                %error,
+                "could not set the placeholder length; the file stays allocated"
+            );
         }
 
         if let Some(jpath) = journal_path {
-            let mut journal = if jpath.exists() {
-                SyncJournal::load_from_file(jpath).unwrap_or_else(|_| SyncJournal::new())
-            } else {
-                SyncJournal::new()
-            };
+            let mut journal = load_journal(jpath);
             let mtime = fs::metadata(dest_path)
                 .and_then(|m| m.modified())
                 .unwrap_or_else(|_| std::time::SystemTime::now());
@@ -883,7 +925,7 @@ impl FolderSyncRunner {
                 entry = entry.with_remote_etag(e);
             }
             journal.record(entry);
-            let _ = journal.save_to_file(jpath);
+            let _ = save_journal(jpath, &journal);
         }
 
         let mtime_sec = fs::metadata(dest_path)

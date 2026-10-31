@@ -32,11 +32,15 @@ pub(crate) fn validate_revision(revision_id: &str) -> Result<&str, UrlError> {
     Ok(revision_id)
 }
 
-/// Checks that a segment does not contain control or URI-unsafe characters.
+/// Checks that a segment is safe to interpolate into a DAV path.
+///
+/// `%` is rejected along with control characters and the URI delimiters: the
+/// server decodes percent escapes, so a segment carrying `%2F` or `%2e%2e`
+/// would address a different resource than the caller named.
 fn check_characters(segment: &str) -> Result<(), UrlError> {
     let rejected = segment
         .chars()
-        .any(|c| c.is_control() || matches!(c, '?' | '#' | '\\'));
+        .any(|c| c.is_control() || matches!(c, '?' | '#' | '\\' | '%'));
     if rejected {
         return Err(UrlError::InvalidSegment(segment.to_owned()));
     }
@@ -52,6 +56,12 @@ mod tests {
         assert_eq!(validate_user("alice").unwrap(), "alice");
         assert_eq!(validate_user("  bob  ").unwrap(), "bob");
         assert_eq!(validate_revision("1609459200").unwrap(), "1609459200");
+    }
+
+    #[test]
+    fn percent_escapes_are_rejected() {
+        assert!(validate_user("alice%2F..%2Fbob").is_err());
+        assert!(validate_revision("17%2e%2e").is_err());
     }
 
     #[test]
