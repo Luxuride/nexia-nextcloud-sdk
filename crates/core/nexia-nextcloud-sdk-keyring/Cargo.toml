@@ -10,6 +10,7 @@ description = "Multi-platform secure keyring abstraction for Nextcloud Rust SDK 
 
 [dependencies]
 tracing.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 oo7 = { workspace = true }

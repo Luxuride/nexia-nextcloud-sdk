@@ -23,4 +23,4 @@ mod wire;
 pub use client::{CHAT_API_PATH, ROOM_API_PATH, TalkClient};
 pub use message::ChatMessage;
 pub use room::Room;
-pub use room_type::{RoomType, UnknownRoomTypeError};
+pub use room_type::RoomType;

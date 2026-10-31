@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString};
+use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString, find_first_secret};
 
 use crate::sso::account::{AccountSource, DiscoveredAccount};
 use crate::sso::error::SsoError;
@@ -131,15 +131,7 @@ impl DesktopSso {
         const SERVICES: [&str; 4] = ["Nextcloud", "ownCloud", "KAccounts", "signon"];
         let keys = account.candidate_keychain_keys();
 
-        for service in SERVICES {
-            for key in &keys {
-                if let Some(secret) = keyring.get_secret(service, key).await? {
-                    return Ok(Some(secret));
-                }
-            }
-        }
-
-        Ok(None)
+        Ok(find_first_secret(keyring, &SERVICES, &keys).await?)
     }
 }
 

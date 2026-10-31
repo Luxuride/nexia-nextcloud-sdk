@@ -16,6 +16,8 @@ pub mod backends;
 pub mod entry;
 /// Keyring error types and classifications.
 pub mod error;
+/// Ordered lookup across several service and account name conventions.
+pub mod lookup;
 /// In-memory keyring backend for tests and headless environments.
 pub mod memory;
 /// Automatic platform native keyring selection.
@@ -27,6 +29,7 @@ pub mod traits;
 
 pub use entry::KeyringEntry;
 pub use error::KeyringError;
+pub use lookup::find_first_secret;
 pub use memory::MemoryKeyring;
 pub use platform::PlatformKeyring;
 pub use secret::SecretString;

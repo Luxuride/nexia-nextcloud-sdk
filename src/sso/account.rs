@@ -55,6 +55,9 @@ impl DiscoveredAccount {
     }
 
     /// Generates candidate keyring keys across standard desktop services.
+    ///
+    /// A bare server URL is deliberately not a candidate: it names no user, so on a server that
+    /// hosts several accounts it would hand this account the token stored for another one.
     pub fn candidate_keychain_keys(&self) -> Vec<String> {
         let base = self.server_url.as_str().trim_end_matches('/');
         let user = &self.username;
@@ -64,7 +67,38 @@ impl DiscoveredAccount {
             format!("{base}:{user}"),
             format!("{base}/remote.php/dav/files/{dav_user}/:{user}"),
             format!("{user}@{base}"),
-            base.to_string(),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account() -> DiscoveredAccount {
+        DiscoveredAccount {
+            source: AccountSource::DesktopClient,
+            server_url: ServerUrl::parse("https://cloud.example.com").unwrap(),
+            username: "alice".to_string(),
+            display_name: None,
+            dav_user: None,
+            password: None,
+        }
+    }
+
+    #[test]
+    fn every_candidate_names_the_account() {
+        let keys = account().candidate_keychain_keys();
+
+        assert_eq!(
+            keys,
+            vec![
+                "https://cloud.example.com:alice".to_string(),
+                "https://cloud.example.com/remote.php/dav/files/alice/:alice".to_string(),
+                "alice@https://cloud.example.com".to_string(),
+            ]
+        );
+        // A bare server URL would be shared by every account on that server.
+        assert!(!keys.contains(&"https://cloud.example.com".to_string()));
     }
 }

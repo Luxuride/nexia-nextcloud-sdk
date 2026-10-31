@@ -16,6 +16,7 @@ keychain = ["dep:nexia-nextcloud-sdk-keyring"]
 getrandom.workspace = true
 nexia-nextcloud-sdk-keyring = { workspace = true, optional = true }
 tracing.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 rusqlite = { workspace = true, features = ["bundled-sqlcipher-vendored-openssl"] }

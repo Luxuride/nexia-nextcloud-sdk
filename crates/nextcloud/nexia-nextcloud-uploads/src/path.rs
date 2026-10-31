@@ -199,6 +199,13 @@ mod tests {
         assert!(destination_header_value("alice", "").is_err());
         assert!(destination_header_value("alice", "/").is_err());
         assert!(destination_header_value("alice", "../traversal").is_err());
-        assert!(destination_header_value("alice", "file?bad").is_err());
+
+        // A `?` is a legal character in a file name and is escaped on the wire, so it no longer
+        // fails; a backslash still does, because the server would read it as a separator.
+        assert_eq!(
+            destination_header_value("alice", "file?bad").expect("a name is accepted"),
+            "/remote.php/dav/files/alice/file%3Fbad"
+        );
+        assert!(destination_header_value("alice", "file\\bad").is_err());
     }
 }

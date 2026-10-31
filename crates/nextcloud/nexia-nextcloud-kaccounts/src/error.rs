@@ -25,6 +25,11 @@ pub enum KAccountsError {
         /// Parse error.
         source: nexia_nextcloud_core::UrlError,
     },
+    /// The database has none of the table layouts this crate can read.
+    UnsupportedSchema {
+        /// Tables that were found in the database.
+        tables: Vec<String>,
+    },
     /// Keyring secret lookup failed.
     #[cfg(feature = "keyring")]
     Keyring {
@@ -69,6 +74,12 @@ impl fmt::Display for KAccountsError {
             }
             Self::InvalidUrl { raw, source } => {
                 write!(f, "invalid server URL '{raw}' in KAccounts: {source}")
+            }
+            Self::UnsupportedSchema { tables } => {
+                write!(
+                    f,
+                    "KAccounts database has no Settings/Services or AccountSettings/AccountServices tables (found: {tables:?})"
+                )
             }
             #[cfg(feature = "keyring")]
             Self::Keyring { source } => {

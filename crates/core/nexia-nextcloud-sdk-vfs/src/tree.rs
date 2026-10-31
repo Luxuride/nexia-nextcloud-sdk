@@ -1,6 +1,6 @@
 //! In-memory hierarchical virtual file system tree.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use crate::path::{normalize_path, parent_path};
 /// and hydrated payloads.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VirtualTree {
-    nodes: HashMap<String, VirtualNode>,
+    nodes: BTreeMap<String, VirtualNode>,
 }
 
 impl VirtualTree {
@@ -30,7 +30,7 @@ impl VirtualTree {
         let root_meta = NodeMetadata::directory("/").with_name(root_name);
         let root_node = VirtualNode::new_directory(root_meta);
 
-        let mut nodes = HashMap::new();
+        let mut nodes = BTreeMap::new();
         nodes.insert("/".to_string(), root_node);
 
         Self { nodes }
@@ -343,6 +343,7 @@ impl VirtualTree {
     ///
     /// - [`VfsError::NotFound`] if the path does not exist in the tree.
     /// - [`VfsError::InvalidPath`] if the path format is malformed.
+    /// - [`VfsError::Io`] if the node holds a cache path whose payload cannot be read.
     pub fn read_hydrated_bytes(&self, path: &str) -> Result<Option<Vec<u8>>, VfsError> {
         let normalized = normalize_path(path)?;
         let node = self
@@ -351,20 +352,13 @@ impl VirtualTree {
             .ok_or_else(|| VfsError::NotFound(normalized.clone()))?;
         match node.hydration() {
             HydrationState::Hydrated(HydratedContent::Bytes(bytes)) => Ok(Some(bytes.clone())),
-            HydrationState::Hydrated(HydratedContent::Path(cached)) => {
-                match std::fs::read(cached) {
-                    Ok(bytes) => Ok(Some(bytes)),
-                    Err(err) => {
-                        tracing::warn!(
-                            path = %normalized,
-                            cached = %cached.display(),
-                            error = %err,
-                            "hydrated cache file is unreadable"
-                        );
-                        Ok(None)
-                    }
-                }
-            }
+            HydrationState::Hydrated(HydratedContent::Path(cached)) => std::fs::read(cached)
+                .map(Some)
+                .map_err(|source| VfsError::Io {
+                    operation: "reading the cached payload",
+                    path: cached.clone(),
+                    source,
+                }),
             HydrationState::Placeholder => Ok(None),
         }
     }
@@ -592,25 +586,31 @@ impl VirtualTree {
             parent_node.remove_child(&normalized);
         }
 
+        if normalized == "/" {
+            self.nodes.retain(|path, _| path == "/");
+            return self.nodes.remove("/");
+        }
+
         // Recursively remove nested children if this node is a directory
-        let prefix = if normalized == "/" {
-            "/".to_string()
-        } else {
-            format!("{normalized}/")
-        };
-
-        let descendant_keys: Vec<String> = self
-            .nodes
-            .keys()
-            .filter(|k| k.starts_with(&prefix) && *k != &normalized)
-            .cloned()
-            .collect();
-
-        for child in descendant_keys {
+        let prefix = format!("{normalized}/");
+        for child in self.descendant_keys(&prefix) {
             self.nodes.remove(&child);
         }
 
         self.nodes.remove(&normalized)
+    }
+
+    /// Returns every key beneath `prefix` in lexicographic order.
+    ///
+    /// Keys sharing a prefix are contiguous in a [`BTreeMap`], so the range scan touches only the
+    /// subtree instead of filtering the whole tree.
+    fn descendant_keys(&self, prefix: &str) -> Vec<String> {
+        let start = prefix.to_owned();
+        self.nodes
+            .range(start..)
+            .take_while(|(path, _)| path.starts_with(prefix))
+            .map(|(path, _)| path.clone())
+            .collect()
     }
 
     /// Returns the total number of nodes stored in the virtual tree.
@@ -691,61 +691,40 @@ impl VirtualTree {
             let old_prefix = format!("{canonical_old}/");
             let new_prefix = format!("{canonical_new}/");
 
-            let descendant_keys: Vec<String> = self
-                .nodes
-                .keys()
-                .filter(|k| k.starts_with(&old_prefix))
-                .cloned()
-                .collect();
-
-            let mut updated_descendants = Vec::new();
-            for old_desc_path in descendant_keys {
-                if let Some(mut desc_node) = self.nodes.remove(&old_desc_path) {
-                    let suffix = &old_desc_path[old_prefix.len()..];
-                    let new_desc_path = format!("{new_prefix}{suffix}");
-                    desc_node.metadata.path = new_desc_path.clone();
-
-                    if desc_node.is_directory()
-                        && let Some(children) = desc_node.children.as_mut()
-                    {
-                        let updated_children: std::collections::BTreeSet<String> = children
-                            .iter()
-                            .map(|c| {
-                                if c.starts_with(&old_prefix) {
-                                    format!("{new_prefix}{}", &c[old_prefix.len()..])
-                                } else {
-                                    c.clone()
-                                }
-                            })
-                            .collect();
-                        *children = updated_children;
-                    }
-                    updated_descendants.push((new_desc_path, desc_node));
-                }
-            }
-
-            // Update children of node itself
             if let Some(children) = node.children.as_mut() {
-                let updated_children: std::collections::BTreeSet<String> = children
-                    .iter()
-                    .map(|c| {
-                        if c.starts_with(&old_prefix) {
-                            format!("{new_prefix}{}", &c[old_prefix.len()..])
-                        } else {
-                            c.clone()
-                        }
-                    })
-                    .collect();
-                *children = updated_children;
+                *children = rebase_children(children, &old_prefix, &new_prefix);
             }
 
-            for (desc_path, desc_node) in updated_descendants {
+            for (desc_path, desc_node) in self.rebase_subtree(&old_prefix, &new_prefix) {
                 self.nodes.insert(desc_path, desc_node);
             }
         }
 
         self.nodes.insert(canonical_new.clone(), node);
         Ok(canonical_new)
+    }
+
+    /// Re-roots every node beneath `old_prefix` under `new_prefix`.
+    ///
+    /// Returns the moved nodes; the caller reinserts them once every key has been taken out of the
+    /// map, so a destination key cannot be overwritten by a node that is still to be moved.
+    fn rebase_subtree(&mut self, old_prefix: &str, new_prefix: &str) -> Vec<(String, VirtualNode)> {
+        let mut moved = Vec::new();
+        for old_path in self.descendant_keys(old_prefix) {
+            if let Some(mut node) = self.nodes.remove(&old_path) {
+                let new_path = format!("{new_prefix}{}", &old_path[old_prefix.len()..]);
+                node.metadata.path = new_path.clone();
+
+                if node.is_directory()
+                    && let Some(children) = node.children.as_mut()
+                {
+                    *children = rebase_children(children, old_prefix, new_prefix);
+                }
+
+                moved.push((new_path, node));
+            }
+        }
+        moved
     }
 
     /// Moves a file or directory node in the virtual tree to `target_dir_path`, recursively
@@ -829,55 +808,11 @@ impl VirtualTree {
             let old_prefix = format!("{canonical_src}/");
             let new_prefix = format!("{canonical_dest}/");
 
-            let descendant_keys: Vec<String> = self
-                .nodes
-                .keys()
-                .filter(|k| k.starts_with(&old_prefix))
-                .cloned()
-                .collect();
-
-            let mut updated_descendants = Vec::new();
-            for old_desc_path in descendant_keys {
-                if let Some(mut desc_node) = self.nodes.remove(&old_desc_path) {
-                    let suffix = &old_desc_path[old_prefix.len()..];
-                    let new_desc_path = format!("{new_prefix}{suffix}");
-                    desc_node.metadata.path = new_desc_path.clone();
-
-                    if desc_node.is_directory()
-                        && let Some(children) = desc_node.children.as_mut()
-                    {
-                        let updated_children: std::collections::BTreeSet<String> = children
-                            .iter()
-                            .map(|c| {
-                                if c.starts_with(&old_prefix) {
-                                    format!("{new_prefix}{}", &c[old_prefix.len()..])
-                                } else {
-                                    c.clone()
-                                }
-                            })
-                            .collect();
-                        *children = updated_children;
-                    }
-                    updated_descendants.push((new_desc_path, desc_node));
-                }
-            }
-
-            // Update children of node itself
             if let Some(children) = node.children.as_mut() {
-                let updated_children: std::collections::BTreeSet<String> = children
-                    .iter()
-                    .map(|c| {
-                        if c.starts_with(&old_prefix) {
-                            format!("{new_prefix}{}", &c[old_prefix.len()..])
-                        } else {
-                            c.clone()
-                        }
-                    })
-                    .collect();
-                *children = updated_children;
+                *children = rebase_children(children, &old_prefix, &new_prefix);
             }
 
-            for (desc_path, desc_node) in updated_descendants {
+            for (desc_path, desc_node) in self.rebase_subtree(&old_prefix, &new_prefix) {
                 self.nodes.insert(desc_path, desc_node);
             }
         }
@@ -1099,6 +1034,24 @@ fn is_direct_child(dir: &str, path: &str) -> bool {
     rest.is_some_and(|rest| !rest.is_empty() && !rest.contains('/'))
 }
 
+/// Rewrites every child path that lives under `old_prefix` to live under `new_prefix`.
+///
+/// Children outside the moved subtree are kept as they are, so a directory keeps listing paths
+/// that stayed where they were.
+fn rebase_children(
+    children: &BTreeSet<String>,
+    old_prefix: &str,
+    new_prefix: &str,
+) -> BTreeSet<String> {
+    children
+        .iter()
+        .map(|child| match child.strip_prefix(old_prefix) {
+            Some(rest) => format!("{new_prefix}{rest}"),
+            None => child.clone(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1290,7 +1243,10 @@ mod tests {
         )));
 
         // Cannot rename root
-        assert_eq!(tree.rename("/", "Other"), Err(VfsError::CannotModifyRoot));
+        assert!(matches!(
+            tree.rename("/", "Other"),
+            Err(VfsError::CannotModifyRoot)
+        ));
 
         // Rename file
         let new_file = tree
@@ -1335,10 +1291,10 @@ mod tests {
         )));
 
         // Cannot move root
-        assert_eq!(
+        assert!(matches!(
             tree.move_node("/", "/FolderB"),
             Err(VfsError::CannotModifyRoot)
-        );
+        ));
 
         // Cannot move into non-existent or file
         assert!(matches!(
@@ -1643,6 +1599,77 @@ mod tests {
 
         let _ = std::fs::remove_file(&cached);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// A cache file that disappears must be reported, not mistaken for a placeholder: the caller
+    /// has to refetch, and a silent `None` told it there was nothing to fetch.
+    #[test]
+    fn a_vanished_cache_file_is_an_io_error() {
+        let mut tree = VirtualTree::new("root");
+        tree.insert(VirtualNode::new_file(
+            NodeMetadata::file("/Photos/a.jpg").with_size(4),
+        ));
+
+        let dir = std::env::temp_dir().join(format!("nexia-vfs-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cached = dir.join("a.jpg");
+        std::fs::write(&cached, b"DATA").unwrap();
+        tree.hydrate_path("/Photos/a.jpg", cached.clone()).unwrap();
+        std::fs::remove_file(&cached).unwrap();
+
+        match tree.read_hydrated_bytes("/Photos/a.jpg") {
+            Err(VfsError::Io {
+                operation, path, ..
+            }) => {
+                assert_eq!(operation, "reading the cached payload");
+                assert_eq!(path, cached);
+            }
+            other => panic!("expected an I/O error, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// Renaming a directory must re-root exactly its own subtree and nothing that merely shares a
+    /// prefix, which is what the lexicographic range scan trades the full map scan for.
+    #[test]
+    fn renaming_a_directory_re_roots_only_its_subtree() {
+        let mut tree = VirtualTree::new("root");
+        for directory in ["/Docs", "/Docs/Reports", "/Docs2", "/Other"] {
+            tree.insert(VirtualNode::new_directory(NodeMetadata::directory(
+                directory,
+            )));
+        }
+        for file in ["/Docs/a.txt", "/Docs/Reports/b.txt", "/Docs2/c.txt"] {
+            tree.insert(VirtualNode::new_file(NodeMetadata::file(file)));
+        }
+
+        let renamed = tree.rename("/Docs", "Papers").unwrap();
+        assert_eq!(renamed, "/Papers");
+
+        let mut paths: Vec<&str> = tree.paths().collect();
+        paths.sort_unstable();
+        assert_eq!(
+            paths,
+            vec![
+                "/",
+                "/Docs2",
+                "/Docs2/c.txt",
+                "/Other",
+                "/Papers",
+                "/Papers/Reports",
+                "/Papers/Reports/b.txt",
+                "/Papers/a.txt",
+            ]
+        );
+        assert_eq!(
+            tree.get("/Papers/Reports")
+                .unwrap()
+                .children
+                .as_ref()
+                .map(|children| children.iter().cloned().collect::<Vec<_>>()),
+            Some(vec!["/Papers/Reports/b.txt".to_string()])
+        );
     }
 
     /// Regression: a resource refresh must not drop an already hydrated payload.

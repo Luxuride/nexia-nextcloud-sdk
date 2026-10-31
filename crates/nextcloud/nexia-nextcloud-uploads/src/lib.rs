@@ -30,15 +30,17 @@
 //!
 //! // 1. Start the upload session
 //! let total_size = 25 * 1024 * 1024; // 25 MiB
-//! let session = client.start("alice", "Documents/archive.zip", total_size).await?;
+//! let session = client
+//!     .start("alice", "Documents/archive.zip", total_size, DEFAULT_CHUNK_SIZE)
+//!     .await?;
 //!
-//! // 2. Calculate chunk boundaries and upload each chunk
+//! // 2. Upload each chunk; the session remembers the chunk size, so it can verify completeness
 //! for boundary in session.chunk_boundaries(DEFAULT_CHUNK_SIZE).unwrap() {
 //!     let chunk_bytes = vec![0u8; boundary.len() as usize];
 //!     client.upload_chunk(&session, boundary.index, chunk_bytes).await?;
 //! }
 //!
-//! // 3. Finish assembly
+//! // 3. Finish assembly (refuses to assemble while chunks are missing)
 //! client.finish(&session, None).await?;
 //! # Ok(())
 //! # }

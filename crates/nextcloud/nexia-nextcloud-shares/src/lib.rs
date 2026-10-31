@@ -25,4 +25,4 @@ pub use client::ShareClient;
 pub use permissions::SharePermissions;
 pub use request::CreateShare;
 pub use share::Share;
-pub use share_type::{ShareType, UnknownShareTypeError};
+pub use share_type::ShareType;

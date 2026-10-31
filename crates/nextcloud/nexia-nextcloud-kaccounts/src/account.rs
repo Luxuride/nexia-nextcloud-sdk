@@ -21,6 +21,9 @@ pub struct KAccount {
 
 impl KAccount {
     /// Candidate keyring account keys used by Accounts-SSO / KAccounts / signond.
+    ///
+    /// A bare account id is deliberately not a candidate: it is shared by every service of that
+    /// account, so a lookup could return a token minted for a different service.
     pub fn candidate_keychain_keys(&self) -> Vec<String> {
         let base_url = self.server_url.as_str().trim_end_matches('/');
         let user = &self.username;
@@ -31,7 +34,40 @@ impl KAccount {
             format!("signond:{id_str}"),
             format!("{base_url}:{user}"),
             format!("{user}@{base_url}"),
-            id_str,
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account() -> KAccount {
+        KAccount {
+            id: 42,
+            name: "KDE Cloud".to_string(),
+            provider: "nextcloud".to_string(),
+            server_url: ServerUrl::parse("https://cloud.example.com").unwrap(),
+            username: "alice".to_string(),
+            enabled: true,
+            services: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn every_candidate_names_the_account() {
+        let keys = account().candidate_keychain_keys();
+
+        assert_eq!(
+            keys,
+            vec![
+                "kaccounts:42".to_string(),
+                "signond:42".to_string(),
+                "https://cloud.example.com:alice".to_string(),
+                "alice@https://cloud.example.com".to_string(),
+            ]
+        );
+        // A bare account id is shared by every service of that account.
+        assert!(!keys.contains(&"42".to_string()));
     }
 }

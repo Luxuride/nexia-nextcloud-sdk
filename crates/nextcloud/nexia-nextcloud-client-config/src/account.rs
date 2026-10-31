@@ -60,6 +60,9 @@ impl DesktopClientAccount {
     /// - `<url>:<username>`
     /// - `<url>/remote.php/dav/files/<user>/:<username>`
     /// - `<username>@<url>`
+    ///
+    /// A bare server URL is deliberately not a candidate. It names no user, so on a server that
+    /// hosts several accounts it would hand this account the token stored for another one.
     pub fn candidate_keychain_keys(&self) -> Vec<String> {
         let base_url = self.server_url.as_str().trim_end_matches('/');
         let user = &self.username;
@@ -69,7 +72,42 @@ impl DesktopClientAccount {
             format!("{base_url}:{user}"),
             format!("{base_url}/remote.php/dav/files/{dav_user}/:{user}"),
             format!("{user}@{base_url}"),
-            base_url.to_string(),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::AuthType;
+    use nexia_nextcloud_core::ServerUrl;
+
+    fn account() -> DesktopClientAccount {
+        DesktopClientAccount {
+            index: 0,
+            server_url: ServerUrl::parse("https://cloud.example.com").unwrap(),
+            username: "alice".to_string(),
+            dav_user: None,
+            display_name: None,
+            auth_type: AuthType::Webflow,
+            server_version: None,
+            webflow_user: None,
+        }
+    }
+
+    #[test]
+    fn every_candidate_names_the_account() {
+        let keys = account().candidate_keychain_keys();
+
+        assert_eq!(
+            keys,
+            vec![
+                "https://cloud.example.com:alice".to_string(),
+                "https://cloud.example.com/remote.php/dav/files/alice/:alice".to_string(),
+                "alice@https://cloud.example.com".to_string(),
+            ]
+        );
+        // A bare server URL would be shared by every account on that server.
+        assert!(!keys.contains(&"https://cloud.example.com".to_string()));
     }
 }

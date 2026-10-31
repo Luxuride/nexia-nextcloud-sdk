@@ -126,7 +126,7 @@ pub use nexia_nextcloud_sync::{
     DownloadTaskId, JournalEntry, SyncAction, SyncDownloadQueue, SyncError, SyncJournal, reconcile,
     scan_local_directory,
 };
-pub use nexia_nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient, UnknownRoomTypeError};
+pub use nexia_nextcloud_talk::{ChatMessage, Room, RoomType, TalkClient};
 pub use nexia_nextcloud_theming::{
     CustomBranding, EffectiveBranding, ServerStatusInfo, ThemeInfo, ThemingClient, ThemingError,
 };

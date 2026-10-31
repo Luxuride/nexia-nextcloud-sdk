@@ -1,5 +1,7 @@
 use std::fmt;
 
+use zeroize::{Zeroize, Zeroizing};
+
 use crate::error::StorageError;
 
 const KEY_LEN: usize = 32;
@@ -49,8 +51,11 @@ impl StoreKey {
     }
 
     /// Lower-case hex encoding, for keychain storage and the SQLCipher pragma.
-    pub fn to_hex(&self) -> String {
-        let mut hex = String::with_capacity(KEY_LEN * 2);
+    ///
+    /// The result is wrapped in [`Zeroizing`] because its only purpose is to carry the key into a
+    /// keychain or a pragma string, and a plain `String` would be freed unzeroized.
+    pub fn to_hex(&self) -> Zeroizing<String> {
+        let mut hex = Zeroizing::new(String::with_capacity(KEY_LEN * 2));
         for byte in self.0 {
             hex.push_str(&format!("{byte:02x}"));
         }
@@ -58,8 +63,15 @@ impl StoreKey {
     }
 
     /// The SQLCipher `PRAGMA key` statement that installs this key.
-    pub fn pragma(&self) -> String {
-        format!("PRAGMA key = \"x'{}'\";", self.to_hex())
+    pub fn pragma(&self) -> Zeroizing<String> {
+        let hex = self.to_hex();
+        Zeroizing::new(format!("PRAGMA key = \"x'{}'\";", hex.as_str()))
+    }
+}
+
+impl Drop for StoreKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }
 
@@ -84,7 +96,7 @@ mod tests {
     #[test]
     fn hex_round_trips() {
         let key = StoreKey::generate().unwrap();
-        let restored = StoreKey::from_hex(&key.to_hex(), "test").unwrap();
+        let restored = StoreKey::from_hex(key.to_hex().as_str(), "test").unwrap();
         assert_eq!(key, restored);
     }
 
@@ -105,7 +117,7 @@ mod tests {
     fn pragma_carries_the_hex_form() {
         let key = StoreKey::from_bytes([0xab; 32]).unwrap();
         assert_eq!(
-            key.pragma(),
+            key.pragma().as_str(),
             format!("PRAGMA key = \"x'{}'\";", "ab".repeat(32))
         );
     }

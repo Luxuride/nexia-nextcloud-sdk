@@ -1,13 +1,13 @@
 #[cfg(feature = "keyring")]
-use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString};
+use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString, find_first_secret};
 
 use crate::account::DesktopClientAccount;
 use crate::error::ClientConfigError;
 
 /// Looks up stored credentials in the platform keyring for a desktop client account.
 ///
-/// Tries standard desktop client service names (`"Nextcloud"`, `"ownCloud"`) and
-/// candidate account key formats.
+/// Tries the standard desktop client service names (`"Nextcloud"`, `"ownCloud"`) against every
+/// account name format the client has used.
 #[cfg(feature = "keyring")]
 pub async fn find_account_credentials<K: KeyringBackend>(
     account: &DesktopClientAccount,
@@ -16,19 +16,9 @@ pub async fn find_account_credentials<K: KeyringBackend>(
     const SERVICES: [&str; 2] = ["Nextcloud", "ownCloud"];
     let keys = account.candidate_keychain_keys();
 
-    for service in SERVICES {
-        for key in &keys {
-            if let Some(secret) = keyring
-                .get_secret(service, key)
-                .await
-                .map_err(|err| ClientConfigError::Keyring { source: err })?
-            {
-                return Ok(Some(secret));
-            }
-        }
-    }
-
-    Ok(None)
+    find_first_secret(keyring, &SERVICES, &keys)
+        .await
+        .map_err(|source| ClientConfigError::Keyring { source })
 }
 
 #[cfg(all(test, feature = "keyring"))]

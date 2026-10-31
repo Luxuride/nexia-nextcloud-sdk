@@ -58,7 +58,8 @@ impl EncryptedDatabase {
         // `PRAGMA key` first, then keep every temporary table in memory: a sort
         // or `ORDER BY` over cached rows would otherwise spill plaintext
         // credential rows into an unencrypted temp file.
-        let pragmas = format!("{}\nPRAGMA temp_store = MEMORY;", key.pragma());
+        let key_sql = key.pragma();
+        let pragmas = format!("{}\nPRAGMA temp_store = MEMORY;", key_sql.as_str());
         connection.execute_batch(&pragmas).map_err(|source| {
             tracing::error!(path = %path.display(), error = %source, "Failed to apply encryption key pragma");
             StorageError::open(&path, source)
@@ -240,7 +241,7 @@ mod tests {
         let path = temp_path("debug");
         let key = StoreKey::generate().unwrap();
         let database = EncryptedDatabase::open(&path, &key).unwrap();
-        assert!(!format!("{database:?}").contains(&key.to_hex()));
+        assert!(!format!("{database:?}").contains(key.to_hex().as_str()));
         std::fs::remove_file(&path).ok();
     }
 }

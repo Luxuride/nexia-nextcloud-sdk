@@ -42,11 +42,14 @@ fn validate_segment(segment: &str) -> Result<(), UrlError> {
     check_characters(segment)
 }
 
-/// Rejects characters that cannot appear literally in a request path.
+/// Rejects characters that cannot appear in a stored name at all.
+///
+/// Everything else is allowed and percent-encoded on the wire by [`super::DavPath`], so a name
+/// containing a space, `%`, `?`, `#` or a non-ASCII letter is addressable instead of rejected: on
+/// the wire it is escaped, and the server decodes it back to the same file name. A backslash stays
+/// rejected because Nextcloud and the desktop clients disagree about whether it is a separator.
 fn check_characters(segment: &str) -> Result<(), UrlError> {
-    let rejected = segment
-        .chars()
-        .any(|c| c.is_control() || matches!(c, '?' | '#' | '\\'));
+    let rejected = segment.chars().any(|c| c.is_control() || matches!(c, '\\'));
     if rejected {
         return Err(UrlError::InvalidSegment(segment.to_owned()));
     }
@@ -89,9 +92,24 @@ mod tests {
     }
 
     #[test]
-    fn rejects_query_and_fragment_markers() {
-        assert!(validate_relative("Photos/img?x=1").is_err());
-        assert!(validate_relative("Photos/img#top").is_err());
+    fn names_that_need_escaping_are_accepted() {
+        // They are encoded on the wire, so rejecting them would make real file names
+        // unaddressable. `%` in particular must survive: `a%2Fb` is a name, not a separator.
+        assert_eq!(
+            validate_relative("My Photo #1 100%.txt").unwrap(),
+            "My Photo #1 100%.txt"
+        );
+        assert_eq!(validate_relative("worum? geht's").unwrap(), "worum? geht's");
+        assert_eq!(
+            validate_relative("Fotos/Grüße.jpg").unwrap(),
+            "Fotos/Grüße.jpg"
+        );
+    }
+
+    #[test]
+    fn rejects_backslashes_and_control_characters() {
+        assert!(validate_relative("Photos\\img.jpg").is_err());
+        assert!(validate_relative("Photos/img\u{7}.jpg").is_err());
     }
 
     #[test]

@@ -7,6 +7,7 @@ use nexia_nextcloud_core::{
 };
 
 use super::{MTIME_HEADER, TOTAL_LENGTH_HEADER, UploadClient};
+use crate::session::DEFAULT_CHUNK_SIZE;
 use nexia_nextcloud_dav::DESTINATION_HEADER;
 
 struct FakeTransport {
@@ -69,11 +70,17 @@ fn start_upload_success() {
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
 
-    let session = block_on(client.start("alice", "Documents/report.pdf", 15_000_000))
-        .expect("start succeeds");
+    let session = block_on(client.start(
+        "alice",
+        "Documents/report.pdf",
+        15_000_000,
+        DEFAULT_CHUNK_SIZE,
+    ))
+    .expect("start succeeds");
 
     assert_eq!(session.user_id(), "alice");
     assert!(session.upload_id().starts_with("chunked-upload-"));
+    assert_eq!(session.chunk_size(), Some(DEFAULT_CHUNK_SIZE));
     assert_eq!(
         session.destination_path(),
         "/remote.php/dav/files/alice/Documents/report.pdf"
@@ -107,11 +114,13 @@ fn start_with_id_success() {
         "alice",
         "/remote.php/dav/files/alice/Documents/report.pdf",
         20_000_000,
+        10 * 1024 * 1024,
         "custom-upload-999",
     ))
     .expect("start_with_id succeeds");
 
     assert_eq!(session.upload_id(), "custom-upload-999");
+    assert_eq!(session.chunk_size(), Some(10 * 1024 * 1024));
     assert_eq!(
         session.destination_path(),
         "/remote.php/dav/files/alice/Documents/report.pdf"
@@ -135,7 +144,7 @@ fn start_status_error() {
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
 
-    let err = block_on(client.start("alice", "file.bin", 1000)).unwrap_err();
+    let err = block_on(client.start("alice", "file.bin", 1000, 1024)).unwrap_err();
     match err {
         Error::Status(status_err) => {
             assert_eq!(status_err.status().as_u16(), 403);
@@ -152,16 +161,21 @@ fn start_invalid_arguments() {
     let client = UploadClient::new(&transport, &auth);
 
     assert!(matches!(
-        block_on(client.start("alice/danger", "file.bin", 1000)),
+        block_on(client.start("alice/danger", "file.bin", 1000, 1024)),
         Err(Error::Url(_))
     ));
     assert!(matches!(
-        block_on(client.start("alice", "../file.bin", 1000)),
+        block_on(client.start("alice", "../file.bin", 1000, 1024)),
         Err(Error::Url(_))
     ));
     assert!(matches!(
-        block_on(client.start_with_id("alice", "file.bin", 1000, "upload/slash")),
+        block_on(client.start_with_id("alice", "file.bin", 1000, 1024, "upload/slash")),
         Err(Error::Url(_))
+    ));
+    // A zero chunk size cannot produce boundaries, so it never reaches the network.
+    assert!(matches!(
+        block_on(client.start("alice", "file.bin", 1000, 0)),
+        Err(Error::Decode(_))
     ));
 }
 
@@ -171,8 +185,14 @@ fn upload_chunk_success() {
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
 
-    let session =
-        block_on(client.start_with_id("alice", "video.mp4", 15_000_000, "up-session-1")).unwrap();
+    let session = block_on(client.start_with_id(
+        "alice",
+        "video.mp4",
+        15_000_000,
+        5 * 1024 * 1024,
+        "up-session-1",
+    ))
+    .unwrap();
 
     let chunk_data = vec![42u8; 5 * 1024 * 1024];
     block_on(client.upload_chunk(&session, 1, chunk_data.clone())).expect("upload_chunk succeeds");
@@ -204,8 +224,9 @@ fn upload_chunk_status_error() {
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
 
-    let session = crate::session::UploadSession::new("alice", "up-1", "/dest", 1000);
-    let err = block_on(client.upload_chunk(&session, 1, vec![1, 2, 3])).unwrap_err();
+    let session =
+        crate::session::UploadSession::new("alice", "up-1", "/dest", 1000).with_chunk_size(1000);
+    let err = block_on(client.upload_chunk(&session, 1, vec![1u8; 1000])).unwrap_err();
 
     match err {
         Error::Status(status_err) => {
@@ -218,14 +239,48 @@ fn upload_chunk_status_error() {
 }
 
 #[test]
-fn upload_chunk_invalid_index() {
+fn upload_chunk_rejects_a_chunk_the_session_cannot_accept() {
     let transport = FakeTransport::new(201, "");
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
 
-    let session = crate::session::UploadSession::new("alice", "up-1", "/dest", 1000);
-    let err = block_on(client.upload_chunk(&session, 0, vec![1, 2])).unwrap_err();
-    assert!(matches!(err, Error::Url(_)));
+    // Without a recorded chunk size the client cannot tell what a correct chunk looks like.
+    let sizeless = crate::session::UploadSession::new("alice", "up-1", "/dest", 1000);
+    let error = block_on(client.upload_chunk(&sizeless, 1, vec![1u8; 1000])).unwrap_err();
+    assert!(error.to_string().contains("has no chunk size"), "{error}");
+
+    let session =
+        crate::session::UploadSession::new("alice", "up-1", "/dest", 1000).with_chunk_size(1000);
+
+    // Chunk numbers are one-based.
+    let error = block_on(client.upload_chunk(&session, 0, vec![1u8; 1000])).unwrap_err();
+    assert!(
+        error.to_string().contains("chunk 0 is out of range"),
+        "{error}"
+    );
+
+    // A chunk past the last boundary would be assembled nowhere.
+    let error = block_on(client.upload_chunk(&session, 2, vec![1u8; 1000])).unwrap_err();
+    assert!(
+        error.to_string().contains("chunk 2 is out of range"),
+        "{error}"
+    );
+
+    // A short chunk shifts every later byte, so it must not be accepted.
+    let error = block_on(client.upload_chunk(&session, 1, vec![1, 2])).unwrap_err();
+    assert!(
+        error.to_string().contains("must carry 1000 bytes"),
+        "{error}"
+    );
+
+    assert!(
+        transport
+            .seen
+            .lock()
+            .expect("test mutex not poisoned")
+            .is_empty(),
+        "a chunk the session cannot accept must not reach the network"
+    );
 }
 
 #[test]
@@ -239,7 +294,9 @@ fn finish_success_with_and_without_mtime() {
         "up-123",
         "/remote.php/dav/files/alice/Photos/pic.png",
         20_000_000,
-    );
+    )
+    .with_chunk_size(20_000_000);
+    session.mark_chunk_uploaded(1);
 
     // Finish with mtime
     block_on(client.finish(&session, Some(1729789200))).expect("finish with mtime succeeds");
@@ -273,7 +330,9 @@ fn finish_status_error() {
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
 
-    let session = crate::session::UploadSession::new("alice", "up-1", "/dest", 1000);
+    let session =
+        crate::session::UploadSession::new("alice", "up-1", "/dest", 1000).with_chunk_size(1000);
+    session.mark_chunk_uploaded(1);
     let err = block_on(client.finish(&session, None)).unwrap_err();
 
     match err {
@@ -342,13 +401,13 @@ fn client_accessors_and_display() {
 fn an_incomplete_session_is_not_assembled() {
     use crate::session::UploadSession;
 
-    let transport = FakeTransport::new(201, Vec::new());
+    let transport = FakeTransport::new(204, Vec::new());
     let auth = FakeAuth;
     let client = UploadClient::new(&transport, &auth);
-    let session = UploadSession::new("alice", "up-1", "/dest.txt", 2048);
+    let session = UploadSession::new("alice", "up-1", "/dest.txt", 2048).with_chunk_size(1024);
     session.mark_chunk_uploaded(1);
 
-    let error = block_on(client.finish_verified(&session, 1024, None)).expect_err("must refuse");
+    let error = block_on(client.finish(&session, None)).expect_err("must refuse");
     assert!(error.to_string().contains("1 of 2 chunks"), "{error}");
     assert!(
         transport
@@ -360,6 +419,27 @@ fn an_incomplete_session_is_not_assembled() {
     );
 
     session.mark_chunk_uploaded(2);
-    block_on(client.finish_verified(&session, 1024, None)).expect("a complete session assembles");
+    block_on(client.finish(&session, None)).expect("a complete session assembles");
     assert_eq!(transport.last_request().method(), HttpMethod::Move);
+}
+
+#[test]
+fn a_session_without_a_chunk_size_cannot_be_assembled() {
+    use crate::session::UploadSession;
+
+    let transport = FakeTransport::new(204, Vec::new());
+    let auth = FakeAuth;
+    let client = UploadClient::new(&transport, &auth);
+    let session = UploadSession::new("alice", "up-1", "/dest.txt", 2048);
+
+    let error = block_on(client.finish(&session, None)).expect_err("must refuse");
+    assert!(error.to_string().contains("has no chunk size"), "{error}");
+    assert!(
+        transport
+            .seen
+            .lock()
+            .expect("test mutex not poisoned")
+            .is_empty(),
+        "no assembly request may be sent for an unverifiable session"
+    );
 }

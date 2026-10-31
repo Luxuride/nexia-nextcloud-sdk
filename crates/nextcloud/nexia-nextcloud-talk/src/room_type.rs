@@ -10,6 +10,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// - One-to-one conversation (`1`)
 /// - Group conversation (`2`)
 /// - Public link conversation (`3`)
+///
+/// Talk also reports codes this SDK does not model (a changelog conversation is `4`, a note-to-self
+/// conversation is `6`); those are carried through as [`RoomType::Unknown`] rather than failing the
+/// listing they arrived in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum RoomType {
@@ -19,22 +23,34 @@ pub enum RoomType {
     Group = 2,
     /// Public conversation accessible via public link (`3`).
     Public = 3,
+    /// A conversation type this SDK does not recognise; the wire code is preserved.
+    Unknown(u8),
 }
 
 impl RoomType {
     /// Numeric code sent over the wire.
     pub const fn as_u8(self) -> u8 {
-        self as u8
+        match self {
+            Self::OneToOne => 1,
+            Self::Group => 2,
+            Self::Public => 3,
+            Self::Unknown(code) => code,
+        }
     }
 
-    /// Maps a wire code to a [`RoomType`], returning `None` for unknown codes.
-    pub const fn from_u8(code: u8) -> Option<Self> {
+    /// Maps any wire code to a [`RoomType`], preserving codes this SDK does not know.
+    pub const fn from_u8(code: u8) -> Self {
         match code {
-            1 => Some(Self::OneToOne),
-            2 => Some(Self::Group),
-            3 => Some(Self::Public),
-            _ => None,
+            1 => Self::OneToOne,
+            2 => Self::Group,
+            3 => Self::Public,
+            other => Self::Unknown(other),
         }
+    }
+
+    /// `false` when this is a code this SDK does not recognise.
+    pub const fn is_known(self) -> bool {
+        !matches!(self, Self::Unknown(_))
     }
 
     /// Human-readable label for this room type.
@@ -43,6 +59,7 @@ impl RoomType {
             Self::OneToOne => "one-to-one",
             Self::Group => "group",
             Self::Public => "public",
+            Self::Unknown(_) => "unknown",
         }
     }
 }
@@ -61,21 +78,19 @@ impl<'de> Deserialize<'de> for RoomType {
             type Value = RoomType;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a valid Nextcloud Talk room type code (1, 2, or 3)")
+                f.write_str("a Nextcloud Talk room type code (integer or string)")
             }
 
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<RoomType, E> {
                 let code = u8::try_from(v)
                     .map_err(|_| E::custom(format!("room type code {v} out of range")))?;
-                RoomType::from_u8(code)
-                    .ok_or_else(|| E::custom(format!("unknown room type code {code}")))
+                Ok(RoomType::from_u8(code))
             }
 
             fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<RoomType, E> {
                 let code = u8::try_from(v)
                     .map_err(|_| E::custom(format!("room type code {v} out of range")))?;
-                RoomType::from_u8(code)
-                    .ok_or_else(|| E::custom(format!("unknown room type code {code}")))
+                Ok(RoomType::from_u8(code))
             }
 
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<RoomType, E> {
@@ -83,8 +98,7 @@ impl<'de> Deserialize<'de> for RoomType {
                     .trim()
                     .parse()
                     .map_err(|_| E::custom(format!("invalid room type string '{v}'")))?;
-                RoomType::from_u8(code)
-                    .ok_or_else(|| E::custom(format!("unknown room type code {code}")))
+                Ok(RoomType::from_u8(code))
             }
         }
 
@@ -98,38 +112,11 @@ impl fmt::Display for RoomType {
     }
 }
 
-impl TryFrom<u8> for RoomType {
-    type Error = UnknownRoomTypeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Self::from_u8(value).ok_or(UnknownRoomTypeError(value))
-    }
-}
-
 impl From<RoomType> for u8 {
     fn from(room_type: RoomType) -> Self {
         room_type.as_u8()
     }
 }
-
-/// Error returned when converting an unrecognized integer into a [`RoomType`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct UnknownRoomTypeError(u8);
-
-impl UnknownRoomTypeError {
-    /// The unrecognised numeric code.
-    pub const fn code(self) -> u8 {
-        self.0
-    }
-}
-
-impl fmt::Display for UnknownRoomTypeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "unknown room type code: {}", self.0)
-    }
-}
-
-impl std::error::Error for UnknownRoomTypeError {}
 
 #[cfg(test)]
 mod tests {
@@ -145,21 +132,27 @@ mod tests {
 
     #[test]
     fn room_type_conversion_u8() {
-        assert_eq!(RoomType::from_u8(1), Some(RoomType::OneToOne));
-        assert_eq!(RoomType::from_u8(2), Some(RoomType::Group));
-        assert_eq!(RoomType::from_u8(3), Some(RoomType::Public));
-        assert_eq!(RoomType::from_u8(99), None);
-
-        assert_eq!(RoomType::try_from(1), Ok(RoomType::OneToOne));
-        assert_eq!(RoomType::try_from(2), Ok(RoomType::Group));
-        assert_eq!(RoomType::try_from(3), Ok(RoomType::Public));
-        let err = RoomType::try_from(99).unwrap_err();
-        assert_eq!(err.code(), 99);
-        assert_eq!(err.to_string(), "unknown room type code: 99");
+        assert_eq!(RoomType::from_u8(1), RoomType::OneToOne);
+        assert_eq!(RoomType::from_u8(2), RoomType::Group);
+        assert_eq!(RoomType::from_u8(3), RoomType::Public);
 
         assert_eq!(u8::from(RoomType::OneToOne), 1);
         assert_eq!(u8::from(RoomType::Group), 2);
         assert_eq!(u8::from(RoomType::Public), 3);
+    }
+
+    /// Talk reports a changelog conversation as `4` and a note-to-self conversation as `6`; a
+    /// listing of ordinary rooms must not be lost because of them.
+    #[test]
+    fn unknown_room_types_do_not_fail_the_listing() {
+        for code in [4, 6, 99] {
+            let room_type = RoomType::from_u8(code);
+            assert_eq!(room_type, RoomType::Unknown(code));
+            assert!(!room_type.is_known());
+            assert_eq!(room_type.as_u8(), code);
+            assert_eq!(room_type.as_str(), "unknown");
+        }
+        assert!(RoomType::from_u8(2).is_known());
     }
 
     #[test]
@@ -171,5 +164,8 @@ mod tests {
 
         let from_str: RoomType = serde_json::from_str("\"3\"").expect("deserialize from string");
         assert_eq!(from_str, RoomType::Public);
+
+        let unknown: RoomType = serde_json::from_str("6").expect("deserialize unknown");
+        assert_eq!(unknown, RoomType::Unknown(6));
     }
 }

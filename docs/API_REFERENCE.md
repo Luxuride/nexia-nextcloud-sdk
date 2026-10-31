@@ -96,12 +96,17 @@ machine only decides what to do next.
 
 | Endpoint | Method | Crate | Client / method | Parameters | Returns |
 | --- | --- | --- | --- | --- | --- |
-| `/remote.php/dav/uploads/{user}/{session_id}` | `MKCOL` | `nexia-nextcloud-uploads` | `UploadClient::start(user_id, destination_path, total_size)` / `start_with_id(user_id, destination_path, total_size, upload_id)` | `&str`, `&str`, `u64`, `&str` | `UploadSession` |
-| `/remote.php/dav/uploads/{user}/{session_id}/{chunk}` | `PUT` | `nexia-nextcloud-uploads` | `UploadClient::upload_chunk(&session, chunk_index, chunk_data)` | `&UploadSession`, `u32`, `Vec<u8>` | `()` |
-| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nexia-nextcloud-uploads` | `UploadClient::finish(&session, mtime)` / `finish_verified(&session, chunk_size, mtime)` | `&UploadSession`, `Option<u64>` | `()` — `finish_verified` refuses a session with missing chunks |
+| `/remote.php/dav/uploads/{user}/{session_id}` | `MKCOL` | `nexia-nextcloud-uploads` | `UploadClient::start(user_id, destination_path, total_size, chunk_size)` / `start_with_id(user_id, destination_path, total_size, chunk_size, upload_id)` | `&str`, `&str`, `u64`, `u64`, `&str` | `UploadSession` |
+| `/remote.php/dav/uploads/{user}/{session_id}/{chunk}` | `PUT` | `nexia-nextcloud-uploads` | `UploadClient::upload_chunk(&session, chunk_index, chunk_data)` | `&UploadSession`, `u32`, `Vec<u8>` | `()` — the chunk must carry exactly the bytes its boundary prescribes |
+| `/remote.php/dav/uploads/{user}/{session_id}/.file` | `MOVE` | `nexia-nextcloud-uploads` | `UploadClient::finish(&session, mtime)` | `&UploadSession`, `Option<u64>` | `()` — refuses a session with missing chunks |
 | `/remote.php/dav/uploads/{user}/{session_id}` | `DELETE` | `nexia-nextcloud-uploads` | `UploadClient::abort(&session)` | `&UploadSession` | `()` |
 
 `UploadSession` carries `user_id`, `upload_id`, `destination_path`, `total_size`
+and the `chunk_size` it was started with (`with_chunk_size`, `chunk_size`). The
+chunk size is what lets the session tell whether every chunk arrived: a session
+built by hand needs it before `finish` will assemble. `is_complete(chunk_size)` and
+`expected_chunk_count(chunk_size)` stay available for callers that track progress
+themselves.
 and the set of already-uploaded chunk indexes; `upload_chunk` marks a chunk
 uploaded in the session on success.
 
@@ -198,7 +203,7 @@ D-Bus bus name, a SQLite file or an INI file.
 | Source | Access | Crate | Client / method | Returns |
 | --- | --- | --- | --- | --- |
 | `org.gnome.OnlineAccounts` | D-Bus (`zbus`) | `nexia-nextcloud-goa` | `GnomeOnlineAccounts::connect()` → `list_accounts()` | `Vec<GoaAccount>` |
-| `~/.local/share/accounts/accounts.db` | SQLite | `nexia-nextcloud-kaccounts` | `KAccountsDatabase::open_default()` → `list_accounts()`; free function `find_kaccount_credentials()` | `Vec<KAccount>` |
+| `~/.config/libaccounts-glib/accounts.db` | SQLite | `nexia-nextcloud-kaccounts` | `KAccountsDatabase::open_default()` → `list_accounts()`; free function `find_kaccount_credentials()` | `Vec<KAccount>` |
 | `nextcloud.cfg` (Linux/macOS/Windows) | INI | `nexia-nextcloud-client-config` | `ClientConfigParser::parse_file(path)` / `parse_str(&str)`; `discover_config_paths()`, `find_active_config_path()` | `Vec<DesktopClientAccount>` |
 | All of the above | Discovery | `nexia-nextcloud-sdk` (`sso`) | `DesktopSso::discover_accounts()` → `Vec<DiscoveredAccount>`; `resolve_credentials()` | `Vec<DiscoveredAccount>` |
 
@@ -260,7 +265,8 @@ SQLCipher SQLite persistence for three databases.
 
 - `StoragePaths` — `auth.db`, `cache.db`, `config.db` locations
   (`default_xdg()`, `ensure_directories()`).
-- `StoreKey` — 256-bit key from OS entropy.
+- `StoreKey` — 256-bit key from OS entropy, zeroed on drop; `to_hex()` and
+  `pragma()` return `Zeroizing<String>`.
 - `EncryptedDatabase` — schema verification and migrations.
 - `KeyStore` trait with `KeychainKeyStore` and the platform keyring backends.
 
@@ -270,6 +276,8 @@ Details, including the schema per database, are in
 ### 3.5 `nexia-nextcloud-sdk-keyring` (core)
 
 - `KeyringBackend` — trait for storing/retrieving the `StoreKey`.
+- `find_first_secret` — the ordered service × account lookup the credential crates
+  share, so the precedence between naming conventions is identical everywhere.
 - `PlatformKeyring` — FreeDesktop Secret Service / Flatpak portal (`oo7`) on Linux,
   Keychain on macOS, Credential Manager on Windows.
 - `MemoryKeyring` — tests and ephemeral sessions.
@@ -361,6 +369,9 @@ The runtime. Owns an OS thread and its own Tokio runtime.
   `copy`, `move_`. Its `Debug` prints a constant, so a credential source held by
   reference cannot be logged through the client.
 - `DavPath` (`DavPath::new(user, relative)`), `DavProperty`.
+  The request target is percent-encoded (`relative()` and `segments()` return the
+  decoded name), so a name with a space, `%`, `?`, `#` or non-ASCII letters is
+  addressable and a `%2F` in a name stays a character, not a separator.
 - `DavResource`, `Depth::{Zero, One, Infinity}`, `Overwrite::{Allow, Forbidden}`.
 - `PropfindBody::{ new(properties), all() }` — `new` takes `impl IntoIterator<Item = DavProperty>`; there is no `names`/`prop` constructor.
 
@@ -375,7 +386,8 @@ The runtime. Owns an OS thread and its own Tokio runtime.
 
 - `ShareClient<'a, T, A>` — `list`, `get`, `create`, `delete`.
 - `CreateShare` — public link / user / group builders.
-- `Share`, `SharePermissions` (bitflags), `ShareType`.
+- `Share`, `SharePermissions` (bitflags), `ShareType` with `Unknown(u8)` for codes
+  the client does not model (`is_known`, total `from_u8`).
 
 ### 3.16 `nexia-nextcloud-notifications`
 
@@ -419,6 +431,18 @@ value types named after their row (`PreviewOptions`, `TrashItem`, `FileVersion`,
 OS-level account discovery for SSO and migration: GNOME Online Accounts and
 KAccounts over their native channels, plus `nextcloud.cfg` parsing so a consumer
 can adopt existing account and folder pairs on first run.
+
+`KAccountsDatabase` detects whether the database uses the libaccounts-glib layout
+(`Settings`/`Services`, what KDE Plasma ships) or the flat
+`AccountSettings`/`AccountServices` pair, and reports an unrecognised layout as
+`KAccountsError::UnsupportedSchema` naming the tables it found. A GNOME Online
+Account that cannot be read is skipped with a warning rather than failing the
+listing.
+
+Keyring lookups try each service × account-name convention in a fixed order
+(`find_first_secret`). None of the candidate account names is a bare server URL or
+a bare KAccounts id: neither names a user, so on a server with several accounts one
+account could read another account's token.
 
 ### 3.22 Facade: `nexia-nextcloud-sdk`
 

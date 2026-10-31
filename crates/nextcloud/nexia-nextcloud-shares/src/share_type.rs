@@ -3,7 +3,9 @@ use std::fmt;
 
 /// The recipient type of a Nextcloud share.
 ///
-/// Nextcloud identifies share targets by integer codes on the wire.
+/// Nextcloud identifies share targets by integer codes on the wire. A server may report a code this
+/// SDK does not know (a newer Nextcloud, or an app that registers its own share type), which is
+/// carried through as [`ShareType::Unknown`] instead of failing the whole listing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum ShareType {
@@ -21,26 +23,42 @@ pub enum ShareType {
     Circle = 7,
     /// Share with a Talk conversation or room (`10`).
     Room = 10,
+    /// A share type this SDK does not recognise; the wire code is preserved.
+    Unknown(u8),
 }
 
 impl ShareType {
     /// Numeric code sent over the wire.
     pub const fn as_u8(self) -> u8 {
-        self as u8
+        match self {
+            Self::User => 0,
+            Self::Group => 1,
+            Self::PublicLink => 3,
+            Self::Email => 4,
+            Self::Remote => 6,
+            Self::Circle => 7,
+            Self::Room => 10,
+            Self::Unknown(code) => code,
+        }
     }
 
-    /// Maps a wire code to a [`ShareType`], returning `None` for unknown codes.
-    pub const fn from_u8(code: u8) -> Option<Self> {
+    /// Maps any wire code to a [`ShareType`], preserving codes this SDK does not know.
+    pub const fn from_u8(code: u8) -> Self {
         match code {
-            0 => Some(Self::User),
-            1 => Some(Self::Group),
-            3 => Some(Self::PublicLink),
-            4 => Some(Self::Email),
-            6 => Some(Self::Remote),
-            7 => Some(Self::Circle),
-            10 => Some(Self::Room),
-            _ => None,
+            0 => Self::User,
+            1 => Self::Group,
+            3 => Self::PublicLink,
+            4 => Self::Email,
+            6 => Self::Remote,
+            7 => Self::Circle,
+            10 => Self::Room,
+            other => Self::Unknown(other),
         }
+    }
+
+    /// `false` when this is a code this SDK does not recognise.
+    pub const fn is_known(self) -> bool {
+        !matches!(self, Self::Unknown(_))
     }
 
     /// Human-readable label for this share type.
@@ -53,6 +71,7 @@ impl ShareType {
             Self::Remote => "remote",
             Self::Circle => "circle",
             Self::Room => "room",
+            Self::Unknown(_) => "unknown",
         }
     }
 }
@@ -71,21 +90,19 @@ impl<'de> Deserialize<'de> for ShareType {
             type Value = ShareType;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a valid Nextcloud share type code (integer or string)")
+                f.write_str("a Nextcloud share type code (integer or string)")
             }
 
             fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<ShareType, E> {
                 let code = u8::try_from(v)
                     .map_err(|_| E::custom(format!("share type code {v} out of range")))?;
-                ShareType::from_u8(code)
-                    .ok_or_else(|| E::custom(format!("unknown share type code {code}")))
+                Ok(ShareType::from_u8(code))
             }
 
             fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<ShareType, E> {
                 let code = u8::try_from(v)
                     .map_err(|_| E::custom(format!("share type code {v} out of range")))?;
-                ShareType::from_u8(code)
-                    .ok_or_else(|| E::custom(format!("unknown share type code {code}")))
+                Ok(ShareType::from_u8(code))
             }
 
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<ShareType, E> {
@@ -93,8 +110,7 @@ impl<'de> Deserialize<'de> for ShareType {
                     .trim()
                     .parse()
                     .map_err(|_| E::custom(format!("invalid share type string '{v}'")))?;
-                ShareType::from_u8(code)
-                    .ok_or_else(|| E::custom(format!("unknown share type code {code}")))
+                Ok(ShareType::from_u8(code))
             }
         }
 
@@ -108,65 +124,47 @@ impl fmt::Display for ShareType {
     }
 }
 
-impl TryFrom<u8> for ShareType {
-    type Error = UnknownShareTypeError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Self::from_u8(value).ok_or(UnknownShareTypeError(value))
-    }
-}
-
 impl From<ShareType> for u8 {
     fn from(share_type: ShareType) -> Self {
         share_type.as_u8()
     }
 }
 
-/// Error returned when converting an unrecognized integer into a [`ShareType`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct UnknownShareTypeError(u8);
-
-impl UnknownShareTypeError {
-    /// The unrecognised numeric code.
-    pub const fn code(self) -> u8 {
-        self.0
-    }
-}
-
-impl fmt::Display for UnknownShareTypeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "unknown share type code: {}", self.0)
-    }
-}
-
-impl std::error::Error for UnknownShareTypeError {}
-
 #[cfg(test)]
 mod tests {
-    use super::{ShareType, UnknownShareTypeError};
+    use super::ShareType;
 
     #[test]
     fn maps_all_expected_codes() {
-        assert_eq!(ShareType::from_u8(0), Some(ShareType::User));
-        assert_eq!(ShareType::from_u8(1), Some(ShareType::Group));
-        assert_eq!(ShareType::from_u8(3), Some(ShareType::PublicLink));
-        assert_eq!(ShareType::from_u8(4), Some(ShareType::Email));
-        assert_eq!(ShareType::from_u8(6), Some(ShareType::Remote));
-        assert_eq!(ShareType::from_u8(7), Some(ShareType::Circle));
-        assert_eq!(ShareType::from_u8(10), Some(ShareType::Room));
-        assert_eq!(ShareType::from_u8(2), None);
-        assert_eq!(ShareType::from_u8(99), None);
+        assert_eq!(ShareType::from_u8(0), ShareType::User);
+        assert_eq!(ShareType::from_u8(1), ShareType::Group);
+        assert_eq!(ShareType::from_u8(3), ShareType::PublicLink);
+        assert_eq!(ShareType::from_u8(4), ShareType::Email);
+        assert_eq!(ShareType::from_u8(6), ShareType::Remote);
+        assert_eq!(ShareType::from_u8(7), ShareType::Circle);
+        assert_eq!(ShareType::from_u8(10), ShareType::Room);
+    }
+
+    /// A share type this SDK does not know must not fail the listing it arrived in.
+    #[test]
+    fn unknown_codes_are_preserved() {
+        for code in [2, 5, 9, 12, 255] {
+            let share_type = ShareType::from_u8(code);
+            assert_eq!(share_type, ShareType::Unknown(code));
+            assert!(!share_type.is_known());
+            assert_eq!(share_type.as_u8(), code);
+            assert_eq!(share_type.as_str(), "unknown");
+        }
+        assert!(ShareType::from_u8(0).is_known());
     }
 
     #[test]
     fn as_u8_round_trips() {
-        for code in [0, 1, 3, 4, 6, 7, 10] {
-            let st = ShareType::from_u8(code).unwrap();
+        for code in [0, 1, 3, 4, 6, 7, 10, 2, 12, 255] {
+            let st = ShareType::from_u8(code);
             assert_eq!(st.as_u8(), code);
             assert_eq!(u8::from(st), code);
-            assert_eq!(ShareType::try_from(code), Ok(st));
         }
-        assert_eq!(ShareType::try_from(255), Err(UnknownShareTypeError(255)));
     }
 
     #[test]
@@ -184,9 +182,17 @@ mod tests {
     }
 
     #[test]
-    fn serde_json_rejects_invalid_values() {
-        assert!(serde_json::from_str::<ShareType>("99").is_err());
+    fn serde_json_keeps_unknown_codes_and_rejects_invalid_values() {
+        assert_eq!(
+            serde_json::from_str::<ShareType>("12").unwrap(),
+            ShareType::Unknown(12)
+        );
+        assert_eq!(
+            serde_json::to_string(&ShareType::Unknown(12)).unwrap(),
+            "12"
+        );
         assert!(serde_json::from_str::<ShareType>("\"invalid\"").is_err());
+        assert!(serde_json::from_str::<ShareType>("300").is_err());
     }
 
     #[test]

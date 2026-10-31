@@ -42,14 +42,15 @@ impl ChunkBoundary {
 
 /// Active chunked upload session state.
 ///
-/// Keeps track of user ID, upload ID, destination path, total file size,
-/// and which chunks have been uploaded successfully.
+/// Keeps track of user ID, upload ID, destination path, total file size, the chunk size the upload
+/// was started with, and which chunks have been uploaded successfully.
 #[derive(Clone, Debug)]
 pub struct UploadSession {
     user_id: String,
     upload_id: String,
     destination_path: String,
     total_size: u64,
+    chunk_size: Option<u64>,
     uploaded_chunks: Arc<Mutex<BTreeSet<u32>>>,
 }
 
@@ -62,6 +63,11 @@ impl UploadSession {
     pub const DEFAULT_CHUNK_SIZE: u64 = DEFAULT_CHUNK_SIZE;
 
     /// Creates a new upload session without any recorded chunks.
+    ///
+    /// The session does not know its chunk size until [`Self::with_chunk_size`] is called, which
+    /// [`super::UploadClient::start`] does for every session it creates. Without it the session
+    /// cannot tell whether every chunk arrived, so uploads built by hand must set it before
+    /// finishing.
     pub fn new(
         user_id: impl Into<String>,
         upload_id: impl Into<String>,
@@ -73,8 +79,21 @@ impl UploadSession {
             upload_id: upload_id.into(),
             destination_path: destination_path.into(),
             total_size,
+            chunk_size: None,
             uploaded_chunks: Arc::new(Mutex::new(BTreeSet::new())),
         }
+    }
+
+    /// Records the chunk size this upload is split into, which makes completeness checkable.
+    #[must_use]
+    pub fn with_chunk_size(mut self, chunk_size: u64) -> Self {
+        self.chunk_size = Some(chunk_size);
+        self
+    }
+
+    /// The chunk size this upload was started with, if it is known.
+    pub const fn chunk_size(&self) -> Option<u64> {
+        self.chunk_size
     }
 
     /// User ID of the upload owner.
@@ -127,13 +146,14 @@ impl UploadSession {
 
     /// Calculates the expected total chunk count for the given chunk size.
     ///
-    /// Returns `None` if `chunk_size` is zero or if total chunk count overflows `u32`.
+    /// Returns `None` if `chunk_size` is zero or if total chunk count overflows `u32`. An empty
+    /// upload needs no chunks, so a zero-size file reports `Some(0)`.
     pub fn expected_chunk_count(&self, chunk_size: u64) -> Option<u32> {
         if chunk_size == 0 {
             return None;
         }
         if self.total_size == 0 {
-            return Some(1);
+            return Some(0);
         }
         let count = self.total_size.div_ceil(chunk_size);
         u32::try_from(count).ok()
@@ -145,6 +165,9 @@ impl UploadSession {
             return false;
         };
         let uploaded = self.lock_chunks();
+        if expected == 0 {
+            return uploaded.is_empty();
+        }
         if uploaded.len() != expected as usize {
             return false;
         }
@@ -239,12 +262,10 @@ mod tests {
     #[test]
     fn zero_size_and_invalid_chunk_size() {
         let session = UploadSession::new("alice", "up-1", "/path", 0);
-        assert_eq!(session.expected_chunk_count(1024), Some(1));
-        assert_eq!(
-            session.chunk_boundary(1, 1024),
-            Some(ChunkBoundary::new(1, 0, 0))
-        );
-        assert!(session.chunk_boundary(1, 1024).unwrap().is_empty());
+        // An empty upload needs no chunks, so nothing is missing and nothing is out of range.
+        assert_eq!(session.expected_chunk_count(1024), Some(0));
+        assert_eq!(session.chunk_boundary(1, 1024), None);
+        assert!(session.is_complete(1024));
 
         assert_eq!(session.expected_chunk_count(0), None);
         assert_eq!(session.chunk_boundary(1, 0), None);
@@ -252,6 +273,16 @@ mod tests {
 
         assert_eq!(session.chunk_boundary(0, 1024), None);
         assert_eq!(session.chunk_boundary(2, 1024), None);
+    }
+
+    #[test]
+    fn a_session_records_its_chunk_size() {
+        let session = UploadSession::new("alice", "up-1", "/path", 30 * 1024 * 1024);
+        assert_eq!(session.chunk_size(), None);
+
+        let session = session.with_chunk_size(DEFAULT_CHUNK_SIZE);
+        assert_eq!(session.chunk_size(), Some(DEFAULT_CHUNK_SIZE));
+        assert_eq!(session.expected_chunk_count(DEFAULT_CHUNK_SIZE), Some(3));
     }
 
     #[test]

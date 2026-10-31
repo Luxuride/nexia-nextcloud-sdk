@@ -22,7 +22,8 @@ use nexia_nextcloud_sdk::{
 /// Mock hydrator that tracks hydration invocations and yields deterministic byte payloads.
 struct MockHydrator {
     call_count: Arc<AtomicUsize>,
-    payload: Result<Vec<u8>, VfsError>,
+    /// Payload bytes, or the path the hydrator reports as missing.
+    payload: Result<Vec<u8>, String>,
 }
 
 impl MockHydrator {
@@ -37,12 +38,16 @@ impl MockHydrator {
         )
     }
 
-    fn failing(error: VfsError) -> (Self, Arc<AtomicUsize>) {
+    /// Builds a hydrator that reports `missing_path` as not found.
+    ///
+    /// The error is rebuilt per call because [`VfsError`] carries an `io::Error` and is therefore
+    /// not clonable.
+    fn failing(missing_path: &str) -> (Self, Arc<AtomicUsize>) {
         let counter = Arc::new(AtomicUsize::new(0));
         (
             Self {
                 call_count: counter.clone(),
-                payload: Err(error),
+                payload: Err(missing_path.to_string()),
             },
             counter,
         )
@@ -55,7 +60,10 @@ impl AsyncHydrator for MockHydrator {
         _canonical_path: &str,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, VfsError>> + Send + '_>> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
-        let res = self.payload.clone();
+        let res = match &self.payload {
+            Ok(bytes) => Ok(bytes.clone()),
+            Err(missing_path) => Err(VfsError::NotFound(missing_path.clone())),
+        };
         Box::pin(async move { res })
     }
 }
@@ -469,8 +477,7 @@ async fn hydration_failure_preserves_placeholder_integrity() {
     let file_meta = NodeMetadata::file("/broken.bin").with_size(remote_size);
     tree.insert(VirtualNode::new_file(file_meta));
 
-    let (hydrator, call_count) =
-        MockHydrator::failing(VfsError::NotFound("/broken.bin".to_string()));
+    let (hydrator, call_count) = MockHydrator::failing("/broken.bin");
     let shared_tree = Arc::new(RwLock::new(tree));
     let driver = FuseDriver::with_hydrator(shared_tree.clone(), Arc::new(hydrator));
 

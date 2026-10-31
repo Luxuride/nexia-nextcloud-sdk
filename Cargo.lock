@@ -1530,6 +1530,7 @@ dependencies = [
  "oo7",
  "tokio",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1585,6 +1586,7 @@ dependencies = [
  "rusqlite",
  "tokio",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1680,6 +1682,7 @@ dependencies = [
 name = "nexia-nextcloud-uploads"
 version = "0.2.2"
 dependencies = [
+ "getrandom 0.3.4",
  "nexia-nextcloud-auth",
  "nexia-nextcloud-core",
  "nexia-nextcloud-dav",

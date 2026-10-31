@@ -3,11 +3,11 @@
 use std::collections::HashMap;
 
 use nexia_nextcloud_auth::{AppPassword, BasicAuth, SecretString};
-use zbus::zvariant::OwnedValue;
+use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
 use crate::account::GoaAccount;
 use crate::error::GoaError;
-use crate::proxy::{FilesProxy, ObjectManagerProxy, PasswordBasedProxy};
+use crate::proxy::{FilesProxy, InterfaceMap, ObjectManagerProxy, PasswordBasedProxy};
 use crate::url::parse_webdav_url;
 
 /// Client for interacting with GNOME Online Accounts via D-Bus.
@@ -46,9 +46,10 @@ impl GnomeOnlineAccounts {
     /// # Errors
     ///
     /// - [`GoaError::NoAccountsFound`] if no matching accounts are discovered.
-    /// - [`GoaError::DBus`] if a D-Bus call fails.
-    /// - [`GoaError::MissingProperty`] if a required property is missing.
-    /// - [`GoaError::Url`] if a WebDAV URI is malformed.
+    /// - [`GoaError::DBus`] if the `GetManagedObjects` call fails.
+    ///
+    /// An individual account that cannot be read (a missing property, a malformed WebDAV URI, a
+    /// failing password lookup) is logged and skipped: one broken account must not hide the others.
     pub async fn list_accounts(&self) -> Result<Vec<GoaAccount>, GoaError> {
         let object_manager = ObjectManagerProxy::new(&self.conn).await?;
         let managed_objects = object_manager.get_managed_objects().await?;
@@ -56,48 +57,17 @@ impl GnomeOnlineAccounts {
         let mut accounts = Vec::new();
 
         for (path, interfaces) in &managed_objects {
-            let Some(account_props) = interfaces.get("org.gnome.OnlineAccounts.Account") else {
-                continue;
-            };
-
-            let provider_type = extract_str(account_props, "ProviderType")?;
-            if provider_type != "owncloud" && provider_type != "nextcloud" {
-                continue;
+            match self.account_at(path, interfaces).await {
+                Ok(Some(account)) => accounts.push(account),
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        object = %path,
+                        error = %error,
+                        "skipping a GNOME Online Account that could not be read"
+                    );
+                }
             }
-
-            let id = extract_str(account_props, "Id")?;
-            let identity = extract_str(account_props, "Identity")?;
-            let presentation_identity =
-                extract_str(account_props, "PresentationIdentity").unwrap_or(identity);
-
-            let uri = if let Some(files_props) = interfaces.get("org.gnome.OnlineAccounts.Files") {
-                extract_str(files_props, "Uri")?.to_owned()
-            } else {
-                let files_proxy = FilesProxy::builder(&self.conn)
-                    .path(path.as_ref())?
-                    .build()
-                    .await?;
-                files_proxy.uri().await?
-            };
-
-            let server_url = parse_webdav_url(&uri)?;
-
-            let password_proxy = PasswordBasedProxy::builder(&self.conn)
-                .path(path.as_ref())?
-                .build()
-                .await?;
-            let password = password_proxy.get_password("password").await?;
-
-            let credentials = AppPassword::new(identity, SecretString::new(password));
-            let auth = BasicAuth::from_app_password(credentials);
-
-            accounts.push(GoaAccount::new(
-                id,
-                identity,
-                server_url,
-                auth,
-                presentation_identity,
-            ));
         }
 
         if accounts.is_empty() {
@@ -107,6 +77,56 @@ impl GnomeOnlineAccounts {
 
         tracing::info!(count = accounts.len(), "Discovered GNOME Online Accounts");
         Ok(accounts)
+    }
+
+    /// Reads one managed object, returning `Ok(None)` when it is not a Nextcloud account.
+    async fn account_at(
+        &self,
+        path: &OwnedObjectPath,
+        interfaces: &InterfaceMap,
+    ) -> Result<Option<GoaAccount>, GoaError> {
+        let Some(account_props) = interfaces.get("org.gnome.OnlineAccounts.Account") else {
+            return Ok(None);
+        };
+
+        let provider_type = extract_str(account_props, "ProviderType")?;
+        if provider_type != "owncloud" && provider_type != "nextcloud" {
+            return Ok(None);
+        }
+
+        let id = extract_str(account_props, "Id")?;
+        let identity = extract_str(account_props, "Identity")?;
+        let presentation_identity =
+            extract_str(account_props, "PresentationIdentity").unwrap_or(identity);
+
+        let uri = if let Some(files_props) = interfaces.get("org.gnome.OnlineAccounts.Files") {
+            extract_str(files_props, "Uri")?.to_owned()
+        } else {
+            let files_proxy = FilesProxy::builder(&self.conn)
+                .path(path.as_ref())?
+                .build()
+                .await?;
+            files_proxy.uri().await?
+        };
+
+        let server_url = parse_webdav_url(&uri)?;
+
+        let password_proxy = PasswordBasedProxy::builder(&self.conn)
+            .path(path.as_ref())?
+            .build()
+            .await?;
+        let password = password_proxy.get_password("password").await?;
+
+        let credentials = AppPassword::new(identity, SecretString::new(password));
+        let auth = BasicAuth::from_app_password(credentials);
+
+        Ok(Some(GoaAccount::new(
+            id,
+            identity,
+            server_url,
+            auth,
+            presentation_identity,
+        )))
     }
 }
 

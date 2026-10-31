@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use nexia_nextcloud_core::url::{percent_encode, percent_encode_path};
 use nexia_nextcloud_core::{ApiPath, UrlError};
 
 use super::validation;
@@ -13,6 +14,11 @@ use super::validation;
 /// else may appear between them. Validation happens once, in
 /// [`DavPath::new`], so a later call cannot send a traversal segment or an
 /// already-prefixed path.
+///
+/// The path is stored decoded and escaped for the request target: [`Self::relative`] and
+/// [`Self::segments`] return the name the user sees, while [`Self::as_str`] returns what goes on the
+/// wire. Sending the decoded form instead made every name with a space, a `%` or a non-ASCII letter
+/// fail, and let a pre-encoded `%2F` arrive as a path separator instead of a character.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DavPath {
     user: String,
@@ -34,10 +40,11 @@ impl DavPath {
     pub fn new(user: impl AsRef<str>, relative: impl AsRef<str>) -> Result<Self, UrlError> {
         let user = validation::validate_user(user.as_ref())?.to_owned();
         let relative = validation::validate_relative(relative.as_ref())?;
+        let wire_user = percent_encode(&user);
         let wire = if relative.is_empty() {
-            format!("files/{user}")
+            format!("files/{wire_user}")
         } else {
-            format!("files/{user}/{relative}")
+            format!("files/{wire_user}/{}", percent_encode_path(&relative))
         };
         Ok(Self {
             api: ApiPath::dav(wire)?,
@@ -155,5 +162,47 @@ mod tests {
     fn display_renders_the_wire_path() {
         let path = DavPath::new("alice", "a.txt").unwrap();
         assert_eq!(path.to_string(), "/remote.php/dav/files/alice/a.txt");
+    }
+
+    #[test]
+    fn names_are_escaped_on_the_wire_only() {
+        let path = DavPath::new("alice", "Photos/My Photo #1 100%.txt").unwrap();
+
+        assert_eq!(
+            path.as_str(),
+            "/remote.php/dav/files/alice/Photos/My%20Photo%20%231%20100%25.txt"
+        );
+        // Callers still see the name the user sees, segment by segment.
+        assert_eq!(path.relative(), "Photos/My Photo #1 100%.txt");
+        assert_eq!(
+            path.segments().collect::<Vec<_>>(),
+            vec!["Photos", "My Photo #1 100%.txt"]
+        );
+        assert_eq!(
+            path.join("next.txt").unwrap().relative(),
+            "Photos/My Photo #1 100%.txt/next.txt"
+        );
+    }
+
+    #[test]
+    fn a_pre_encoded_separator_stays_a_character() {
+        // `a%2Fb` is one file called `a%2Fb`, not two segments: the `%` is escaped, so the server
+        // decodes `%252F` back to the literal name instead of splitting the path.
+        let path = DavPath::new("alice", "a%2Fb.txt").unwrap();
+
+        assert_eq!(path.as_str(), "/remote.php/dav/files/alice/a%252Fb.txt");
+        assert_eq!(path.segments().collect::<Vec<_>>(), vec!["a%2Fb.txt"]);
+    }
+
+    #[test]
+    fn non_ascii_names_and_users_are_escaped() {
+        let path = DavPath::new("jörg", "Grüße.jpg").unwrap();
+
+        assert_eq!(
+            path.as_str(),
+            "/remote.php/dav/files/j%C3%B6rg/Gr%C3%BC%C3%9Fe.jpg"
+        );
+        assert_eq!(path.user(), "jörg");
+        assert_eq!(path.relative(), "Grüße.jpg");
     }
 }

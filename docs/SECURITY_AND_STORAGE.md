@@ -149,8 +149,11 @@ Used for all sensitive passphrases, app passwords and bearer tokens. There are t
 | `nexia_nextcloud_sdk_keyring::SecretString` | `nexia-nextcloud-sdk-keyring` | `[REDACTED]` | `.expose_secret() -> &str`, `.into_inner() -> String` |
 
 Both omit `Serialize`, so neither can be pushed into JSON logs. The keyring variant
-also implements `Display` (redacted) and `Drop` — `Drop` zeroes the backing bytes
-before releasing them.
+also implements `Display` (redacted), and holds its bytes in a `zeroize::Zeroizing`
+buffer: the wipe happens through volatile writes plus a compiler fence, so dropping
+the value cannot be optimised away. `into_inner()` hands the plaintext out as an
+ordinary `String`, which the caller is then responsible for clearing; it does not
+leave a second copy behind while doing so.
 
 ### 3.2 Login Flow Token and Request Bodies
 `nexia_nextcloud_sdk_session::PollToken` holds the token that collects the app
@@ -177,7 +180,7 @@ The redaction is a hand-written `impl fmt::Debug for User`
 `#[derive(Debug)]` on the wire struct it is built from.
 
 ### 3.4 Key & Database Redaction
-- `StoreKey`: `Debug` writes `StoreKey(<redacted>)` (`crates/core/nextcloud-sdk-storage/src/key.rs:68`). The raw hex is never formatted.
+- `StoreKey`: `Debug` writes `StoreKey(<redacted>)` (`crates/core/nexia-nextcloud-sdk-storage/src/key.rs:68`). The raw hex is never formatted through `Debug`, the key bytes are zeroed on drop, and the hex and pragma forms it hands out are `Zeroizing<String>`, so the database key does not survive as a plain heap `String`.
 - `KeychainKeyStore`: Debug output displays only the application ID and account label, omitting key contents.
 - `EncryptedDatabase`: Formats only the file path, omitting encryption pragmas.
 

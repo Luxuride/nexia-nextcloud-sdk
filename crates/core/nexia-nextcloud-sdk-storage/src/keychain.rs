@@ -63,8 +63,9 @@ impl<B: KeyringBackend> KeyStore for KeychainKeyStore<B> {
     }
 
     async fn store(&self, key: StoreKey) -> Result<(), StorageError> {
+        let hex = key.to_hex();
         self.entry
-            .set(&key.to_hex())
+            .set(hex.as_str())
             .await
             .map_err(StorageError::keychain)
     }
@@ -105,7 +106,7 @@ mod tests {
 
         let key = store.load_or_create().await.unwrap();
         let loaded = store.load().await.unwrap().unwrap();
-        assert_eq!(key.to_hex(), loaded.to_hex());
+        assert_eq!(key.to_hex().as_str(), loaded.to_hex().as_str());
 
         store.delete().await.unwrap();
         assert!(store.load().await.unwrap().is_none());
@@ -114,8 +115,8 @@ mod tests {
         let custom_key = StoreKey::generate().unwrap();
         store.store(custom_key.clone()).await.unwrap();
         assert_eq!(
-            store.load().await.unwrap().unwrap().to_hex(),
-            custom_key.to_hex()
+            store.load().await.unwrap().unwrap().to_hex().as_str(),
+            custom_key.to_hex().as_str()
         );
     }
 }

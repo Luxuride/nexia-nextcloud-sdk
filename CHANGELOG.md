@@ -9,10 +9,14 @@ All notable changes to the Nextcloud Rust SDK workspace.
 - `nexia-nextcloud-core::url::{percent_encode, percent_encode_path}` — the single
   RFC 3986 encoder for the workspace. Query values, form values and path segments
   previously had three separate implementations that had already drifted.
-- `UploadClient::finish_verified`, which refuses to assemble a session whose
-  expected chunks are missing. `finish` cannot check this on its own because
-  `UploadSession` does not record the chunk size.
+- `UploadSession::with_chunk_size` and `UploadSession::chunk_size`: the session now
+  remembers the chunk size it was started with, which is what makes completeness
+  checkable at all.
 - `UploadSession::is_supported_chunk_size` for the range the server accepts.
+- `nexia-nextcloud-sdk-keyring::find_first_secret`, the ordered service × account
+  lookup that three crates had copied.
+- `KAccountsError::UnsupportedSchema`, naming the tables that were found instead of
+  letting a `no such table` error stand in for "layout not recognised".
 - `nexia-nextcloud-sync`: `reconcile_local_changes`, an upload-only planner for a
   local rescan, plus `is_ignored_name` as the single definition of the names a
   scan skips.
@@ -21,6 +25,40 @@ All notable changes to the Nextcloud Rust SDK workspace.
 
 ### Fixed
 
+- `nexia-nextcloud-uploads`: `finish` refuses to assemble a session whose expected
+  chunks are missing, and `upload_chunk` rejects a chunk whose length or index
+  does not match the session. Assembly moves whatever the server holds into the
+  destination, so a silently truncated upload used to be reported as success and
+  could no longer be completed.
+- `nexia-nextcloud-uploads`: the upload id comes from the OS random source. A
+  `<millis>-<counter>` id was guessable and collided across processes, and the id
+  names a collection anyone who guesses it can write into.
+- `nexia-nextcloud-uploads`: an empty upload is complete once it has no chunks,
+  instead of expecting chunk 1 forever.
+- `nexia-nextcloud-sdk-keyring`: `SecretString` zeroes through `zeroize`, so the
+  wipe survives optimisation, and `into_inner` no longer leaves a second plaintext
+  copy behind.
+- `nexia-nextcloud-sdk-storage`: `StoreKey` is zeroed on drop, and its hex and
+  pragma forms are wrapped in `Zeroizing` — a plain `String` holding the database
+  key was freed unzeroized.
+- `nexia-nextcloud-sdk-vfs`: `read_hydrated_bytes` reports an unreadable cache file
+  as `VfsError::Io` instead of `Ok(None)`, which was indistinguishable from a
+  placeholder.
+- `nexia-nextcloud-sdk-vfs`: inserting a directory no longer scans every known
+  node to adopt orphans, and `remove`, `rename` and `move_node` walk a key range
+  for their subtree instead of filtering the whole map. The node map is a
+  `BTreeMap`, so a subtree is one ordered range.
+- `nexia-nextcloud-kaccounts`: accounts are read from the `Settings`/`Services`
+  tables libaccounts-glib creates, with the flat `AccountSettings`/
+  `AccountServices` layout still supported. The layout is detected from the
+  database, so a real KDE Plasma `accounts.db` no longer fails with
+  `no such table`.
+- `nexia-nextcloud-goa`: a GNOME Online Account that cannot be read is skipped with
+  a warning instead of aborting the whole listing.
+- `nexia-nextcloud-client-config`, `nexia-nextcloud-kaccounts`, `nexia-nextcloud-sdk`
+  (SSO): a bare server URL and a bare KAccounts id are no longer keyring
+  candidates. Neither names a user, so on a server with several accounts one
+  account could pick up another account's token.
 - `nexia-nextcloud-sdk-session`: `PollFailed` and `Expired` now end a pending
   Login Flow with `Command::StopPolling`. Both events existed and were documented
   but no transition accepted them, so a poll that could never succeed left the
@@ -104,6 +142,21 @@ All notable changes to the Nextcloud Rust SDK workspace.
 
 ### Changed
 
+- Breaking: `ShareType` and `RoomType` gained an `Unknown(u8)` variant, `from_u8`
+  returns `Self` instead of a `Result`, and `UnknownShareTypeError` /
+  `UnknownRoomTypeError` are gone. A share type (2, 5, 9, 12 for Deck) or room
+  type (4 for the changelog conversation) that the enum does not model made the
+  whole listing fail; it is now preserved and flagged through `is_known`.
+- Breaking: `DavPath` percent-encodes the user name and each path segment in the
+  request target while `relative()` and `segments()` keep returning the decoded
+  name. A name with a space, `%`, `?`, `#` or a non-ASCII letter used to be sent
+  literally and either failed or addressed a different resource; `?` and `#` are
+  now accepted as name characters instead of being rejected.
+- Breaking: `UploadClient::start` and `start_with_id` take the chunk size, and
+  `UploadClient::finish_verified` is gone because `finish` verifies now.
+- Breaking: `VfsError` gained `Io { operation, path, source }` and no longer
+  implements `Clone`, `PartialEq` or `Eq`, because it wraps `std::io::Error`.
+- Breaking: `StoreKey::to_hex` and `StoreKey::pragma` return `Zeroizing<String>`.
 - `ConfigStore::store_theme` returns the stored `CachedTheme` and
   `ConfigStore::store_sync_mount` returns the stored `StoredSyncMount`, so the
   emitted event and the persisted row carry the same `updated_at`. Both returned

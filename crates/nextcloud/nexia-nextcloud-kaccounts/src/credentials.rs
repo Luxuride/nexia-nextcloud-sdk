@@ -1,5 +1,5 @@
 #[cfg(feature = "keyring")]
-use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString};
+use nexia_nextcloud_sdk_keyring::{KeyringBackend, SecretString, find_first_secret};
 
 use crate::account::KAccount;
 use crate::error::KAccountsError;
@@ -13,19 +13,9 @@ pub async fn find_kaccount_credentials<K: KeyringBackend>(
     const SERVICES: [&str; 4] = ["KAccounts", "signon", "Nextcloud", "ownCloud"];
     let keys = account.candidate_keychain_keys();
 
-    for service in SERVICES {
-        for key in &keys {
-            if let Some(secret) = keyring
-                .get_secret(service, key)
-                .await
-                .map_err(|err| KAccountsError::Keyring { source: err })?
-            {
-                return Ok(Some(secret));
-            }
-        }
-    }
-
-    Ok(None)
+    find_first_secret(keyring, &SERVICES, &keys)
+        .await
+        .map_err(|source| KAccountsError::Keyring { source })
 }
 
 #[cfg(all(test, feature = "keyring"))]
